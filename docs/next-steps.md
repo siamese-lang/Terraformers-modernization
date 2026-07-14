@@ -110,22 +110,50 @@ Reference:
 
 - [`docs/backend-project-metadata.md`](backend-project-metadata.md)
 
-## 6. Next priority: project tree read endpoint
+## 6. Completed: project tree read endpoint
 
-Implement a minimal project tree read contract that can support the original frontend's `ProjectTree` import without pretending that full file editing is complete.
+A read-only project tree contract now supports the original frontend's `ProjectTree` shape without enabling unsupported run/destroy/edit/delete controls.
 
-Recommended first contract:
+Current endpoints:
 
 ```text
+GET /api/project-tree
 GET /api/project-tree/{projectId}
 ```
 
-The first response should be derived from project metadata and latest analysis result:
+Current response shape:
 
 ```text
 project root
-  architecture image metadata
-  generated Terraform draft metadata
+  source
+    uploaded image metadata node
+  terraform
+    main.tf latest result node
+```
+
+Reference:
+
+- [`docs/backend-project-tree.md`](backend-project-tree.md)
+
+Important boundary:
+
+- tree is read-only in this pass;
+- source file node is metadata-only;
+- `main.tf` points to the latest analysis job/result object metadata;
+- Terraform run/destroy/tfstate, rename, file create/delete, and draft edit APIs remain deferred.
+
+## 7. Next priority: frontend ProjectTree read-only import
+
+Import the original ProjectTree surface in a controlled way.
+
+Recommended approach:
+
+```text
+1. Do not import the full original ProjectTree.js behavior as-is.
+2. Create a read-only ProjectTree component or heavily trimmed source-derived version.
+3. Fetch GET /api/project-tree after upload completion or when the tree panel opens.
+4. Render project/source/terraform/main.tf nodes.
+5. Disable or omit run/destroy/rename/delete/create controls until backend contracts exist.
 ```
 
 Rules:
@@ -135,16 +163,15 @@ Rules:
 - do not claim full S3-backed file tree until binary persistence and draft storage contracts are implemented;
 - classify missing UI actions as backend contract work instead of deleting them silently.
 
-## 7. Remaining backend product contracts
+## 8. Remaining backend product contracts
 
 Implement in this order:
 
-1. Project tree read endpoint.
-2. Stored Terraform draft read/update endpoint.
-3. Public project list compatibility endpoint if the old frontend requires `/api/public-projects`.
-4. Comments for public projects.
-5. Real upload binary persistence through S3 writer.
-6. Production adapter validation one boundary at a time.
+1. Stored Terraform draft read/update endpoint.
+2. Public project list compatibility endpoint if the old frontend requires `/api/public-projects`.
+3. Comments for public projects.
+4. Real upload binary persistence through S3 writer.
+5. Production adapter validation one boundary at a time.
 
 Keep deferred until real integration exists:
 
@@ -152,7 +179,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 8. Adapter validation order
+## 9. Adapter validation order
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once:
 
@@ -167,7 +194,7 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=true
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 9. Infrastructure import
+## 10. Infrastructure import
 
 After backend, runtime contract, frontend import, and image validation are stable, import Terraform in this order:
 
