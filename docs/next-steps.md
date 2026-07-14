@@ -1,25 +1,44 @@
 # Next Steps
 
-## 1. Immediate validation
+## 1. Current CI policy
 
-1. Check GitHub Actions results for:
-   - Backend Maven Verification
-   - Backend Image Build Verification
-   - Runtime Contract Verification
-2. If any workflow fails, fix the public baseline before importing more code.
-3. Run local backend verification if needed:
+The repository is still in a public baseline construction phase.
+
+For now, GitHub Actions workflows are intentionally manual-only:
+
+- Backend Maven Verification
+- Backend Image Build Verification
+- Runtime Contract Verification
+
+Reason:
+
+- backend adapter implementation is still being stabilized;
+- deployment manifests are contract skeletons, not production overlays;
+- repeated public red checks can make the project look broken rather than in-progress;
+- deployment pipeline work should start only after the backend baseline passes local verification.
+
+Re-enable push/PR triggers only after:
+
+1. `bash scripts/checks/backend-local-verification.sh` passes locally;
+2. `bash scripts/checks/runtime-contract-verification.sh` passes locally;
+3. manual GitHub Actions runs pass;
+4. the README clearly states the validated baseline scope.
+
+## 2. Immediate local validation
+
+Run backend verification:
 
 ```bash
 bash scripts/checks/backend-local-verification.sh
 ```
 
-4. Run runtime contract verification if Kubernetes or Terraform runtime files changed:
+Run runtime contract verification:
 
 ```bash
 bash scripts/checks/runtime-contract-verification.sh
 ```
 
-5. Run backend locally and execute the analysis job smoke script:
+Run backend locally and execute the analysis job smoke script:
 
 ```bash
 BASE_URL=http://localhost:8080 \
@@ -31,9 +50,9 @@ bash scripts/smoke/create-analysis-job.sh
 
 The smoke script should confirm `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
 
-## 2. Runtime contract validation
+## 3. Runtime contract validation
 
-The runtime deployment contract now exists in:
+The runtime deployment contract exists in:
 
 - `infra/kubernetes/base/*`
 - `infra/terraform/runtime-contract/*`
@@ -52,7 +71,7 @@ Validation expectations:
 
 Do not apply the example values to a real account. They are placeholders for contract validation.
 
-## 3. Adapter validation
+## 4. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -67,7 +86,7 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 4. Infrastructure import
+## 5. Infrastructure import
 
 After backend and runtime contract verification, import Terraform in this order:
 
@@ -81,7 +100,7 @@ After backend and runtime contract verification, import Terraform in this order:
 
 Do not import the full private repository history.
 
-## 5. Documentation updates
+## 6. Documentation updates
 
 After each infrastructure/runtime change, update:
 
