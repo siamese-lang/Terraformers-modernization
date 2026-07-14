@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: terraformers-backend-modernization
+  autoconfigure:
+    exclude: []
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+terraformers:
+  runtime:
+    required-env:
+      - SPRING_DATASOURCE_URL
+      - SPRING_DATASOURCE_USERNAME
+      - SPRING_DATASOURCE_PASSWORD
+      - COGNITO_REGION
+      - COGNITO_USER_POOL_ID
+      - COGNITO_USER_POOL_CLIENT_ID
+      - COGNITO_JWKS_URL
+      - S3_BUCKET_NAME
+      - AI_LOG_QUEUE_URL
+      - TERRAFORM_LOG_QUEUE_URL
