@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../utils/api';
 import '../styles/public-projects.css';
 
@@ -25,7 +25,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadPublicProjects = async () => {
+  const loadPublicProjects = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
@@ -37,11 +37,11 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPublicProjects();
-  }, []);
+  }, [loadPublicProjects]);
 
   return (
     <section className="public-projects-panel" aria-label="Read-only public projects">
