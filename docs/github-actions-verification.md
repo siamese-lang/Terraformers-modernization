@@ -45,6 +45,18 @@ bash scripts/checks/frontend-import-verification.sh
 
 This verifies the selected original frontend import and upload/analysis UI build.
 
+Workflow policy:
+
+- use `actions/setup-node@v5`;
+- use Node.js 24;
+- do not enable `setup-node` npm cache until `frontend/package-lock.json` is committed and stable.
+
+Reason:
+
+- Node 20 is deprecated on GitHub Actions runners;
+- cache resolution fails when `cache-dependency-path: frontend/package-lock.json` is set before the lockfile exists in the repository;
+- the verification script can still run `npm install` when the lockfile is absent.
+
 ### Runtime Contract Verification
 
 Runs:
