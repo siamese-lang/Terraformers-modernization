@@ -212,39 +212,80 @@ Important boundary:
 - Terraform apply/destroy remains deferred;
 - multi-file draft tree remains future work.
 
-## 9. Next priority: public project list compatibility
+## 9. Completed: public project list compatibility
 
-The next product contract should bridge the original public project surface.
+The original public project list entry point now exists as a thin read-only adapter over the current project metadata model.
 
-Recommended scope:
+Current endpoint:
 
 ```text
 GET /api/public-projects
-POST or PATCH compatibility for visibility changes if needed
 ```
 
-Map this onto the existing project metadata model:
+Current backend mapping:
 
 ```text
 GET /api/projects/public
 visibility=PUBLIC
+  -> compatibility aliases for projectId/id and projectName/name
+```
+
+Current frontend flow:
+
+```text
+GET /api/public-projects
+  -> render read-only public project list
+  -> select a public project
+  -> GET /api/project-tree/{projectId}
+  -> read source metadata and stored main.tf draft
+```
+
+Current files:
+
+```text
+backend/src/main/java/com/terraformers/modernization/project/PublicProjectCompatibilityController.java
+backend/src/main/java/com/terraformers/modernization/project/PublicProjectResponse.java
+frontend/src/components/PublicProjectsReadOnly.js
+frontend/src/styles/public-projects.css
+```
+
+Reference:
+
+- [`docs/backend-public-projects.md`](backend-public-projects.md)
+- [`docs/frontend-public-projects-readonly.md`](frontend-public-projects-readonly.md)
+
+Important boundary:
+
+- private projects are not returned;
+- `imageUrl` and `description` remain null until real contracts exist;
+- comments, likes, edit/delete, and share workflows remain deferred;
+- browser cloud credential settings are still not restored.
+
+## 10. Next priority: comments for public projects
+
+The next product contract should add comments only after project-level public visibility and read-only project inspection are stable.
+
+Recommended scope:
+
+```text
+GET  /api/projects/{projectId}/comments
+POST /api/projects/{projectId}/comments
 ```
 
 Rules:
 
-- do not expose private projects through compatibility endpoints;
-- do not add comment UI until comment persistence exists;
-- do not revive browser cloud credential settings;
-- keep compatibility endpoints thin adapters over the new project metadata model.
+- only attach comments to existing projects;
+- decide whether comments require authentication before adding frontend input;
+- do not reintroduce board-like likes/dislikes yet;
+- do not import the whole original dashboard surface.
 
-## 10. Remaining backend product contracts
+## 11. Remaining backend product contracts
 
 Implement in this order:
 
-1. Public project list compatibility endpoint if the old frontend requires `/api/public-projects`.
-2. Comments for public projects.
-3. Real upload binary persistence through S3 writer.
-4. Production adapter validation one boundary at a time.
+1. Comments for public projects.
+2. Real upload binary persistence through S3 writer.
+3. Production adapter validation one boundary at a time.
 
 Keep deferred until real integration exists:
 
@@ -252,7 +293,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 11. Adapter validation order
+## 12. Adapter validation order
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once:
 
@@ -267,7 +308,7 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=true
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 12. Infrastructure import
+## 13. Infrastructure import
 
 After backend, runtime contract, frontend import, and image validation are stable, import Terraform in this order:
 
