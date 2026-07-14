@@ -78,7 +78,7 @@
 
 상태: 부분 진행.
 
-현재 공개 저장소에는 전체 원본 backend source가 아니라 **public-safe backend modernization baseline**을 먼저 추가했다.
+현재 공개 저장소에는 전체 원본 backend source가 아니라 **public-safe backend modernization baseline**을 먼저 추가했다. 검증 목표와 한계는 `docs/notes/backend-baseline-validation.md`에 정리한다.
 
 현재 추가된 항목:
 
@@ -92,11 +92,14 @@ backend/
   src/main/resources/application-prod.yml
   src/main/resources/db/migration/V20260714_001__baseline_backend_schema.sql
   src/test/java/com/terraformers/modernization/config/RuntimeConfigInspectorTest.java
+  src/test/java/com/terraformers/modernization/web/RuntimeReadinessControllerTest.java
+  src/test/java/com/terraformers/modernization/TerraformersBackendApplicationTest.java
 
 .github/workflows/backend-maven-verification.yml
 .github/workflows/backend-image-build.yml
 scripts/checks/backend-local-verification.sh
 docs/backend-public-baseline.md
+docs/notes/backend-baseline-validation.md
 ```
 
 기존 이전 대상:
