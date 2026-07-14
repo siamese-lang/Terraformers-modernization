@@ -142,28 +142,67 @@ Important boundary:
 - `main.tf` points to the latest analysis job/result object metadata;
 - Terraform run/destroy/tfstate, rename, file create/delete, and draft edit APIs remain deferred.
 
-## 7. Next priority: frontend ProjectTree read-only import
+## 7. Completed: frontend ProjectTree read-only import
 
-Import the original ProjectTree surface in a controlled way.
+The frontend now renders a controlled read-only Project Tree beside the chat/upload flow.
 
-Recommended approach:
+Current flow:
 
 ```text
-1. Do not import the full original ProjectTree.js behavior as-is.
-2. Create a read-only ProjectTree component or heavily trimmed source-derived version.
-3. Fetch GET /api/project-tree after upload completion or when the tree panel opens.
-4. Render project/source/terraform/main.tf nodes.
-5. Disable or omit run/destroy/rename/delete/create controls until backend contracts exist.
+POST /api/upload
+  -> analysis job result
+  -> selected projectId
+  -> GET /api/project-tree/{projectId}
+  -> render source/main.tf nodes
+```
+
+Current frontend files:
+
+```text
+frontend/src/components/ProjectTreeReadOnly.js
+frontend/src/components/AiChat.js
+frontend/src/utils/api.js
+frontend/src/index.css
+```
+
+Reference:
+
+- [`docs/frontend-project-tree-readonly.md`](frontend-project-tree-readonly.md)
+
+Important boundary:
+
+- original `ProjectTree.js` was not copied wholesale;
+- run/destroy/rename/delete/create controls are not active;
+- clicking `main.tf` previews the latest analysis job `resultPreview`;
+- source file node remains metadata-only until binary object read/persistence is implemented.
+
+## 8. Next priority: stored Terraform draft read/update endpoint
+
+The next backend product contract should make Terraform draft handling explicit instead of relying on `GET /api/analysis/jobs/{id}` for preview.
+
+Recommended contract:
+
+```text
+GET  /api/projects/{projectId}/terraform/main.tf
+PUT  /api/projects/{projectId}/terraform/main.tf
+```
+
+Initial scope:
+
+```text
+read latest generated draft
+persist edited draft in local/test storage model
+return draft metadata and revision timestamp
 ```
 
 Rules:
 
-- do not activate Terraform run/destroy/tfstate controls yet;
-- do not import browser cloud-key settings behavior;
-- do not claim full S3-backed file tree until binary persistence and draft storage contracts are implemented;
-- classify missing UI actions as backend contract work instead of deleting them silently.
+- do not claim full S3 object persistence until S3 writer is enabled and validated;
+- do not activate Terraform run/destroy controls;
+- make edited draft storage separate from generated analysis result metadata;
+- keep browser cloud credential settings disabled.
 
-## 8. Remaining backend product contracts
+## 9. Remaining backend product contracts
 
 Implement in this order:
 
@@ -179,7 +218,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 9. Adapter validation order
+## 10. Adapter validation order
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once:
 
@@ -194,7 +233,7 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=true
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 10. Infrastructure import
+## 11. Infrastructure import
 
 After backend, runtime contract, frontend import, and image validation are stable, import Terraform in this order:
 
