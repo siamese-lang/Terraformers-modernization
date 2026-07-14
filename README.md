@@ -165,6 +165,7 @@ Python Bedrock Analysis Service
 - [`docs/validation.md`](docs/validation.md): 배포 후 smoke/E2E/API/log 검증 절차
 - [`docs/runbook.md`](docs/runbook.md): 장애 상황별 운영 점검 절차
 - [`docs/interview-guide.md`](docs/interview-guide.md): 포트폴리오·면접 설명 가이드
+- [`docs/evidence/README.md`](docs/evidence/README.md): 검증 증거 템플릿과 마스킹 기준
 
 ## 10. 주의: 이 프로젝트가 아닌 것
 
