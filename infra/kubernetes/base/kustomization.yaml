@@ -3,6 +3,9 @@ kind: Kustomization
 resources:
   - backend-serviceaccount.yaml
   - backend-configmap.yaml
-  - backend-secret.example.yaml
   - backend-deployment.yaml
   - backend-service.yaml
+
+# backend-secret.example.yaml is intentionally not included.
+# Create terraformers-backend-runtime-secrets through External Secrets,
+# Sealed Secrets, CI/CD secret injection, or an environment-specific overlay.
