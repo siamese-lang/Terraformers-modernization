@@ -53,7 +53,7 @@
 
 ## Phase 1. Repository baseline
 
-상태: 진행 중.
+상태: 완료.
 
 이전/생성 대상:
 
@@ -76,7 +76,30 @@
 
 ## Phase 2. Backend source import
 
-이전 대상:
+상태: 부분 진행.
+
+현재 공개 저장소에는 전체 원본 backend source가 아니라 **public-safe backend modernization baseline**을 먼저 추가했다.
+
+현재 추가된 항목:
+
+```text
+backend/
+  pom.xml
+  Dockerfile
+  README.md
+  src/main/java/com/terraformers/modernization/
+  src/main/resources/application.yml
+  src/main/resources/application-prod.yml
+  src/main/resources/db/migration/V20260714_001__baseline_backend_schema.sql
+  src/test/java/com/terraformers/modernization/config/RuntimeConfigInspectorTest.java
+
+.github/workflows/backend-maven-verification.yml
+.github/workflows/backend-image-build.yml
+scripts/checks/backend-local-verification.sh
+docs/backend-public-baseline.md
+```
+
+기존 이전 대상:
 
 ```text
 backend/
@@ -255,12 +278,13 @@ docs/evidence/templates/
 
 다음 순서로 진행한다.
 
-1. private 작업물에서 backend source를 선별한다.
-2. secret/config 값이 없는지 점검한다.
-3. 공개 저장소의 `backend/` 경로에 맞게 재배치한다.
-4. Maven compile/test 기준을 맞춘다.
-5. backend Dockerfile과 image build workflow를 추가한다.
-6. Terraform env/module을 선별 이전한다.
-7. Terraform fmt/init/validate 기준을 맞춘다.
-8. GitHub Actions workflow를 공개 저장소 경로에 맞게 수정한다.
-9. validation/runbook 문서를 실제 코드 경로에 맞게 보정한다.
+1. 공개 backend baseline의 GitHub Actions 실행 결과를 확인한다.
+2. private 작업물에서 실제 domain/entity/repository/service 코드를 선별한다.
+3. secret/config 값이 없는지 점검한다.
+4. 공개 저장소의 `backend/` 경로에 맞게 재배치한다.
+5. Maven compile/test 기준을 맞춘다.
+6. backend smoke script를 추가한다.
+7. Terraform env/module을 선별 이전한다.
+8. Terraform fmt/init/validate 기준을 맞춘다.
+9. GitHub Actions workflow를 공개 저장소 경로에 맞게 수정한다.
+10. validation/runbook 문서를 실제 코드 경로에 맞게 보정한다.
