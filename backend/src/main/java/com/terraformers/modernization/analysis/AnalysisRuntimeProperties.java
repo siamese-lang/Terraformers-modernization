@@ -19,6 +19,8 @@ public class AnalysisRuntimeProperties {
     private boolean opensearchRetrieverEnabled;
     private int opensearchTopK = 3;
     private String opensearchServiceName = "aoss";
+    private String resultBucketName;
+    private String resultKeyPrefix = "analysis-results";
     private boolean sqsPublisherEnabled;
     private String progressQueueUrl;
     private String resultQueueUrl;
@@ -133,6 +135,22 @@ public class AnalysisRuntimeProperties {
 
     public void setOpensearchServiceName(String opensearchServiceName) {
         this.opensearchServiceName = opensearchServiceName;
+    }
+
+    public String getResultBucketName() {
+        return resultBucketName;
+    }
+
+    public void setResultBucketName(String resultBucketName) {
+        this.resultBucketName = resultBucketName;
+    }
+
+    public String getResultKeyPrefix() {
+        return resultKeyPrefix;
+    }
+
+    public void setResultKeyPrefix(String resultKeyPrefix) {
+        this.resultKeyPrefix = resultKeyPrefix;
     }
 
     public boolean isSqsPublisherEnabled() {
