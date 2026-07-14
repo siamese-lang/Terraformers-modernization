@@ -10,6 +10,9 @@ public record AnalysisJobResponse(
         String correlationId,
         AnalysisJobStatus status,
         AnalysisMode analysisMode,
+        String provider,
+        String resultObjectKey,
+        String resultPreview,
         String failureReason,
         Instant createdAt,
         Instant updatedAt
@@ -23,6 +26,9 @@ public record AnalysisJobResponse(
                 entity.getCorrelationId(),
                 entity.getStatus(),
                 entity.getAnalysisMode(),
+                entity.getProvider(),
+                entity.getResultObjectKey(),
+                entity.getResultPreview(),
                 entity.getFailureReason(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
