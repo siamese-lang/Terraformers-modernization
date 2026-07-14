@@ -52,16 +52,18 @@ project root
 ├── source
 │   └── uploaded image metadata node
 └── terraform
-    └── main.tf latest result node
+    └── main.tf latest draft node
 ```
 
-Clicking `main.tf` follows the node `apiPath`, which currently points to:
+Clicking `main.tf` follows the node `apiPath`, which now points to:
 
 ```text
-/api/analysis/jobs/{latestAnalysisJobId}
+/api/projects/{projectId}/terraform/main.tf
 ```
 
-The UI displays `resultPreview` as the Terraform draft preview.
+The UI displays the response `content` field as the Terraform draft preview.
+
+For compatibility with the earlier analysis-job preview pass, the component still falls back to `resultPreview` when a response does not contain `content`.
 
 ## 4. Explicit exclusions
 
@@ -89,10 +91,10 @@ Frontend Import Verification
 Backend Local Verification
 ```
 
-The frontend build verifies that the read-only tree component compiles. Backend tests verify that `GET /api/project-tree` and `GET /api/project-tree/{projectId}` return the expected project/source/terraform nodes.
+The frontend build verifies that the read-only tree component compiles. Backend tests verify that `GET /api/project-tree` and `GET /api/project-tree/{projectId}` return the expected project/source/terraform nodes, and that the `main.tf` node points to the project draft endpoint.
 
 ## 6. Portfolio explanation
 
 ```text
-원본 Terraformers의 프로젝트 트리 UI는 단순 조회뿐 아니라 Terraform 실행, 삭제, 파일 생성, 이름 변경까지 한 컴포넌트에 섞여 있었습니다. 현재 백엔드 계약이 준비되지 않은 기능을 화면에 그대로 노출하면 포트폴리오가 과장되어 보일 수 있으므로, 먼저 읽기 전용 Project Tree를 선별 이관했습니다. 업로드 후 생성된 프로젝트 메타데이터와 최신 분석 결과를 기반으로 source 노드와 main.tf 노드를 표시하고, main.tf 클릭 시 analysis job의 Terraform preview를 조회하도록 연결했습니다.
+원본 Terraformers의 프로젝트 트리 UI는 단순 조회뿐 아니라 Terraform 실행, 삭제, 파일 생성, 이름 변경까지 한 컴포넌트에 섞여 있었습니다. 현재 백엔드 계약이 준비되지 않은 기능을 화면에 그대로 노출하면 포트폴리오가 과장되어 보일 수 있으므로, 먼저 읽기 전용 Project Tree를 선별 이관했습니다. 업로드 후 생성된 프로젝트 메타데이터와 저장된 main.tf 초안을 기반으로 source 노드와 terraform/main.tf 노드를 표시하고, main.tf 클릭 시 프로젝트 draft endpoint의 content를 조회하도록 연결했습니다.
 ```
