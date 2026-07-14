@@ -22,7 +22,7 @@ Re-enable push/PR triggers only after:
 1. backend local verification passes;
 2. runtime contract verification passes;
 3. Docker image validation passes or is clearly documented as environment-pending;
-4. frontend build and browser smoke baseline pass;
+4. selected frontend import builds and has a clear browser smoke path;
 5. manual GitHub Actions runs pass;
 6. the README clearly states the validated baseline scope.
 
@@ -83,84 +83,54 @@ Expected result:
 
 If Docker build fails later, isolate it as an image packaging/runtime issue, not a Maven test, local API smoke, or runtime contract issue.
 
-## 4. Current frontend baseline
+## 4. Frontend correction
 
-A first browser-facing frontend baseline now exists under:
+The temporary browser smoke screen that was created under `frontend/` has been removed from the main frontend path.
+
+Reason:
+
+- it was a newly created diagnostic UI, not the original Terraformers frontend;
+- it made the repository look like a new frontend was being built;
+- the project direction is to preserve and stabilize the original team-project UI flow where appropriate;
+- frontend work should not replace backend/cloud modernization with a separate demo page.
+
+The `frontend/` path should now be reserved for a selective, public-safe import from:
 
 ```text
-frontend/
-scripts/checks/frontend-local-verification.sh
-docs/frontend-local-baseline.md
+siamese-lang/rdb-refactor/app/Terraformers-main/frontend
 ```
 
-This is not the full legacy frontend import yet. It is a contract-first browser smoke layer that calls the already validated backend endpoints:
-
-```text
-POST /api/analysis/jobs
-GET  /api/analysis/jobs/{id}
-```
-
-The baseline deliberately keeps deferred product flows visible in the documentation rather than deleting them from the project direction:
-
-- upload compatibility;
-- project metadata/tree;
-- Terraform draft read/update;
-- public project list;
-- visibility toggle;
-- comments;
-- runtime configuration status.
-
-## 5. Next priority: verify frontend build and browser smoke
+## 5. Next priority: original frontend import inventory
 
 Reference:
 
-- [`docs/frontend-local-baseline.md`](frontend-local-baseline.md)
 - [`docs/frontend-import-assessment.md`](frontend-import-assessment.md)
 - [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md)
 
-Run from the repository root:
+Immediate sequence:
 
-```bash
-bash scripts/checks/frontend-local-verification.sh
-```
+1. Inspect the previous frontend through GitHub connector, not by requiring a local clone.
+2. Build a source inventory grouped by:
+   - required build files;
+   - route/auth files;
+   - upload and analysis flow files;
+   - project tree/editor files;
+   - public projects/comments files;
+   - settings/runtime configuration files;
+   - assets.
+3. Import only public-safe text/source files first.
+4. Exclude `.env*`, `aws-exports*.js`, `node_modules`, `build`, old workflow files, and environment-specific values.
+5. Replace missing binary assets with neutral placeholders only when necessary for build stabilization.
+6. Run `npm install` and `npm run build` on the selected import.
+7. Classify broken controls as:
+   - implement backend contract;
+   - adapt frontend to the new backend contract;
+   - defer with clear disabled state;
+   - remove only if the feature conflicts with the project direction.
 
-Then run browser smoke with the backend already running.
+## 6. Backend contract bridge after frontend inventory
 
-Terminal 1:
-
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-Terminal 2:
-
-```bash
-cd frontend
-npm start
-```
-
-Browser target:
-
-```text
-http://localhost:3000
-```
-
-Minimum expected browser result:
-
-```text
-Create analysis job
-  -> status=SUCCEEDED
-  -> provider=stub-integrated-java
-  -> resultObjectKey displayed
-  -> Terraform draft preview displayed
-```
-
-If the frontend build or browser request fails, fix that specific stage before restoring the larger legacy UI.
-
-## 6. Backend contract bridge after frontend baseline
-
-After the minimal browser smoke passes, implement or adapt the core product contracts in this order:
+Implement or adapt the core product contracts in this order:
 
 1. Project metadata model.
 2. Upload compatibility endpoint or frontend upload-to-analysis adaptation.
