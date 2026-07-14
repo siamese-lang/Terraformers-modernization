@@ -30,6 +30,8 @@ LoggingProgressPublisher
 
 This allows `POST /api/analysis/jobs` and `GET /api/analysis/jobs/{id}` to run without AWS credentials.
 
+Because the local application is launched with `mvn spring-boot:run`, the H2 driver must be available on the main runtime classpath, not only the test classpath.
+
 ## 3. Why Flyway is disabled locally
 
 Production uses MariaDB-compatible Flyway migrations and Hibernate validation.
