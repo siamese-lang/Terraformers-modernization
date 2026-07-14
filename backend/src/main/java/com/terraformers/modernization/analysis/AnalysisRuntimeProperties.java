@@ -14,7 +14,11 @@ public class AnalysisRuntimeProperties {
     private String contentFieldName;
     private String externalPythonServiceUrl;
     private boolean bedrockProviderEnabled;
+    private boolean bedrockEmbeddingEnabled;
     private int bedrockMaxTokens = 4096;
+    private boolean opensearchRetrieverEnabled;
+    private int opensearchTopK = 3;
+    private String opensearchServiceName = "aoss";
     private boolean sqsPublisherEnabled;
     private String progressQueueUrl;
     private String resultQueueUrl;
@@ -91,12 +95,44 @@ public class AnalysisRuntimeProperties {
         this.bedrockProviderEnabled = bedrockProviderEnabled;
     }
 
+    public boolean isBedrockEmbeddingEnabled() {
+        return bedrockEmbeddingEnabled;
+    }
+
+    public void setBedrockEmbeddingEnabled(boolean bedrockEmbeddingEnabled) {
+        this.bedrockEmbeddingEnabled = bedrockEmbeddingEnabled;
+    }
+
     public int getBedrockMaxTokens() {
         return bedrockMaxTokens;
     }
 
     public void setBedrockMaxTokens(int bedrockMaxTokens) {
         this.bedrockMaxTokens = bedrockMaxTokens;
+    }
+
+    public boolean isOpensearchRetrieverEnabled() {
+        return opensearchRetrieverEnabled;
+    }
+
+    public void setOpensearchRetrieverEnabled(boolean opensearchRetrieverEnabled) {
+        this.opensearchRetrieverEnabled = opensearchRetrieverEnabled;
+    }
+
+    public int getOpensearchTopK() {
+        return opensearchTopK;
+    }
+
+    public void setOpensearchTopK(int opensearchTopK) {
+        this.opensearchTopK = opensearchTopK;
+    }
+
+    public String getOpensearchServiceName() {
+        return opensearchServiceName;
+    }
+
+    public void setOpensearchServiceName(String opensearchServiceName) {
+        this.opensearchServiceName = opensearchServiceName;
     }
 
     public boolean isSqsPublisherEnabled() {
