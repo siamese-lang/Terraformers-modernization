@@ -22,7 +22,7 @@ Re-enable push/PR triggers only after:
 1. backend local verification passes;
 2. runtime contract verification passes;
 3. Docker image validation passes or is clearly documented as environment-pending;
-4. selected frontend import builds and has a clear browser smoke path;
+4. selected original frontend import builds and has a clear browser smoke path;
 5. manual GitHub Actions runs pass;
 6. the README clearly states the validated baseline scope.
 
@@ -100,41 +100,72 @@ The `frontend/` path should now be reserved for a selective, public-safe import 
 siamese-lang/rdb-refactor/app/Terraformers-main/frontend
 ```
 
-## 5. Next priority: original frontend import inventory
+## 5. Completed: original frontend import inventory
 
 Reference:
 
+- [`docs/frontend-source-inventory.md`](frontend-source-inventory.md)
 - [`docs/frontend-import-assessment.md`](frontend-import-assessment.md)
 - [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md)
 
-Immediate sequence:
+Inventory status:
 
-1. Inspect the previous frontend through GitHub connector, not by requiring a local clone.
-2. Build a source inventory grouped by:
-   - required build files;
-   - route/auth files;
-   - upload and analysis flow files;
-   - project tree/editor files;
-   - public projects/comments files;
-   - settings/runtime configuration files;
-   - assets.
-3. Import only public-safe text/source files first.
-4. Exclude `.env*`, `aws-exports*.js`, `node_modules`, `build`, old workflow files, and environment-specific values.
-5. Replace missing binary assets with neutral placeholders only when necessary for build stabilization.
-6. Run `npm install` and `npm run build` on the selected import.
-7. Classify broken controls as:
-   - implement backend contract;
-   - adapt frontend to the new backend contract;
-   - defer with clear disabled state;
-   - remove only if the feature conflicts with the project direction.
+- original source repository inspected through the GitHub connector;
+- source groups identified for build files, auth/routing, API wrapper, upload/analysis, project tree/editor, public projects/comments, board layout, settings, and assets;
+- first import pass identified;
+- backend contract work created by frontend import is ordered;
+- local clone of the old repository is not required.
 
-## 6. Backend contract bridge after frontend inventory
+## 6. Next priority: first original frontend import pass
+
+Import the first public-safe source set from the original frontend, not a new diagnostic screen.
+
+Recommended first pass:
+
+```text
+package.json
+public/index.html
+src/index.js
+src/App.js
+src/utils/api.js
+src/utils/eventBus.js
+src/utils/chatSupport.js
+src/utils/visibility.js
+src/components/AiChat.js
+src/components/Dropzone.js
+src/components/Modal.js
+src/components/ProjectTree.js
+src/components/EntryPage.js
+src/components/ConfirmSignUpPage.js
+minimum styles required for build
+minimum assets required by selected components
+```
+
+Do not include in the first pass unless required by build:
+
+```text
+AppLayoutPreview.js
+BoardContainer.js
+src/api/board.js
+Terraform run/destroy/tfstate active behavior
+browser cloud-key settings behavior
+old deployment workflows
+```
+
+Build stabilization rules:
+
+1. Exclude `.env*`, `aws-exports*.js`, `node_modules`, `build`, old workflow files, and environment-specific values.
+2. Replace missing binary assets with neutral placeholders only when necessary for build stabilization.
+3. Keep broken controls only when they are clearly disabled or backed by a planned backend contract.
+4. Remove only features that conflict with the project direction.
+
+## 7. Backend contract bridge after first frontend import
 
 Implement or adapt the core product contracts in this order:
 
 1. Project metadata model.
 2. Upload compatibility endpoint or frontend upload-to-analysis adaptation.
-3. Analysis job status polling bridge.
+3. Analysis job status/result polling bridge.
 4. Project tree read endpoint.
 5. Terraform draft read/update as stored draft editing only.
 6. Public project list and visibility update.
@@ -146,7 +177,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 7. Adapter validation
+## 8. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -161,7 +192,7 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 8. Infrastructure import
+## 9. Infrastructure import
 
 After backend, runtime contract, and image validation, import Terraform in this order:
 
@@ -175,7 +206,7 @@ After backend, runtime contract, and image validation, import Terraform in this 
 
 Do not import the full private repository history.
 
-## 9. Documentation updates
+## 10. Documentation updates
 
 After each infrastructure/runtime change, update:
 
