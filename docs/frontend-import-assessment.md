@@ -2,9 +2,9 @@
 
 ## 1. Decision
 
-The frontend source should be imported selectively from the previous private repository, not by importing the full repository history.
+The frontend source should be imported selectively from the previous private repository, not by importing the full repository history and not by requiring the user to keep both repositories locally.
 
-Source repository inspected:
+Source repository inspected through the GitHub connector:
 
 ```text
 siamese-lang/rdb-refactor
@@ -44,7 +44,32 @@ GET  /api/analysis/jobs/{id}
 
 The previous frontend expects a broader product API surface. Importing it without a contract bridge would create a visually large but broken UI.
 
-## 4. API contract classification
+## 4. Initial frontend baseline
+
+The first frontend commit intentionally introduces a smaller browser smoke baseline instead of the full legacy UI.
+
+Current baseline:
+
+```text
+frontend/package.json
+frontend/public/index.html
+frontend/src/index.js
+frontend/src/App.js
+frontend/src/api.js
+frontend/src/styles.css
+frontend/.env.example
+```
+
+This baseline:
+
+- keeps the browser flow focused on the validated analysis job API;
+- uses CRA `proxy` to send local `/api/*` requests to `http://localhost:8080` without broad CORS changes;
+- displays job status, provider, result object key, Terraform preview, and raw JSON response;
+- clearly marks dashboard, project tree, comments, Terraform draft editing, and settings as backend contract work items rather than deleting them from the product direction.
+
+This is not the final frontend import. It is the first stable browser-facing validation layer.
+
+## 5. API contract classification
 
 | Frontend expectation | Source usage | Decision | Rationale |
 | --- | --- | --- | --- |
@@ -64,11 +89,11 @@ The previous frontend expects a broader product API surface. Importing it withou
 | `POST /api/update-aws-credentials` / `GET /api/aws-credentials` | settings page | Do not import as-is | User-entered AWS access keys conflict with the current runtime secret management direction. Replace with runtime configuration status or remove from demo flow. |
 | text-only chat | unsupported message | Keep unsupported | Previous contract already treats text chat as unsupported. No `/api/chat` backend should be added for this portfolio. |
 
-## 5. Import candidates
+## 6. Import candidates
 
 Import only public-safe frontend application files needed for build and browser smoke.
 
-Candidate include paths:
+Candidate include paths for later staged import:
 
 ```text
 app/Terraformers-main/frontend/package.json
@@ -99,7 +124,7 @@ any generated credentials, tokens, account IDs, or environment-specific config
 
 `aws-exports.test.js` may be inspected as a test placeholder, but it should not be imported unless it is confirmed to contain only fake values and is still needed by tests.
 
-## 6. Backend implementation priority
+## 7. Backend implementation priority
 
 Do not remove UI controls simply because the current backend lacks an endpoint. Classify each control by product value first.
 
@@ -135,32 +160,30 @@ Deferred:
 - real Bedrock/OpenSearch/SQS adapter browser behavior;
 - user-provided AWS credential storage.
 
-## 7. Frontend stabilization priority
+## 8. Frontend stabilization priority
 
-1. Import public-safe frontend files only.
-2. Replace committed environment-specific config with `.env.example`.
-3. Run `npm install` and `npm run build`.
-4. Fix signup/confirm/login route behavior.
-5. Replace old `/api/bedrock/logs` queue polling with analysis job status polling or a safe compatibility endpoint.
-6. Keep dashboard/users/chat/settings icons only when each has either a working backend path or a clear disabled/coming-soon state.
-7. Replace AWS credentials settings with runtime configuration status or remove settings from the smoke path.
-8. Run browser smoke.
+1. Verify the initial browser smoke baseline builds.
+2. Start backend locally and run the frontend against `/api/analysis/jobs`.
+3. Replace old `/api/bedrock/logs` queue polling with analysis job status polling or a safe compatibility endpoint.
+4. Add project metadata/tree API before restoring the full dashboard/users UI.
+5. Keep dashboard/users/chat/settings icons only when each has either a working backend path or a clear disabled/coming-soon state.
+6. Replace AWS credentials settings with runtime configuration status or remove settings from the smoke path.
+7. Run browser smoke.
 
-## 8. Minimum browser smoke target
+## 9. Minimum browser smoke target
 
 ```text
 Open frontend
-  -> sign in or use local demo mode if auth is deferred
-  -> upload/select sample architecture image
+  -> use local demo analysis form
   -> create analysis job
   -> show SUCCEEDED status
   -> show Terraform draft preview
-  -> open generated Terraform draft in editor
-  -> optionally save draft update
+  -> show result object key
+  -> later: open generated Terraform draft in editor
 ```
 
-## 9. Boundary for portfolio explanation
+## 10. Boundary for portfolio explanation
 
 ```text
-프론트엔드는 새로 만든 별도 제품이 아니라 기존 팀 프로젝트 Terraformers의 사용 흐름을 보존하기 위해 선별 이관했습니다. 동작하지 않는 버튼을 무조건 제거하지 않고, 프로젝트 핵심 흐름에 해당하는 업로드, 분석 작업, 결과 조회, 프로젝트 트리, 코드 조회/수정은 백엔드 계약으로 승격했습니다. 반면 브라우저에서 AWS Access Key를 입력받는 설정처럼 운영 보안 방향과 맞지 않는 기능은 이관하지 않고, runtime secret/config 검증 방향으로 대체했습니다.
+프론트엔드는 새로 만든 별도 제품이 아니라 기존 팀 프로젝트 Terraformers의 사용 흐름을 보존하기 위해 선별 이관했습니다. 동작하지 않는 버튼을 무조건 제거하지 않고, 프로젝트 핵심 흐름에 해당하는 업로드, 분석 작업, 결과 조회, 프로젝트 트리, 코드 조회/수정은 백엔드 계약으로 승격했습니다. 반면 브라우저에서 AWS Access Key를 입력받는 설정처럼 운영 보안 방향과 맞지 않는 기능은 이관하지 않고, runtime secret/config 검증 방향으로 대체했습니다. 첫 단계에서는 전체 레거시 UI를 한 번에 옮기지 않고, 이미 검증된 분석 작업 API를 브라우저에서 호출하는 최소 smoke 화면부터 추가했습니다.
 ```
