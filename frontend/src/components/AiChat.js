@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 import Dropzone from './Dropzone';
+import ProjectTreeReadOnly from './ProjectTreeReadOnly';
 import { eventBus } from '../utils/eventBus';
 import { buildUnsupportedTextChatMessage } from '../utils/chatSupport';
 
@@ -8,7 +9,7 @@ const initialMessages = [
   {
     key: 'intro',
     type: 'terraform_result',
-    explanation: '아키텍처 이미지를 업로드하면 현재 백엔드 analysis job 계약으로 Terraform 초안 생성을 요청합니다.',
+    explanation: '아키텍처 이미지를 업로드하면 원본 Terraformers 업로드 흐름을 거쳐 analysis job과 프로젝트 트리를 생성합니다.',
     terraformCode: '',
     isUser: false,
   },
@@ -64,6 +65,8 @@ function AiChat() {
   const [inputText, setInputText] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [projectTreeRefresh, setProjectTreeRefresh] = useState(0);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -88,6 +91,11 @@ function AiChat() {
         }
         return item;
       }));
+
+      if (result.projectId) {
+        setSelectedProjectId(result.projectId);
+        setProjectTreeRefresh((previous) => previous + 1);
+      }
     };
 
     const onComplete = () => {
@@ -153,7 +161,7 @@ function AiChat() {
         <p>Architecture image to Terraform draft</p>
         <nav className="sidebar-nav" aria-label="Frontend import status">
           <span className="active">Chat / Upload</span>
-          <span className="disabled">Project Tree - next contract</span>
+          <span className="active">Project Tree - read-only</span>
           <span className="disabled">Public Projects - next contract</span>
           <span className="disabled">Runtime Config - safe replacement pending</span>
         </nav>
@@ -162,18 +170,22 @@ function AiChat() {
       <section className="chat-main">
         <header className="chat-header">
           <div>
-            <p className="eyebrow">Original frontend import pass 2</p>
-            <h2>Image upload analysis flow</h2>
+            <p className="eyebrow">Original frontend import pass 3</p>
+            <h2>Image upload, analysis, and project tree</h2>
           </div>
           <button type="button" className="primary-button" onClick={() => setIsModalOpen(true)}>
             이미지 업로드
           </button>
         </header>
 
-        <section className="chat-list" aria-live="polite">
-          {messages.map((item) => <ChatItem item={item} key={item.key} />)}
-          <AnalysisLogPanel logs={logs} isRunning={isRunning} />
-          <div ref={chatEndRef} />
+        <section className="chat-workspace">
+          <section className="chat-list" aria-live="polite">
+            {messages.map((item) => <ChatItem item={item} key={item.key} />)}
+            <AnalysisLogPanel logs={logs} isRunning={isRunning} />
+            <div ref={chatEndRef} />
+          </section>
+
+          <ProjectTreeReadOnly selectedProjectId={selectedProjectId} refreshToken={projectTreeRefresh} />
         </section>
 
         <section className="chat-input-row">
