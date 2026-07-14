@@ -1,23 +1,28 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:terraformers-modernization;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:terraformers-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
     password:
     driver-class-name: org.h2.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
     open-in-view: false
   flyway:
-    enabled: true
+    enabled: false
 
 terraformers:
+  runtime:
+    required-env: []
+  storage:
+    s3-reader-enabled: false
+    s3-writer-enabled: false
   analysis:
     mode: integrated-java
-    bedrock-model-id: test-bedrock-model
-    bedrock-embedding-model-id: test-embedding-model
-    opensearch-endpoint: https://example-opensearch.local
-    index-name: terraformers-docs
-    vector-field-name: embedding
-    content-field-name: content
+    bedrock-provider-enabled: false
+    bedrock-embedding-enabled: false
+    opensearch-retriever-enabled: false
+    result-key-prefix: analysis-results
+    sqs-publisher-enabled: false
