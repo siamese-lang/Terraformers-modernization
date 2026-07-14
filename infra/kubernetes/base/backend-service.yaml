@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: terraformers-backend
+  labels:
+    app.kubernetes.io/name: terraformers-backend
+    app.kubernetes.io/part-of: terraformers-modernization
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: terraformers-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
