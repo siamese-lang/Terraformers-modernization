@@ -12,6 +12,7 @@ The goal is not to finish Bedrock or OpenSearch integration in one step. The goa
 POST /api/analysis/jobs
   -> AnalysisJobService creates analysis_jobs row
   -> AnalysisJobOrchestrator moves status PENDING -> RUNNING
+  -> ObjectReader checks the uploaded S3 object boundary
   -> AnalysisProvider analyzes the source object
   -> ProgressPublisher emits progress/result state
   -> analysis_jobs row moves RUNNING -> SUCCEEDED or FAILED
@@ -21,6 +22,22 @@ GET /api/analysis/jobs/{id}
 
 ## 3. Ports
 
+### ObjectReader
+
+`ObjectReader` is the boundary for reading uploaded image objects.
+
+Current implementations:
+
+- `StubObjectReader`: default local/CI-safe object reader. It infers a content type from the object key and does not require AWS credentials.
+- `AwsS3ObjectReader`: optional production adapter enabled by `terraformers.storage.s3-reader-enabled=true`.
+
+Target responsibility:
+
+- verify bucket/key reachability;
+- read object metadata such as content type, content length, and ETag;
+- read object bytes when Bedrock vision integration needs base64 image payload;
+- fail clearly on missing object or access denial.
+
 ### AnalysisProvider
 
 `AnalysisProvider` is the boundary for Bedrock/OpenSearch-based Terraform draft generation.
@@ -28,12 +45,13 @@ GET /api/analysis/jobs/{id}
 Current implementation:
 
 - `StubAnalysisProvider`
+- reads source object metadata through `ObjectReader`
 - returns deterministic Terraform draft text
-- exists so Maven, Docker, API, RDB, and status transition can be verified before real Bedrock integration
+- exists so Maven, Docker, API, RDB, storage boundary, and status transition can be verified before real Bedrock integration
 
 Target implementation:
 
-- reads uploaded object from S3 or receives object metadata from a storage adapter
+- reads uploaded object content through `ObjectReader`
 - detects image media type
 - invokes Bedrock vision model
 - invokes embedding model
@@ -60,6 +78,7 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - backend API contract
 - RDB job lifecycle
 - provider/adapter separation
+- S3 object access boundary
 - SQS progress boundary
 - deployment-time runtime configuration
 - failure state management
@@ -71,6 +90,7 @@ Production runtime config is injected through `application-prod.yml` and environ
 
 Important values:
 
+- `S3_READER_ENABLED`
 - `BEDROCK_MODEL_ID`
 - `BEDROCK_EMBEDDING_MODEL_ID`
 - `OPENSEARCH_ENDPOINT`
@@ -85,9 +105,8 @@ Secret values must not be logged. Queue URLs and endpoints should be treated as 
 
 ## 6. Next implementation steps
 
-1. Add S3 object metadata/content reader port.
-2. Add Bedrock provider implementation behind `AnalysisProvider`.
-3. Add OpenSearch reference retriever port.
-4. Persist generated result object key in `analysis_jobs.result_object_key`.
-5. Add API smoke test for create/get analysis job.
-6. Add runbook entries for Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+1. Add Bedrock provider implementation behind `AnalysisProvider`.
+2. Add OpenSearch reference retriever port.
+3. Persist generated result object key in `analysis_jobs.result_object_key`.
+4. Add API smoke test for create/get analysis job.
+5. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
