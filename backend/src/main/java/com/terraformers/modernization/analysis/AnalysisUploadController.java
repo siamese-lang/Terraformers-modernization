@@ -1,5 +1,6 @@
 package com.terraformers.modernization.analysis;
 
+import com.terraformers.modernization.project.ProjectMetadataService;
 import java.net.URI;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,15 +24,18 @@ public class AnalysisUploadController {
             .withZone(ZoneOffset.UTC);
 
     private final AnalysisJobService analysisJobService;
+    private final ProjectMetadataService projectMetadataService;
     private final String sourceBucket;
     private final String sourcePrefix;
 
     public AnalysisUploadController(
             AnalysisJobService analysisJobService,
+            ProjectMetadataService projectMetadataService,
             @Value("${terraformers.upload.source-bucket:example-bucket}") String sourceBucket,
             @Value("${terraformers.upload.source-prefix:browser-uploads}") String sourcePrefix
     ) {
         this.analysisJobService = analysisJobService;
+        this.projectMetadataService = projectMetadataService;
         this.sourceBucket = sourceBucket;
         this.sourcePrefix = sourcePrefix;
     }
@@ -62,6 +66,7 @@ public class AnalysisUploadController {
                 resolveContentType(file),
                 file.getSize()
         );
+        projectMetadataService.upsertFromUpload(response);
 
         return ResponseEntity
                 .created(URI.create("/api/analysis/jobs/" + job.id()))
