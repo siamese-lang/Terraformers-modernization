@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:terraformers-modernization;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+  flyway:
+    enabled: true
+
+terraformers:
+  analysis:
+    mode: integrated-java
+    bedrock-model-id: test-bedrock-model
+    bedrock-embedding-model-id: test-embedding-model
+    opensearch-endpoint: https://example-opensearch.local
+    index-name: terraformers-docs
+    vector-field-name: embedding
+    content-field-name: content
