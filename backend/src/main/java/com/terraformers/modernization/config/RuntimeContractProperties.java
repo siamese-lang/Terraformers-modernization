@@ -17,7 +17,13 @@ public class RuntimeContractProperties {
             "COGNITO_JWKS_URL",
             "S3_BUCKET_NAME",
             "AI_LOG_QUEUE_URL",
-            "TERRAFORM_LOG_QUEUE_URL"
+            "TERRAFORM_LOG_QUEUE_URL",
+            "BEDROCK_MODEL_ID",
+            "BEDROCK_EMBEDDING_MODEL_ID",
+            "OPENSEARCH_ENDPOINT",
+            "INDEX_NAME",
+            "VECTOR_FIELD_NAME",
+            "CONTENT_FIELD_NAME"
     ));
 
     public List<String> getRequiredEnv() {
