@@ -49,6 +49,8 @@ terraformers:
       - INDEX_NAME
       - VECTOR_FIELD_NAME
       - CONTENT_FIELD_NAME
+  storage:
+    s3-reader-enabled: ${S3_READER_ENABLED:false}
   analysis:
     mode: integrated-java
     bedrock-model-id: ${BEDROCK_MODEL_ID}
