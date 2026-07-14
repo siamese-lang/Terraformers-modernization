@@ -1,6 +1,7 @@
 package com.terraformers.modernization.project;
 
 import com.terraformers.modernization.analysis.AnalysisUploadResponse;
+import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ public class ProjectMetadataService {
 
         entity.setLatestAnalysisJobId(upload.analysisJobId());
         entity.setLatestResultObjectKey(upload.resultObjectKey());
+        entity.setTerraformDraft(upload.resultPreview());
+        entity.setTerraformDraftUpdatedAt(Instant.now());
         entity.setSourceBucket(upload.sourceBucket());
         entity.setSourceKey(upload.sourceKey());
         entity.setOriginalFilename(upload.originalFilename());
@@ -58,6 +61,22 @@ public class ProjectMetadataService {
                 .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
         entity.setVisibility(visibility);
         return ProjectResponse.from(repository.save(entity));
+    }
+
+    @Transactional(readOnly = true)
+    public TerraformDraftResponse getTerraformDraft(String projectId) {
+        ProjectEntity entity = repository.findById(projectId)
+                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
+        return TerraformDraftResponse.from(entity);
+    }
+
+    @Transactional
+    public TerraformDraftResponse updateTerraformDraft(String projectId, String content) {
+        ProjectEntity entity = repository.findById(projectId)
+                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
+        entity.setTerraformDraft(content);
+        entity.setTerraformDraftUpdatedAt(Instant.now());
+        return TerraformDraftResponse.from(repository.save(entity));
     }
 
     private ProjectEntity newProject(String projectId, String originalFilename) {
