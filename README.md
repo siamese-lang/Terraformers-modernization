@@ -53,7 +53,31 @@ Terraformers Backend & Cloud Infrastructure Modernization
 - 배포 후 rollout, health, API smoke, log inspection 절차 정리
 - 장애 상황별 runbook 작성
 
-## 4. 서비스 기능 범위
+## 4. 현재 공개 backend 기준선
+
+현재 `backend/` 디렉터리에는 공개 저장소에서 먼저 검증 가능한 backend 기준선이 포함되어 있습니다.
+
+포함된 항목은 다음입니다.
+
+- Maven 기반 Spring Boot 3.3 / Java 17 프로젝트 구조
+- backend Dockerfile
+- actuator health check
+- runtime config key presence inspection endpoint
+- prod profile datasource/Flyway/JPA validate contract
+- Flyway baseline schema
+- runtime config inspector unit test
+- Maven verification workflow
+- Docker image build workflow
+
+검증 명령은 다음입니다.
+
+```bash
+bash scripts/checks/backend-local-verification.sh
+```
+
+자세한 내용은 [`docs/backend-public-baseline.md`](docs/backend-public-baseline.md)를 기준으로 설명합니다.
+
+## 5. 서비스 기능 범위
 
 서비스 기능은 다음 수준으로 유지합니다.
 
@@ -66,7 +90,7 @@ Terraformers Backend & Cloud Infrastructure Modernization
 
 이 프로젝트에서 중요한 것은 “Terraform 코드를 얼마나 잘 생성하는가”가 아니라, 위 서비스 흐름을 **백엔드와 클라우드 인프라 관점에서 어떻게 안정적으로 구성하고, 배포하고, 검증하고, 장애 시 어디부터 확인할 수 있게 만들었는가**입니다.
 
-## 5. 팀 프로젝트와 후속 고도화 구분
+## 6. 팀 프로젝트와 후속 고도화 구분
 
 ### 팀 프로젝트 당시 기여
 
@@ -89,7 +113,7 @@ Terraformers Backend & Cloud Infrastructure Modernization
 - 장애 상황별 점검 runbook 작성
 - 포트폴리오 제출용 README, architecture, deployment, validation, runbook 문서 정리
 
-## 6. 아키텍처 요약
+## 7. 아키텍처 요약
 
 ```text
 User Browser
@@ -117,7 +141,7 @@ Python Bedrock Analysis Service
 
 자세한 내용은 [`docs/architecture.md`](docs/architecture.md)를 기준으로 설명합니다.
 
-## 7. 운영환경 고도화 핵심 포인트
+## 8. 운영환경 고도화 핵심 포인트
 
 - **Backend 중심 구조 정리**: API, 도메인 데이터, persistence, 외부 AWS 의존성 호출 흐름을 운영 관점에서 설명 가능하게 정리합니다.
 - **RDB 중심 데이터 구조**: 사용자, 프로젝트, 파일, 댓글, 반응 등 관계형 업무 데이터는 RDS MariaDB 기준으로 정리합니다.
@@ -130,10 +154,11 @@ Python Bedrock Analysis Service
 - **배포 후 검증**: rollout status, health check, API smoke, E2E flow, log inspection을 기준으로 운영 상태를 확인합니다.
 - **Runbook 문서화**: DB 연결 실패, Secret 누락, SQS 처리 실패, worker 장애, image tag 불일치 등 장애 상황별 점검 절차를 문서화합니다.
 
-## 8. 문서 구조
+## 9. 문서 구조
 
 - [`PROJECT_DIRECTION.md`](PROJECT_DIRECTION.md): 프로젝트 방향 고정 문서
 - [`docs/backend-infra-scope.md`](docs/backend-infra-scope.md): 백엔드·클라우드 인프라 중심 작업 범위
+- [`docs/backend-public-baseline.md`](docs/backend-public-baseline.md): 공개 backend 기준선 설명
 - [`docs/migration-plan.md`](docs/migration-plan.md): private 작업물에서 공개 저장소로 이전할 범위와 제외 기준
 - [`docs/architecture.md`](docs/architecture.md): 시스템 아키텍처와 구성요소 책임
 - [`docs/deployment.md`](docs/deployment.md): Docker, Terraform, GitHub Actions, runtime config, 배포 순서
@@ -141,7 +166,7 @@ Python Bedrock Analysis Service
 - [`docs/runbook.md`](docs/runbook.md): 장애 상황별 운영 점검 절차
 - [`docs/interview-guide.md`](docs/interview-guide.md): 포트폴리오·면접 설명 가이드
 
-## 9. 주의: 이 프로젝트가 아닌 것
+## 10. 주의: 이 프로젝트가 아닌 것
 
 이 프로젝트는 다음이 아닙니다.
 
@@ -153,7 +178,7 @@ Python Bedrock Analysis Service
 - 프론트엔드 개발 역량 중심 프로젝트
 - Terraform 자체를 주제로 삼는 프로젝트
 
-## 10. 다른 운영 프로젝트와의 차별점
+## 11. 다른 운영 프로젝트와의 차별점
 
 별도 개인 프로젝트인 **AWS EC2 기반 다계층 업무시스템 운영환경 구축 및 장애·복구 검증**은 VM 기반 WEB/WAS/DB/NFS 운영환경, 장애·성능·복구 검증, 로그·지표 기반 원인 분석, 백업/복구 runbook을 보여 주는 프로젝트입니다.
 
@@ -167,7 +192,7 @@ Python Bedrock Analysis Service
 - 배포 후 smoke test와 E2E 검증
 - 클라우드 네이티브 서비스 운영 문서화
 
-## 11. 핵심 설명 문장
+## 12. 핵심 설명 문장
 
 ```text
 팀 프로젝트에서는 기능 완성과 시연에 집중했지만, 이후 실제 서비스로 설명하려면 백엔드 구조, DB 스키마 정합성, 외부 AWS 의존성 연결, Secret 관리, 인프라 변경 통제, 배포 후 상태 확인, 장애 시 점검 절차가 필요하다고 판단했습니다. 그래서 기존 Terraformers 산출물을 기반으로 Spring Boot backend, RDB/Flyway, S3/SQS 연동, Secrets Manager/External Secrets, Terraform 인프라, GitHub Actions 배포 흐름, smoke test와 runbook을 정리해 백엔드·클라우드 인프라 중심의 운영환경 고도화를 수행했습니다.
