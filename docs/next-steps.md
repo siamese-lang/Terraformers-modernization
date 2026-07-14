@@ -24,7 +24,9 @@ Re-enable push/PR triggers only after:
 3. manual GitHub Actions runs pass;
 4. the README clearly states the validated baseline scope.
 
-## 2. Immediate local validation
+## 2. Immediate backend stabilization
+
+The next priority is not deployment automation. Stabilize the backend baseline first.
 
 Run backend verification:
 
@@ -50,7 +52,41 @@ bash scripts/smoke/create-analysis-job.sh
 
 The smoke script should confirm `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
 
-## 3. Runtime contract validation
+If Maven, Docker, kustomize, Terraform, or smoke validation fails, fix that before importing more code.
+
+## 3. Frontend stabilization after backend baseline
+
+Frontend work should start only after the backend local/stub baseline is stable.
+
+Purpose:
+
+- do not rebuild the frontend;
+- do not turn this into a frontend portfolio;
+- stabilize the existing team-project UI enough to demonstrate backend/cloud improvements.
+
+Planned checks:
+
+1. Import public-safe frontend source.
+2. Run `npm install` and build.
+3. Fix signup black screen or post-signup route failure.
+4. Fix main screen icons/buttons that do not route or trigger any action.
+5. Align API base URL, Cognito config, Authorization header, and CORS/CloudFront assumptions.
+6. Connect or hide controls for flows the backend can actually support.
+7. Verify browser smoke flow:
+
+```text
+Open app
+  -> sign up or sign in
+  -> reach main screen
+  -> create or open project flow
+  -> upload/select architecture image
+  -> create analysis job
+  -> display status/result preview/result object key
+```
+
+Detailed scope is documented in [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md).
+
+## 4. Runtime contract validation
 
 The runtime deployment contract exists in:
 
@@ -71,7 +107,7 @@ Validation expectations:
 
 Do not apply the example values to a real account. They are placeholders for contract validation.
 
-## 4. Adapter validation
+## 5. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -86,9 +122,9 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 5. Infrastructure import
+## 6. Infrastructure import
 
-After backend and runtime contract verification, import Terraform in this order:
+After backend, runtime contract, and minimum frontend smoke are stable, import Terraform in this order:
 
 1. network/security group modules
 2. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
@@ -100,12 +136,13 @@ After backend and runtime contract verification, import Terraform in this order:
 
 Do not import the full private repository history.
 
-## 6. Documentation updates
+## 7. Documentation updates
 
-After each infrastructure/runtime change, update:
+After each backend/frontend/infrastructure change, update:
 
 - `docs/validation.md`
 - `docs/runbook.md`
 - `docs/runbooks/*`
+- `docs/frontend-stabilization-plan.md`
 - `docs/evidence/*`
 - `README.md`
