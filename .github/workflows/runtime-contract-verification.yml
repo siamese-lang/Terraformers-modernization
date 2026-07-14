@@ -1,0 +1,39 @@
+name: Runtime Contract Verification
+
+on:
+  pull_request:
+    paths:
+      - 'infra/kubernetes/**'
+      - 'infra/terraform/runtime-contract/**'
+      - 'scripts/checks/runtime-contract-verification.sh'
+      - '.github/workflows/runtime-contract-verification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/kubernetes/**'
+      - 'infra/terraform/runtime-contract/**'
+      - 'scripts/checks/runtime-contract-verification.sh'
+      - '.github/workflows/runtime-contract-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-contract-verification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Verify runtime contract
+        run: bash scripts/checks/runtime-contract-verification.sh
