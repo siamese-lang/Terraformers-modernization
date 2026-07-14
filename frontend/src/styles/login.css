@@ -1,0 +1,8 @@
+#entry-page form {
+  display: grid;
+  gap: 14px;
+}
+
+#entry-page h2 {
+  margin-bottom: 8px;
+}
