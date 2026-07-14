@@ -28,19 +28,33 @@ Re-enable push/PR triggers only after:
 
 The next priority is not deployment automation. Stabilize the backend baseline first.
 
-Run backend verification:
+Current local result:
+
+- `mvn clean test` has been reported as passing in the local WSL environment.
+- The next validation should confirm package creation and then API smoke behavior.
+
+Run Maven test and package verification:
 
 ```bash
 bash scripts/checks/backend-local-verification.sh
 ```
 
-Run runtime contract verification:
+This script intentionally skips Docker image build by default.
+
+Run Docker image build only when Docker Desktop / WSL integration is ready:
 
 ```bash
-bash scripts/checks/runtime-contract-verification.sh
+RUN_DOCKER_BUILD=true bash scripts/checks/backend-local-verification.sh
 ```
 
 Run backend locally and execute the analysis job smoke script:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+In another terminal from the repository root:
 
 ```bash
 BASE_URL=http://localhost:8080 \
@@ -52,7 +66,7 @@ bash scripts/smoke/create-analysis-job.sh
 
 The smoke script should confirm `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
 
-If Maven, Docker, kustomize, Terraform, or smoke validation fails, fix that before importing more code.
+If Maven, local runtime, smoke validation, kustomize, Terraform, or Docker validation fails, fix that specific stage before importing more code.
 
 ## 3. Frontend stabilization after backend baseline
 
@@ -124,7 +138,7 @@ Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-anal
 
 ## 6. Infrastructure import
 
-After backend, runtime contract, and minimum frontend smoke are stable, import Terraform in this order:
+After backend and runtime contract verification, import Terraform in this order:
 
 1. network/security group modules
 2. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
@@ -138,11 +152,10 @@ Do not import the full private repository history.
 
 ## 7. Documentation updates
 
-After each backend/frontend/infrastructure change, update:
+After each infrastructure/runtime change, update:
 
 - `docs/validation.md`
 - `docs/runbook.md`
 - `docs/runbooks/*`
-- `docs/frontend-stabilization-plan.md`
 - `docs/evidence/*`
 - `README.md`
