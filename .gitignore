@@ -1,0 +1,75 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Java / Maven
+backend/target/
+backend/**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Node / frontend, if a minimal frontend surface is added later
+node_modules/
+build/
+dist/
+coverage/
+
+# Python, if analysis service source is added later
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# AWS / credentials
+.aws/
+credentials
+config
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+kubeconfig
+*kubeconfig*
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+*.tfplan
+*.plan
+terraform-plan.log
+
+# Kubernetes / Helm generated or sensitive files
+secrets.yaml
+secret.yaml
+*-secret.yaml
+*-secrets.yaml
+values.local.yaml
+values.secret.yaml
+
+# Logs / evidence raw output
+*.log
+logs/
+evidence/raw/
+docs/evidence/raw/
+
+# Local runtime artifacts
+.tmp/
+tmp/
+.cache/
