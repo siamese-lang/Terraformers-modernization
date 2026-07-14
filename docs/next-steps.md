@@ -19,14 +19,17 @@ Reason:
 
 Re-enable push/PR triggers only after:
 
-1. `bash scripts/checks/backend-local-verification.sh` passes locally;
-2. `bash scripts/checks/runtime-contract-verification.sh` passes locally;
-3. manual GitHub Actions runs pass;
-4. the README clearly states the validated baseline scope.
+1. backend local verification passes;
+2. runtime contract verification passes;
+3. Docker image validation passes;
+4. manual GitHub Actions runs pass;
+5. the README clearly states the validated baseline scope.
 
-## 2. Backend local baseline status
+## 2. Validated baseline checkpoints
 
-Backend local/stub baseline has reached the first evidence-grade checkpoint.
+The project now has two evidence-grade local checkpoints.
+
+### 2.1 Backend local/stub baseline
 
 Validated in the local WSL environment:
 
@@ -40,13 +43,23 @@ Evidence:
 
 - [`docs/evidence/backend-local-smoke-2026-07-14.md`](evidence/backend-local-smoke-2026-07-14.md)
 
+### 2.2 Runtime contract baseline
+
+Validated in the local Git Bash environment:
+
+- Kubernetes base rendered through `kubectl kustomize`;
+- rendered base included ConfigMap, ServiceAccount, Deployment, and Service;
+- rendered base did not include placeholder Secret resources;
+- public base did not include account-specific IAM role ARNs or 12-digit account-like identifiers;
+- Terraform runtime contract passed `terraform fmt -check`, `terraform validate`, and example `terraform plan`.
+
+Evidence:
+
+- [`docs/evidence/runtime-contract-verification-2026-07-14.md`](evidence/runtime-contract-verification-2026-07-14.md)
+
+## 3. Next priority: Docker image validation
+
 Keep Docker image validation separate from Maven/API smoke validation.
-
-Run Maven test and package verification:
-
-```bash
-bash scripts/checks/backend-local-verification.sh
-```
 
 Run Docker image build only when Docker Desktop / WSL integration is ready:
 
@@ -54,29 +67,18 @@ Run Docker image build only when Docker Desktop / WSL integration is ready:
 RUN_DOCKER_BUILD=true bash scripts/checks/backend-local-verification.sh
 ```
 
-## 3. Next priority: runtime contract verification
+Expected result:
 
-The next priority is not deployment automation and not frontend import yet. Confirm that the public runtime contract renders and validates without secrets.
-
-Run from the repository root:
-
-```bash
-bash scripts/checks/runtime-contract-verification.sh
+```text
+[backend] building Docker image
+[backend] local verification completed
 ```
 
-Expected validation boundaries:
+If Docker build fails, isolate it as an image packaging/runtime issue, not a Maven test or local API smoke issue.
 
-- Kubernetes base renders ConfigMap, ServiceAccount, Deployment, and Service;
-- Kubernetes base does not render `backend-secret.example.yaml`;
-- public base does not include account-specific IAM role ARNs;
-- example files use placeholders only;
-- Terraform runtime contract validates and plans with `terraform.tfvars.example`.
+## 4. Frontend stabilization after backend, runtime contract, and image baseline
 
-If this fails, fix kustomize/Terraform contract issues before importing frontend source or adding deployment automation.
-
-## 4. Frontend stabilization after backend and runtime contract baseline
-
-Frontend work should start only after the backend local/stub baseline and runtime contract baseline are stable.
+Frontend work should start only after the backend local/stub baseline, runtime contract baseline, and image build baseline are stable.
 
 Purpose:
 
@@ -123,7 +125,7 @@ Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-anal
 
 ## 6. Infrastructure import
 
-After backend and runtime contract verification, import Terraform in this order:
+After backend, runtime contract, and image validation, import Terraform in this order:
 
 1. network/security group modules
 2. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
