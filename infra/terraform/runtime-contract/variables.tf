@@ -13,11 +13,11 @@ variable "aws_region" {
 variable "adapter_switches" {
   description = "Backend analysis adapter switches. Keep disabled until each AWS dependency is provisioned and validated."
   type = object({
-    s3_reader_enabled             = bool
-    s3_writer_enabled             = bool
-    bedrock_provider_enabled      = bool
-    bedrock_embedding_enabled     = bool
-    opensearch_retriever_enabled  = bool
+    s3_reader_enabled              = bool
+    s3_writer_enabled              = bool
+    bedrock_provider_enabled       = bool
+    bedrock_embedding_enabled      = bool
+    opensearch_retriever_enabled   = bool
     analysis_sqs_publisher_enabled = bool
   })
   default = {
@@ -53,9 +53,9 @@ variable "cognito_runtime" {
 variable "object_storage_runtime" {
   description = "Upload and generated-result object storage runtime values."
   type = object({
-    upload_bucket_name  = string
-    result_bucket_name  = string
-    result_key_prefix   = string
+    upload_bucket_name = string
+    result_bucket_name = string
+    result_key_prefix  = string
   })
 }
 
@@ -79,11 +79,11 @@ variable "bedrock_runtime" {
 variable "opensearch_runtime" {
   description = "OpenSearch/AOSS runtime values for reference retrieval."
   type = object({
-    endpoint          = string
-    service_name      = string
-    top_k             = number
-    index_name        = string
-    vector_field_name = string
+    endpoint           = string
+    service_name       = string
+    top_k              = number
+    index_name         = string
+    vector_field_name  = string
     content_field_name = string
   })
 }
