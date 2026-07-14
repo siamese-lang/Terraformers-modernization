@@ -4,7 +4,7 @@
 
 This document explains how the public modernization baseline replaces the original Python analysis runtime with Spring Boot backend-owned orchestration.
 
-The goal is not to finish Bedrock or OpenSearch integration in one step. The goal is to make the backend own the analysis lifecycle and expose clear adapter boundaries for AWS dependencies.
+The goal is not to finish every AWS integration in one step. The goal is to make the backend own the analysis lifecycle and expose clear adapter boundaries for AWS dependencies.
 
 ## 2. Current backend-owned flow
 
@@ -59,23 +59,33 @@ Target implementation:
 
 ### AnalysisProvider
 
-`AnalysisProvider` is the boundary for Bedrock-based Terraform draft generation.
+`AnalysisProvider` is the boundary for Terraform draft generation.
 
-Current implementation:
+Current implementations:
 
 - `StubAnalysisProvider`
-- reads source object metadata through `ObjectReader`
-- retrieves reference patterns through `ReferenceRetriever`
-- returns deterministic Terraform draft text
-- exists so Maven, Docker, API, RDB, storage boundary, reference boundary, and status transition can be verified before real Bedrock integration
+  - default local/CI-safe provider
+  - reads source object metadata through `ObjectReader`
+  - retrieves reference patterns through `ReferenceRetriever`
+  - returns deterministic Terraform draft text
+  - exists so Maven, Docker, API, RDB, storage boundary, reference boundary, and status transition can be verified without AWS model calls
 
-Target implementation:
+- `BedrockAnalysisProvider`
+  - optional production adapter enabled by `terraformers.analysis.bedrock-provider-enabled=true`
+  - reads uploaded object content through `ObjectReader`
+  - builds a Claude vision request through `BedrockPromptBuilder`
+  - invokes Bedrock Runtime through AWS SDK v2
+  - parses returned Terraform HCL through `BedrockResponseParser`
+  - keeps Bedrock call logic inside backend-owned orchestration rather than a Python side service
 
-- reads uploaded object content through `ObjectReader`
-- detects image media type
-- invokes Bedrock vision model
-- asks `ReferenceRetriever` for relevant reference patterns
-- returns generated Terraform draft and explanation
+Important boundary:
+
+```text
+Local/CI default: StubObjectReader + StubReferenceRetriever + StubAnalysisProvider
+Production optional: AwsS3ObjectReader + ReferenceRetriever implementation + BedrockAnalysisProvider
+```
+
+This keeps CI deterministic and credential-free while making the production adapter path explicit.
 
 ### ProgressPublisher
 
@@ -99,6 +109,7 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - provider/adapter separation
 - S3 object access boundary
 - reference retrieval boundary
+- Bedrock invocation boundary
 - SQS progress boundary
 - deployment-time runtime configuration
 - failure state management
@@ -111,8 +122,10 @@ Production runtime config is injected through `application-prod.yml` and environ
 Important values:
 
 - `S3_READER_ENABLED`
+- `BEDROCK_PROVIDER_ENABLED`
 - `BEDROCK_MODEL_ID`
 - `BEDROCK_EMBEDDING_MODEL_ID`
+- `BEDROCK_MAX_TOKENS`
 - `OPENSEARCH_ENDPOINT`
 - `INDEX_NAME`
 - `VECTOR_FIELD_NAME`
@@ -123,10 +136,28 @@ Important values:
 
 Secret values must not be logged. Queue URLs and endpoints should be treated as runtime configuration and managed through Secrets Manager / External Secrets or repository environment variables depending on the deployment stage.
 
-## 6. Next implementation steps
+## 6. Current completion boundary
 
-1. Add Bedrock provider implementation behind `AnalysisProvider`.
-2. Add OpenSearch/AOSS implementation behind `ReferenceRetriever`.
-3. Persist generated result object key in `analysis_jobs.result_object_key`.
-4. Add API smoke test for create/get analysis job.
-5. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+Implemented in the public baseline:
+
+- backend-owned analysis job API
+- RDB job lifecycle
+- S3 object reader port and optional S3 adapter
+- reference retrieval port and stub retriever
+- Bedrock provider boundary and optional Bedrock Runtime adapter
+- SQS progress publisher boundary and optional SQS adapter
+- local/CI-safe stub path
+
+Not yet complete:
+
+- production OpenSearch/AOSS `ReferenceRetriever`
+- persistence of generated Terraform object to S3
+- full browser E2E validation
+- deployed AWS evidence
+
+## 7. Next implementation steps
+
+1. Add OpenSearch/AOSS implementation behind `ReferenceRetriever`.
+2. Persist generated Terraform result object key in `analysis_jobs.result_object_key`.
+3. Add API smoke test assertions for `SUCCEEDED` and result preview.
+4. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
