@@ -6,12 +6,12 @@ spring:
     driver-class-name: org.h2.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
     show-sql: false
     open-in-view: false
   flyway:
-    enabled: true
+    enabled: false
 
 terraformers:
   storage:
