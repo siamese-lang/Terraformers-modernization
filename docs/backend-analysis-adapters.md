@@ -13,6 +13,7 @@ POST /api/analysis/jobs
   -> AnalysisJobService creates analysis_jobs row
   -> AnalysisJobOrchestrator moves status PENDING -> RUNNING
   -> ObjectReader checks the uploaded S3 object boundary
+  -> ReferenceRetriever returns reference patterns
   -> AnalysisProvider analyzes the source object
   -> ProgressPublisher emits progress/result state
   -> analysis_jobs row moves RUNNING -> SUCCEEDED or FAILED
@@ -38,24 +39,42 @@ Target responsibility:
 - read object bytes when Bedrock vision integration needs base64 image payload;
 - fail clearly on missing object or access denial.
 
+### ReferenceRetriever
+
+`ReferenceRetriever` is the boundary for retrieving reference patterns before Terraform draft generation.
+
+Current implementation:
+
+- `StubReferenceRetriever`
+- returns deterministic reference documents for local/CI verification
+- allows `AnalysisProvider` tests to verify the reference retrieval step without OpenSearch credentials
+
+Target implementation:
+
+- builds an embedding request from image analysis text or detected service names;
+- invokes Bedrock embedding model;
+- queries OpenSearch/AOSS k-NN index;
+- returns ranked reference documents;
+- fails clearly on missing index, wrong vector field, access denial, or timeout.
+
 ### AnalysisProvider
 
-`AnalysisProvider` is the boundary for Bedrock/OpenSearch-based Terraform draft generation.
+`AnalysisProvider` is the boundary for Bedrock-based Terraform draft generation.
 
 Current implementation:
 
 - `StubAnalysisProvider`
 - reads source object metadata through `ObjectReader`
+- retrieves reference patterns through `ReferenceRetriever`
 - returns deterministic Terraform draft text
-- exists so Maven, Docker, API, RDB, storage boundary, and status transition can be verified before real Bedrock integration
+- exists so Maven, Docker, API, RDB, storage boundary, reference boundary, and status transition can be verified before real Bedrock integration
 
 Target implementation:
 
 - reads uploaded object content through `ObjectReader`
 - detects image media type
 - invokes Bedrock vision model
-- invokes embedding model
-- queries OpenSearch/AOSS reference index
+- asks `ReferenceRetriever` for relevant reference patterns
 - returns generated Terraform draft and explanation
 
 ### ProgressPublisher
@@ -79,6 +98,7 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - RDB job lifecycle
 - provider/adapter separation
 - S3 object access boundary
+- reference retrieval boundary
 - SQS progress boundary
 - deployment-time runtime configuration
 - failure state management
@@ -106,7 +126,7 @@ Secret values must not be logged. Queue URLs and endpoints should be treated as 
 ## 6. Next implementation steps
 
 1. Add Bedrock provider implementation behind `AnalysisProvider`.
-2. Add OpenSearch reference retriever port.
+2. Add OpenSearch/AOSS implementation behind `ReferenceRetriever`.
 3. Persist generated result object key in `analysis_jobs.result_object_key`.
 4. Add API smoke test for create/get analysis job.
 5. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
