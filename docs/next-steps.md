@@ -6,8 +6,8 @@ The repository is still in a public baseline construction phase.
 
 For now, GitHub Actions workflows are intentionally manual-only:
 
-- Backend Maven Verification
-- Backend Image Build Verification
+- Backend Local Verification
+- Frontend Import Verification
 - Runtime Contract Verification
 
 Reason:
@@ -15,20 +15,20 @@ Reason:
 - backend adapter implementation is still being stabilized;
 - deployment manifests are contract skeletons, not production overlays;
 - repeated public red checks can make the project look broken rather than in-progress;
-- deployment pipeline work should start only after the backend baseline passes local verification.
+- local disk and CPU pressure should not block validation.
 
 Re-enable push/PR triggers only after:
 
 1. backend local verification passes;
 2. runtime contract verification passes;
-3. Docker image validation passes or is clearly documented as environment-pending;
-4. selected original frontend import builds and has a clear browser smoke path;
-5. manual GitHub Actions runs pass;
+3. selected original frontend import builds and has a clear browser smoke path;
+4. upload compatibility endpoint is covered by CI;
+5. manual GitHub Actions runs pass consistently;
 6. the README clearly states the validated baseline scope.
 
 ## 2. Validated baseline checkpoints
 
-The project now has three evidence-grade local checkpoints.
+The project has these evidence-grade checkpoints so far.
 
 ### 2.1 Backend local/stub baseline
 
@@ -58,17 +58,33 @@ Evidence:
 
 - [`docs/evidence/runtime-contract-verification-2026-07-14.md`](evidence/runtime-contract-verification-2026-07-14.md)
 
-### 2.3 Frontend first import baseline
+### 2.3 Frontend import baseline
 
-Validated locally after removing stale temporary frontend files:
+Validated locally and then moved to manual GitHub Actions because the workstation became disk/CPU constrained:
 
 - selected original frontend routing/auth/API foundation built successfully;
-- the old repository did not need to be cloned locally;
-- no real Cognito values were committed.
+- `AiChat`, `Dropzone`, and `Modal` were added as the source-derived upload/analysis UI surface;
+- no real Cognito values were committed;
+- GitHub Actions now provides the preferred frontend build verification path.
 
 Evidence:
 
 - [`docs/evidence/frontend-first-import-verification-2026-07-14.md`](evidence/frontend-first-import-verification-2026-07-14.md)
+- [`docs/evidence/frontend-upload-analysis-build-2026-07-15.md`](evidence/frontend-upload-analysis-build-2026-07-15.md)
+
+### 2.4 GitHub Actions baseline
+
+Manual Actions were added to reduce local verification load:
+
+```text
+.github/workflows/backend-local-verification.yml
+.github/workflows/frontend-import-verification.yml
+.github/workflows/runtime-contract-verification.yml
+```
+
+Reference:
+
+- [`docs/github-actions-verification.md`](github-actions-verification.md)
 
 ## 3. Deferred checkpoint: Docker image validation
 
@@ -78,7 +94,7 @@ Current status:
 
 - Docker is not installed in the current local environment;
 - image validation is deferred until Docker Desktop / WSL integration is ready;
-- Maven tests, local API smoke, runtime contract verification, and frontend first import build should remain the current evidence baseline.
+- Maven tests, local API smoke, runtime contract verification, and frontend import build should remain the current evidence baseline.
 
 Run Docker image build later with:
 
@@ -155,7 +171,7 @@ scripts/checks/frontend-import-verification.sh
 
 This is the original frontend's routing/auth/API foundation, not the full UI import.
 
-## 7. Current target: upload/analysis UI import pass
+## 7. Completed: upload/analysis UI import pass
 
 Reference:
 
@@ -169,67 +185,89 @@ frontend/src/components/Dropzone.js
 frontend/src/components/Modal.js
 ```
 
-Behavior:
+Current behavior:
 
-- `/` now opens the source-derived `AiChat` flow;
+- `/` opens the source-derived `AiChat` flow;
 - PNG/JPEG image selection uses `react-dropzone`;
-- the browser creates `POST /api/analysis/jobs` instead of calling legacy `POST /api/upload`;
-- the browser polls `GET /api/analysis/jobs/{id}` if the created job is not terminal;
+- the browser calls `POST /api/upload`, preserving the original Terraformers upload entry point;
+- the backend compatibility endpoint creates an analysis job internally;
+- the browser polls `GET /api/analysis/jobs/{id}` only if the upload response is not already terminal;
 - result preview is rendered as Terraform draft output.
 
-Intentional adaptation:
+Intentional boundary:
 
-- this pass does not claim binary object upload is complete;
-- selected image files are converted into a source bucket/key reference for the already validated backend contract;
-- `/api/upload` compatibility remains backend work;
+- this pass does not claim production binary object persistence;
+- current `/api/upload` captures upload metadata and generates a source reference;
+- real S3 object persistence remains production adapter work;
 - legacy browser-visible SQS queue URL polling is not carried forward.
 
-Local verification:
+## 8. Completed: backend upload compatibility contract
 
-```bash
-bash scripts/checks/frontend-import-verification.sh
-```
+Reference:
 
-Browser smoke requires the backend to be running:
+- [`docs/backend-upload-compatibility.md`](backend-upload-compatibility.md)
 
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-Then:
-
-```bash
-cd frontend
-npm start
-```
-
-Expected browser path:
+Added backend files:
 
 ```text
-http://localhost:3000
+backend/src/main/java/com/terraformers/modernization/analysis/AnalysisUploadController.java
+backend/src/main/java/com/terraformers/modernization/analysis/AnalysisUploadResponse.java
+backend/src/test/java/com/terraformers/modernization/analysis/AnalysisUploadControllerTest.java
 ```
 
-Expected smoke result:
+Contract:
 
 ```text
-Select PNG/JPEG image
-  -> create analysis job
-  -> show analysis logs
-  -> show SUCCEEDED result
-  -> show Terraform draft preview
+POST /api/upload
+Content-Type: multipart/form-data
+file=<PNG/JPEG architecture image>
 ```
 
-## 8. Backend contract bridge after upload/analysis UI
+Expected result in local/stub mode:
+
+```text
+201 Created
+uploadMode=analysis-job-compatibility
+analysisJobId=<created job id>
+status=SUCCEEDED
+provider=stub-integrated-java
+resultPreview=<Terraform draft>
+```
+
+Bad request behavior:
+
+```text
+empty file -> 400 Bad Request
+```
+
+## 9. Current next validation step
+
+Run these manual GitHub Actions again after the upload compatibility change:
+
+```text
+1. Backend Local Verification
+2. Frontend Import Verification
+3. Runtime Contract Verification
+```
+
+Local workstation policy remains:
+
+```bash
+git pull --ff-only origin main
+git status --short
+```
+
+Do not repeatedly run heavy local checks unless browser behavior must be inspected.
+
+## 10. Backend contract bridge after upload compatibility
 
 Implement or adapt the remaining core product contracts in this order:
 
-1. Real upload compatibility endpoint, or explicit upload-to-analysis adaptation with persisted metadata.
-2. Project metadata model.
-3. Project tree read endpoint.
-4. Stored Terraform draft read/update endpoint.
-5. Public project list and visibility update.
-6. Comments for public projects.
+1. Project metadata model.
+2. Project tree read endpoint.
+3. Stored Terraform draft read/update endpoint.
+4. Public project list and visibility update.
+5. Comments for public projects.
 
 Keep deferred until real integration exists:
 
@@ -237,7 +275,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 9. Adapter validation
+## 11. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -252,7 +290,7 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 10. Infrastructure import
+## 12. Infrastructure import
 
 After backend, runtime contract, and image validation, import Terraform in this order:
 
@@ -266,7 +304,7 @@ After backend, runtime contract, and image validation, import Terraform in this 
 
 Do not import the full private repository history.
 
-## 11. Documentation updates
+## 13. Documentation updates
 
 After each infrastructure/runtime change, update:
 
