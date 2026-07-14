@@ -128,7 +128,7 @@ project root
   source
     uploaded image metadata node
   terraform
-    main.tf latest result node
+    main.tf stored draft node
 ```
 
 Reference:
@@ -139,8 +139,8 @@ Important boundary:
 
 - tree is read-only in this pass;
 - source file node is metadata-only;
-- `main.tf` points to the latest analysis job/result object metadata;
-- Terraform run/destroy/tfstate, rename, file create/delete, and draft edit APIs remain deferred.
+- `main.tf` points to the project draft endpoint;
+- Terraform run/destroy/tfstate, rename, file create/delete, and full draft edit UI remain deferred.
 
 ## 7. Completed: frontend ProjectTree read-only import
 
@@ -154,6 +154,8 @@ POST /api/upload
   -> selected projectId
   -> GET /api/project-tree/{projectId}
   -> render source/main.tf nodes
+  -> click main.tf
+  -> GET /api/projects/{projectId}/terraform/main.tf
 ```
 
 Current frontend files:
@@ -173,44 +175,76 @@ Important boundary:
 
 - original `ProjectTree.js` was not copied wholesale;
 - run/destroy/rename/delete/create controls are not active;
-- clicking `main.tf` previews the latest analysis job `resultPreview`;
+- clicking `main.tf` previews the stored project draft `content`;
 - source file node remains metadata-only until binary object read/persistence is implemented.
 
-## 8. Next priority: stored Terraform draft read/update endpoint
+## 8. Completed: stored Terraform draft read/update endpoint
 
-The next backend product contract should make Terraform draft handling explicit instead of relying on `GET /api/analysis/jobs/{id}` for preview.
+Terraform draft handling is now project-scoped instead of relying on raw analysis job preview reads.
 
-Recommended contract:
+Current endpoints:
 
 ```text
 GET  /api/projects/{projectId}/terraform/main.tf
 PUT  /api/projects/{projectId}/terraform/main.tf
 ```
 
-Initial scope:
+Current flow:
 
 ```text
-read latest generated draft
-persist edited draft in local/test storage model
-return draft metadata and revision timestamp
+POST /api/upload
+  -> analysis resultPreview
+  -> store as project terraformDraft
+GET /api/projects/{projectId}/terraform/main.tf
+  -> return stored content
+PUT /api/projects/{projectId}/terraform/main.tf
+  -> update stored content and draft timestamp
+```
+
+Reference:
+
+- [`docs/backend-terraform-draft.md`](backend-terraform-draft.md)
+
+Important boundary:
+
+- draft storage is DB-backed in this pass;
+- S3 object persistence is not claimed;
+- Terraform apply/destroy remains deferred;
+- multi-file draft tree remains future work.
+
+## 9. Next priority: public project list compatibility
+
+The next product contract should bridge the original public project surface.
+
+Recommended scope:
+
+```text
+GET /api/public-projects
+POST or PATCH compatibility for visibility changes if needed
+```
+
+Map this onto the existing project metadata model:
+
+```text
+GET /api/projects/public
+visibility=PUBLIC
 ```
 
 Rules:
 
-- do not claim full S3 object persistence until S3 writer is enabled and validated;
-- do not activate Terraform run/destroy controls;
-- make edited draft storage separate from generated analysis result metadata;
-- keep browser cloud credential settings disabled.
+- do not expose private projects through compatibility endpoints;
+- do not add comment UI until comment persistence exists;
+- do not revive browser cloud credential settings;
+- keep compatibility endpoints thin adapters over the new project metadata model.
 
-## 9. Remaining backend product contracts
+## 10. Remaining backend product contracts
 
 Implement in this order:
 
-1. Stored Terraform draft read/update endpoint.
-2. Public project list compatibility endpoint if the old frontend requires `/api/public-projects`.
-3. Comments for public projects.
-4. Real upload binary persistence through S3 writer.
-5. Production adapter validation one boundary at a time.
+1. Public project list compatibility endpoint if the old frontend requires `/api/public-projects`.
+2. Comments for public projects.
+3. Real upload binary persistence through S3 writer.
+4. Production adapter validation one boundary at a time.
 
 Keep deferred until real integration exists:
 
@@ -218,7 +252,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 10. Adapter validation order
+## 11. Adapter validation order
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once:
 
@@ -233,7 +267,7 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=true
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 11. Infrastructure import
+## 12. Infrastructure import
 
 After backend, runtime contract, frontend import, and image validation are stable, import Terraform in this order:
 
