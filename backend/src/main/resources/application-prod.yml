@@ -51,6 +51,7 @@ terraformers:
       - CONTENT_FIELD_NAME
   storage:
     s3-reader-enabled: ${S3_READER_ENABLED:false}
+    s3-writer-enabled: ${S3_WRITER_ENABLED:false}
   analysis:
     mode: integrated-java
     bedrock-provider-enabled: ${BEDROCK_PROVIDER_ENABLED:false}
@@ -65,6 +66,8 @@ terraformers:
     index-name: ${INDEX_NAME}
     vector-field-name: ${VECTOR_FIELD_NAME}
     content-field-name: ${CONTENT_FIELD_NAME}
+    result-bucket-name: ${ANALYSIS_RESULT_BUCKET_NAME:${S3_BUCKET_NAME}}
+    result-key-prefix: ${ANALYSIS_RESULT_KEY_PREFIX:analysis-results}
     external-python-service-url: ${PYTHON_ANALYSIS_SERVICE_URL:}
     sqs-publisher-enabled: ${ANALYSIS_SQS_PUBLISHER_ENABLED:false}
     progress-queue-url: ${AI_LOG_QUEUE_URL}
