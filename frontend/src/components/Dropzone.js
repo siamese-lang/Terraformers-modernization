@@ -4,9 +4,6 @@ import api from '../utils/api';
 import { eventBus } from '../utils/eventBus';
 
 const maxFileSize = 524288000;
-const defaultBucket = process.env.REACT_APP_ANALYSIS_SOURCE_BUCKET || 'example-bucket';
-const defaultSourceKey = process.env.REACT_APP_ANALYSIS_SOURCE_KEY || 'uploads/architecture-diagram.png';
-const defaultProjectId = process.env.REACT_APP_ANALYSIS_PROJECT_ID || 'project-browser-smoke';
 
 const baseStyle = {
   flex: 1,
@@ -43,7 +40,7 @@ function buildErrorMessage(error) {
       : JSON.stringify(data);
   }
 
-  return error?.message || 'Analysis job request failed.';
+  return error?.message || 'Upload analysis request failed.';
 }
 
 async function waitForJob(jobId) {
@@ -61,6 +58,25 @@ async function waitForJob(jobId) {
   }
 
   return latest;
+}
+
+function resolveJobId(uploadResponse) {
+  return uploadResponse.analysisJobId || uploadResponse.id;
+}
+
+function normalizeUploadResponse(uploadResponse) {
+  return {
+    id: resolveJobId(uploadResponse),
+    projectId: uploadResponse.projectId,
+    sourceBucket: uploadResponse.sourceBucket,
+    sourceKey: uploadResponse.sourceKey,
+    status: uploadResponse.status,
+    analysisMode: uploadResponse.analysisMode,
+    provider: uploadResponse.provider,
+    resultObjectKey: uploadResponse.resultObjectKey,
+    resultPreview: uploadResponse.resultPreview,
+    failureReason: uploadResponse.failureReason,
+  };
 }
 
 function Dropzone({ closeModal, setDataMain }) {
@@ -96,16 +112,15 @@ function Dropzone({ closeModal, setDataMain }) {
     }
 
     const file = files[0];
-    const projectId = defaultProjectId;
-    const sourceKey = defaultSourceKey;
+    const formData = new FormData();
+    formData.append('file', file);
 
     setIsUploading(true);
     eventBus.emit('bedrock:start');
     eventBus.emit('bedrock:logs', [
       `Selected image: ${file.name}`,
-      `Creating analysis job for projectId=${projectId}`,
-      `Using smoke source reference: s3://${defaultBucket}/${sourceKey}`,
-      'Binary object upload is not implemented in this pass; this uses the validated backend smoke reference.',
+      'Uploading through compatibility endpoint: POST /api/upload',
+      'The backend creates an analysis job from the upload metadata and current analysis contract.',
     ]);
 
     setDataMain((previous) => [
@@ -126,15 +141,17 @@ function Dropzone({ closeModal, setDataMain }) {
     ]);
 
     try {
-      const response = await api.post('/api/analysis/jobs', {
-        projectId,
-        sourceBucket: defaultBucket,
-        sourceKey,
-        correlationId: `browser-upload-${Date.now()}`,
+      const response = await api.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      const created = response.data;
-      eventBus.emit('bedrock:logs', [`Analysis job created: ${created.id}`]);
+      const created = normalizeUploadResponse(response.data);
+      eventBus.emit('bedrock:logs', [
+        `Analysis job created: ${created.id}`,
+        `Source reference: s3://${created.sourceBucket}/${created.sourceKey}`,
+      ]);
 
       const completed = created.status === 'SUCCEEDED' || created.status === 'FAILED'
         ? created
@@ -145,7 +162,7 @@ function Dropzone({ closeModal, setDataMain }) {
       }
 
       eventBus.emit('bedrock:result', {
-        projectId: completed?.projectId || projectId,
+        projectId: completed?.projectId || created.projectId,
         terraformCode: completed?.resultPreview || '',
         explanation: `분석 작업이 완료되었습니다. provider=${completed?.provider || '-'}, resultObjectKey=${completed?.resultObjectKey || '-'}`,
       });
@@ -162,8 +179,8 @@ function Dropzone({ closeModal, setDataMain }) {
     <section className="dropzone-panel">
       <h2>Upload architecture image</h2>
       <p className="muted-copy">
-        원본 Terraformers의 이미지 업로드 흐름을 현재 백엔드의 analysis job 계약에 연결합니다.
-        이 단계에서는 실제 바이너리 업로드 대신 검증된 smoke source reference를 사용합니다.
+        원본 Terraformers의 이미지 업로드 흐름을 보존하기 위해 <code>POST /api/upload</code> 호환 endpoint를 사용합니다.
+        이 endpoint는 현재 단계에서 업로드 메타데이터를 analysis job 계약으로 연결합니다.
       </p>
       <div {...getRootProps({ style })}>
         <input {...getInputProps()} />
@@ -183,7 +200,7 @@ function Dropzone({ closeModal, setDataMain }) {
 
       <div className="modal-actions">
         <button type="button" className="primary-button" disabled={files.length === 0 || isUploading} onClick={handleUpload}>
-          {isUploading ? '분석 작업 생성 중...' : '분석 작업 생성'}
+          {isUploading ? '업로드 분석 요청 중...' : '업로드 분석 요청'}
         </button>
         <button type="button" className="secondary-button" onClick={closeModal}>닫기</button>
       </div>
