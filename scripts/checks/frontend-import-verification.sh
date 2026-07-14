@@ -12,6 +12,22 @@ require_command() {
   fi
 }
 
+install_dependencies() {
+  if [ -f package-lock.json ]; then
+    echo "[frontend] installing dependencies with npm ci"
+    if npm ci; then
+      return 0
+    fi
+
+    echo "[frontend] npm ci failed. package-lock.json may be stale after dependency changes." >&2
+    echo "[frontend] falling back to npm install to refresh the local lockfile" >&2
+  else
+    echo "[frontend] package-lock.json not found. installing dependencies with npm install"
+  fi
+
+  npm install
+}
+
 require_command node
 require_command npm
 
@@ -22,13 +38,7 @@ fi
 
 cd "${FRONTEND_DIR}"
 
-if [ -f package-lock.json ]; then
-  echo "[frontend] installing dependencies with npm ci"
-  npm ci
-else
-  echo "[frontend] installing dependencies with npm install"
-  npm install
-fi
+install_dependencies
 
 echo "[frontend] building selected original import baseline"
 npm run build
