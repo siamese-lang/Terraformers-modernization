@@ -3,11 +3,6 @@ spring:
     name: terraformers-backend-modernization
   profiles:
     default: local
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 
 server:
   port: 8080
@@ -24,14 +19,4 @@ management:
 
 terraformers:
   runtime:
-    required-env:
-      - SPRING_DATASOURCE_URL
-      - SPRING_DATASOURCE_USERNAME
-      - SPRING_DATASOURCE_PASSWORD
-      - COGNITO_REGION
-      - COGNITO_USER_POOL_ID
-      - COGNITO_USER_POOL_CLIENT_ID
-      - COGNITO_JWKS_URL
-      - S3_BUCKET_NAME
-      - AI_LOG_QUEUE_URL
-      - TERRAFORM_LOG_QUEUE_URL
+    required-env: []
