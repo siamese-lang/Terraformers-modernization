@@ -24,14 +24,23 @@ Re-enable push/PR triggers only after:
 3. manual GitHub Actions runs pass;
 4. the README clearly states the validated baseline scope.
 
-## 2. Immediate backend stabilization
+## 2. Backend local baseline status
 
-The next priority is not deployment automation. Stabilize the backend baseline first.
+Backend local/stub baseline has reached the first evidence-grade checkpoint.
 
-Current local result:
+Validated in the local WSL environment:
 
-- `mvn clean test` has been reported as passing in the local WSL environment.
-- The next validation should confirm package creation and then API smoke behavior.
+- `mvn clean test` passed;
+- backend package verification is available through `scripts/checks/backend-local-verification.sh`;
+- `mvn spring-boot:run` started the default `local` profile after H2 was moved to runtime scope;
+- `scripts/smoke/create-analysis-job.sh` created and fetched an analysis job successfully;
+- smoke result returned `SUCCEEDED`, `provider=stub-integrated-java`, `resultObjectKey`, and non-empty `resultPreview`.
+
+Evidence:
+
+- [`docs/evidence/backend-local-smoke-2026-07-14.md`](evidence/backend-local-smoke-2026-07-14.md)
+
+Keep Docker image validation separate from Maven/API smoke validation.
 
 Run Maven test and package verification:
 
@@ -39,38 +48,35 @@ Run Maven test and package verification:
 bash scripts/checks/backend-local-verification.sh
 ```
 
-This script intentionally skips Docker image build by default.
-
 Run Docker image build only when Docker Desktop / WSL integration is ready:
 
 ```bash
 RUN_DOCKER_BUILD=true bash scripts/checks/backend-local-verification.sh
 ```
 
-Run backend locally and execute the analysis job smoke script:
+## 3. Next priority: runtime contract verification
+
+The next priority is not deployment automation and not frontend import yet. Confirm that the public runtime contract renders and validates without secrets.
+
+Run from the repository root:
 
 ```bash
-cd backend
-mvn spring-boot:run
+bash scripts/checks/runtime-contract-verification.sh
 ```
 
-In another terminal from the repository root:
+Expected validation boundaries:
 
-```bash
-BASE_URL=http://localhost:8080 \
-PROJECT_ID=project-smoke \
-SOURCE_BUCKET=example-bucket \
-SOURCE_KEY=uploads/architecture-diagram.png \
-bash scripts/smoke/create-analysis-job.sh
-```
+- Kubernetes base renders ConfigMap, ServiceAccount, Deployment, and Service;
+- Kubernetes base does not render `backend-secret.example.yaml`;
+- public base does not include account-specific IAM role ARNs;
+- example files use placeholders only;
+- Terraform runtime contract validates and plans with `terraform.tfvars.example`.
 
-The smoke script should confirm `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
+If this fails, fix kustomize/Terraform contract issues before importing frontend source or adding deployment automation.
 
-If Maven, local runtime, smoke validation, kustomize, Terraform, or Docker validation fails, fix that specific stage before importing more code.
+## 4. Frontend stabilization after backend and runtime contract baseline
 
-## 3. Frontend stabilization after backend baseline
-
-Frontend work should start only after the backend local/stub baseline is stable.
+Frontend work should start only after the backend local/stub baseline and runtime contract baseline are stable.
 
 Purpose:
 
@@ -99,27 +105,6 @@ Open app
 ```
 
 Detailed scope is documented in [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md).
-
-## 4. Runtime contract validation
-
-The runtime deployment contract exists in:
-
-- `infra/kubernetes/base/*`
-- `infra/terraform/runtime-contract/*`
-- `scripts/checks/runtime-contract-verification.sh`
-- `.github/workflows/runtime-contract-verification.yml`
-- `docs/deployment-runtime-contract.md`
-- `docs/runtime-contract-verification.md`
-
-Validation expectations:
-
-- Kubernetes base renders ConfigMap, ServiceAccount, Deployment, and Service.
-- Kubernetes base does not render `backend-secret.example.yaml`.
-- Public base does not include account-specific IAM role ARNs.
-- Example files use placeholders only.
-- Terraform runtime contract validates and plans with `terraform.tfvars.example`.
-
-Do not apply the example values to a real account. They are placeholders for contract validation.
 
 ## 5. Adapter validation
 
