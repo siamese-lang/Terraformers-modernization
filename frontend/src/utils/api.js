@@ -16,6 +16,7 @@ const AUTH_REQUIRED_PATH_PREFIXES = ['/api/'];
 const AUTH_OPTIONAL_PATHS = [
   '/api/login',
   '/api/register',
+  '/api/analysis/jobs',
   '/api/public-projects',
   '/api/project-tree/',
   '/api/getProjectInfrastructureImage/',
