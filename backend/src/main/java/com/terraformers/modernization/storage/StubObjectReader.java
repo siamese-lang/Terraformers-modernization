@@ -1,11 +1,11 @@
 package com.terraformers.modernization.storage;
 
 import java.nio.charset.StandardCharsets;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnMissingBean(ObjectReader.class)
+@ConditionalOnProperty(prefix = "terraformers.storage", name = "s3-reader-enabled", havingValue = "false", matchIfMissing = true)
 public class StubObjectReader implements ObjectReader {
 
     @Override
