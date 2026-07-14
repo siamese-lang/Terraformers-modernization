@@ -38,14 +38,48 @@ Local smoke testing uses H2 only to verify controller, service, repository, enti
 
 This avoids turning local smoke into a false production simulation.
 
-## 4. Local validation flow
+## 4. Local verification stages
 
-Run backend tests:
+Use staged verification so Maven, application runtime, browser/API smoke, and Docker issues are not mixed together.
+
+### 4.1 Maven test and package
+
+Run from the repository root:
 
 ```bash
-cd backend
-mvn test
+bash scripts/checks/backend-local-verification.sh
 ```
+
+This performs:
+
+```text
+mvn clean test
+mvn -DskipTests package
+```
+
+Expected result:
+
+```text
+[backend] local verification completed
+```
+
+### 4.2 Optional Docker image build
+
+Docker image validation is useful, but it should not block Maven baseline stabilization when Docker Desktop or WSL integration is not ready.
+
+Run Docker validation explicitly:
+
+```bash
+RUN_DOCKER_BUILD=true bash scripts/checks/backend-local-verification.sh
+```
+
+Expected result:
+
+```text
+terraformers-backend:local image is built
+```
+
+### 4.3 Local API smoke
 
 Run the backend locally:
 
@@ -54,7 +88,7 @@ cd backend
 mvn spring-boot:run
 ```
 
-Run the smoke script:
+In another terminal, run the smoke script from the repository root:
 
 ```bash
 BASE_URL=http://localhost:8080 \
@@ -99,5 +133,5 @@ ANALYSIS_SQS_PUBLISHER_ENABLED
 ## 6. Portfolio explanation
 
 ```text
-로컬 검증은 운영환경을 흉내 내기 위한 것이 아니라, Spring Boot backend의 API, JPA repository, analysis job lifecycle, stub adapter 연결이 깨지지 않았는지 확인하기 위한 기준으로 구성했습니다. 운영 검증은 별도로 MariaDB/Flyway와 AWS adapter를 켜서 수행하도록 분리했습니다.
+로컬 검증은 운영환경을 흉내 내기 위한 것이 아니라, Spring Boot backend의 API, JPA repository, analysis job lifecycle, stub adapter 연결이 깨지지 않았는지 확인하기 위한 기준으로 구성했습니다. Docker build와 운영 adapter 검증은 별도 단계로 분리해, 코드 문제와 로컬 실행환경 문제를 구분할 수 있게 했습니다. 운영 검증은 MariaDB/Flyway와 AWS adapter를 켜서 수행하도록 분리했습니다.
 ```
