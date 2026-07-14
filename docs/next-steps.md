@@ -24,7 +24,32 @@ bash scripts/smoke/create-analysis-job.sh
 
 The smoke script should confirm `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
 
-## 2. Adapter validation
+## 2. Runtime contract validation
+
+The runtime deployment contract now exists in:
+
+- `infra/kubernetes/base/*`
+- `infra/terraform/runtime-contract/*`
+- `docs/deployment-runtime-contract.md`
+
+Validate Kubernetes skeleton rendering:
+
+```bash
+kubectl kustomize infra/kubernetes/base
+```
+
+Validate Terraform runtime contract shape:
+
+```bash
+cd infra/terraform/runtime-contract
+terraform init
+terraform validate
+terraform plan -var-file=terraform.tfvars.example
+```
+
+Do not apply the example values to a real account. They are placeholders for contract validation.
+
+## 3. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -39,33 +64,19 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 3. Infrastructure import
+## 4. Infrastructure import
 
 After backend baseline verification, import Terraform in this order:
 
-1. `infra/terraform/envs/dev`
-2. network/security group modules
-3. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
-4. Kubernetes backend manifests
-5. image publish workflows
-6. Terraform plan/apply workflows
+1. network/security group modules
+2. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
+3. IAM role and policy for backend runtime adapter access
+4. External Secrets / SecretStore wiring
+5. environment-specific Kubernetes overlays
+6. image publish workflows
+7. Terraform plan/apply workflows
 
 Do not import the full private repository history.
-
-## 4. Runtime deployment variables
-
-The next implementation step is to wire the new adapter switches into Terraform/Kubernetes manifests:
-
-- `S3_READER_ENABLED`
-- `S3_WRITER_ENABLED`
-- `ANALYSIS_RESULT_BUCKET_NAME`
-- `ANALYSIS_RESULT_KEY_PREFIX`
-- `BEDROCK_PROVIDER_ENABLED`
-- `BEDROCK_EMBEDDING_ENABLED`
-- `OPENSEARCH_RETRIEVER_ENABLED`
-- `OPENSEARCH_SERVICE_NAME`
-- `OPENSEARCH_TOP_K`
-- `ANALYSIS_SQS_PUBLISHER_ENABLED`
 
 ## 5. Documentation updates
 
