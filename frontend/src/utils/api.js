@@ -2,14 +2,14 @@ import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 const envApiBaseUrl = process.env.REACT_APP_API_BASE_URL?.trim();
-const API_BASE_URL = envApiBaseUrl || (process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : undefined);
+const API_BASE_URL = envApiBaseUrl || '';
 
-if (!envApiBaseUrl) {
-  if (process.env.NODE_ENV === 'development') {
-    console.info('[api] REACT_APP_API_BASE_URL is not set. Falling back to http://localhost:8080 for development only.');
-  } else {
-    console.warn('[api] REACT_APP_API_BASE_URL is not set. Requests may fail without an absolute API base URL.');
-  }
+if (!envApiBaseUrl && process.env.NODE_ENV === 'development') {
+  console.info('[api] REACT_APP_API_BASE_URL is not set. Using relative /api paths through CRA proxy.');
+}
+
+if (!envApiBaseUrl && process.env.NODE_ENV === 'production') {
+  console.warn('[api] REACT_APP_API_BASE_URL is not set. Production requests will use relative paths.');
 }
 
 const AUTH_REQUIRED_PATH_PREFIXES = ['/api/'];
@@ -89,7 +89,7 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     if (!error.response) {
-      console.error('[api] Network/CORS error (no response).', {
+      console.error('[api] Network/CORS/proxy error (no response).', {
         message: error?.message,
         url: originalRequest?.url,
       });
