@@ -44,7 +44,7 @@ The rendered base must not contain:
 - 12-digit account-like identifiers;
 - `replace-me` placeholder values.
 
-`backend-secret.example.yaml` is intentionally excluded from `kustomization.yaml`.
+`backend-secret.example.yaml` is intentionally excluded from the `resources` list in `kustomization.yaml`. The file may be mentioned in comments for documentation, but it must not be rendered as a base Secret resource.
 
 ### 2.2 Public-safe example checks
 
@@ -90,7 +90,8 @@ It should be run manually when the Kubernetes base, Terraform runtime contract, 
 
 | Failure | Likely issue | Fix |
 | --- | --- | --- |
-| `Base kustomization must not render placeholder Secret resources` | `backend-secret.example.yaml` was added to base resources | Remove it from `kustomization.yaml`; create real Secret through overlay or External Secrets |
+| `Base kustomization must not render placeholder Secret resources` | `backend-secret.example.yaml` was rendered as a Secret resource | Remove it from `kustomization.yaml`; create real Secret through overlay or External Secrets |
+| `backend-secret.example.yaml must not be included in base kustomization resources` | `backend-secret.example.yaml` was added as a YAML list item under resources | Remove the resource entry; comments mentioning the example file are allowed |
 | `Base manifest must not contain account-specific IAM ARNs` | IRSA role ARN was committed to base | Move annotation to environment-specific overlay |
 | `Base manifest must not contain 12-digit account-like identifiers` | Account ID or account-looking placeholder was committed | Replace with `<account-id>` style placeholder or remove from base |
 | `Terraform variable contract validates` fails | Runtime contract object shape drifted | Align `variables.tf`, `locals.tf`, and `terraform.tfvars.example` |
