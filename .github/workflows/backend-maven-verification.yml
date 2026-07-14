@@ -1,15 +1,6 @@
 name: Backend Maven Verification
 
 on:
-  pull_request:
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-maven-verification.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-maven-verification.yml'
   workflow_dispatch:
 
 permissions:
