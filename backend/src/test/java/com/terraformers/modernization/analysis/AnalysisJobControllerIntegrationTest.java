@@ -49,7 +49,7 @@ class AnalysisJobControllerIntegrationTest {
                 .andExpect(jsonPath("$.provider").value("stub-integrated-java"))
                 .andExpect(jsonPath("$.resultObjectKey", not(nullValue())))
                 .andExpect(jsonPath("$.resultPreview", not(nullValue())))
-                .andExpect(jsonPath("$.failureReason").doesNotExist())
+                .andExpect(jsonPath("$.failureReason").value(nullValue()))
                 .andReturn();
 
         JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
