@@ -56,7 +56,7 @@ class ProjectTreeControllerTest {
                 .andExpect(jsonPath("$.tree[0].children[1].id").value("aws:terraform"))
                 .andExpect(jsonPath("$.tree[0].children[1].name").value("terraform"))
                 .andExpect(jsonPath("$.tree[0].children[1].children[0].name").value("main.tf"))
-                .andExpect(jsonPath("$.tree[0].children[1].children[0].apiPath").value(startsWith("/api/analysis/jobs/")))
+                .andExpect(jsonPath("$.tree[0].children[1].children[0].apiPath").value("/api/projects/aws/terraform/main.tf"))
                 .andExpect(jsonPath("$.tree[0].children[1].children[0].resultObjectKey").isNotEmpty());
     }
 
