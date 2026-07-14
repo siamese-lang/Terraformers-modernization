@@ -18,6 +18,7 @@ const AUTH_OPTIONAL_PATHS = [
   '/api/register',
   '/api/upload',
   '/api/analysis/jobs',
+  '/api/projects',
   '/api/public-projects',
   '/api/project-tree/',
   '/api/getProjectInfrastructureImage/',
