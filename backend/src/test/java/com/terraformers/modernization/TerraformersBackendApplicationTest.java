@@ -1,11 +1,12 @@
 package com.terraformers.modernization;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
+@SpringBootTest
 class TerraformersBackendApplicationTest {
 
     @Test
-    void applicationClassIsLoadable() {
-        TerraformersBackendApplication application = new TerraformersBackendApplication();
+    void contextLoadsWithLocalStubRuntime() {
     }
 }
