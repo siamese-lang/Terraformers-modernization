@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class StubAnalysisProviderTest {
 
     @Test
-    void usesObjectReaderMetadataInResultPreview() {
+    void usesObjectReaderMetadataInExplanation() {
         StubAnalysisProvider provider = new StubAnalysisProvider(new StubObjectReader());
         AnalysisRequestContext context = new AnalysisRequestContext(
                 "job-1",
@@ -22,8 +22,8 @@ class StubAnalysisProviderTest {
         AnalysisResult result = provider.analyze(context);
 
         assertThat(result.provider()).isEqualTo("stub-integrated-java");
-        assertThat(result.preview()).contains("s3://example-bucket/uploads/diagram.webp");
-        assertThat(result.preview()).contains("contentType=image/webp");
-        assertThat(result.terraformDraft()).contains("provider \"aws\"");
+        assertThat(result.explanation()).contains("s3://example-bucket/uploads/diagram.webp");
+        assertThat(result.explanation()).contains("contentType=image/webp");
+        assertThat(result.terraformCode()).contains("provider \"aws\"");
     }
 }
