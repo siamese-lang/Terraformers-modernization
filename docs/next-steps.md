@@ -5,14 +5,21 @@
 1. Check GitHub Actions results for:
    - Backend Maven Verification
    - Backend Image Build Verification
-2. If either workflow fails, fix the public backend baseline before importing more code.
-3. Run local verification if needed:
+   - Runtime Contract Verification
+2. If any workflow fails, fix the public baseline before importing more code.
+3. Run local backend verification if needed:
 
 ```bash
 bash scripts/checks/backend-local-verification.sh
 ```
 
-4. Run backend locally and execute the analysis job smoke script:
+4. Run runtime contract verification if Kubernetes or Terraform runtime files changed:
+
+```bash
+bash scripts/checks/runtime-contract-verification.sh
+```
+
+5. Run backend locally and execute the analysis job smoke script:
 
 ```bash
 BASE_URL=http://localhost:8080 \
@@ -30,22 +37,18 @@ The runtime deployment contract now exists in:
 
 - `infra/kubernetes/base/*`
 - `infra/terraform/runtime-contract/*`
+- `scripts/checks/runtime-contract-verification.sh`
+- `.github/workflows/runtime-contract-verification.yml`
 - `docs/deployment-runtime-contract.md`
+- `docs/runtime-contract-verification.md`
 
-Validate Kubernetes skeleton rendering:
+Validation expectations:
 
-```bash
-kubectl kustomize infra/kubernetes/base
-```
-
-Validate Terraform runtime contract shape:
-
-```bash
-cd infra/terraform/runtime-contract
-terraform init
-terraform validate
-terraform plan -var-file=terraform.tfvars.example
-```
+- Kubernetes base renders ConfigMap, ServiceAccount, Deployment, and Service.
+- Kubernetes base does not render `backend-secret.example.yaml`.
+- Public base does not include account-specific IAM role ARNs.
+- Example files use placeholders only.
+- Terraform runtime contract validates and plans with `terraform.tfvars.example`.
 
 Do not apply the example values to a real account. They are placeholders for contract validation.
 
@@ -66,7 +69,7 @@ Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-anal
 
 ## 4. Infrastructure import
 
-After backend baseline verification, import Terraform in this order:
+After backend and runtime contract verification, import Terraform in this order:
 
 1. network/security group modules
 2. ECR/RDS/S3/SQS/Secrets Manager/Cognito modules
