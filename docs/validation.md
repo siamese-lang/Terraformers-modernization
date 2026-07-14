@@ -54,8 +54,12 @@ mvn -DskipTests package
 Expected:
 
 - compilation succeeds;
-- unit tests for runtime config, object storage, analysis orchestration, Bedrock request parsing, and OpenSearch query parsing pass;
+- local Spring context loads with H2 and stub adapters;
+- analysis job API integration test returns `SUCCEEDED`, `resultObjectKey`, and `resultPreview`;
+- unit tests for runtime config, object storage, analysis orchestration, and OpenSearch query parsing pass;
 - no AWS credentials are required for default tests.
+
+Local runtime details are documented in [`docs/backend-local-runtime.md`](backend-local-runtime.md).
 
 ### 4.2 Backend image build
 
@@ -124,6 +128,9 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=false
 This path uses:
 
 ```text
+H2 in-memory database
+JPA schema generation
+Flyway disabled
 StubObjectReader
 StubObjectWriter
 StubEmbeddingProvider
@@ -334,5 +341,5 @@ For portfolio or interview evidence, keep sanitized proof of:
 ## 15. Interview explanation
 
 ```text
-검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 다만 현재는 baseline 구축 단계이므로 GitHub Actions는 수동 검증으로 두고, 로컬 검증과 수동 workflow가 안정화된 뒤 push/PR 자동 검증을 다시 켜는 방향으로 정리했습니다.
+검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 로컬 검증은 H2와 stub adapter로 API/RDB/job lifecycle을 먼저 고정하고, production 검증은 MariaDB/Flyway와 AWS adapter를 순차적으로 켜는 방식으로 분리했습니다. 현재는 baseline 구축 단계이므로 GitHub Actions는 수동 검증으로 두고, 로컬 검증과 수동 workflow가 안정화된 뒤 push/PR 자동 검증을 다시 켜는 방향으로 정리했습니다.
 ```
