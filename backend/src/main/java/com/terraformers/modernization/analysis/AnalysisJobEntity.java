@@ -39,6 +39,15 @@ public class AnalysisJobEntity {
     @Column(name = "analysis_mode", nullable = false, length = 32)
     private AnalysisMode analysisMode = AnalysisMode.INTEGRATED_JAVA;
 
+    @Column(length = 64)
+    private String provider;
+
+    @Column(name = "result_object_key", length = 1024)
+    private String resultObjectKey;
+
+    @Column(name = "result_preview", columnDefinition = "TEXT")
+    private String resultPreview;
+
     @Column(name = "failure_reason", length = 2000)
     private String failureReason;
 
@@ -113,6 +122,30 @@ public class AnalysisJobEntity {
 
     public void setAnalysisMode(AnalysisMode analysisMode) {
         this.analysisMode = analysisMode;
+    }
+
+    public String getProvider() {
+        return provider;
+    }
+
+    public void setProvider(String provider) {
+        this.provider = provider;
+    }
+
+    public String getResultObjectKey() {
+        return resultObjectKey;
+    }
+
+    public void setResultObjectKey(String resultObjectKey) {
+        this.resultObjectKey = resultObjectKey;
+    }
+
+    public String getResultPreview() {
+        return resultPreview;
+    }
+
+    public void setResultPreview(String resultPreview) {
+        this.resultPreview = resultPreview;
     }
 
     public String getFailureReason() {
