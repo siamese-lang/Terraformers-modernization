@@ -42,6 +42,17 @@ assert_contains() {
   fi
 }
 
+assert_kustomization_resource_not_included() {
+  local resource_name="$1"
+  local kustomization_file="$2"
+
+  # Check only YAML list entries, not explanatory comments.
+  if grep -E -q "^[[:space:]]*-[[:space:]]*${resource_name}[[:space:]]*$" "${kustomization_file}"; then
+    echo "${resource_name} must not be included in base kustomization resources." >&2
+    exit 1
+  fi
+}
+
 require_command kubectl
 require_command terraform
 require_command grep
@@ -64,10 +75,7 @@ assert_not_contains 'arn:aws:iam::[0-9]{12}:' "${RENDERED_MANIFEST}" "Base manif
 assert_not_contains '[0-9]{12}' "${RENDERED_MANIFEST}" "Base manifest must not contain 12-digit account-like identifiers."
 assert_not_contains 'replace-me' "${RENDERED_MANIFEST}" "Base rendered manifest must not contain replace-me placeholders."
 
-if grep -q 'backend-secret.example.yaml' "${K8S_BASE_DIR}/kustomization.yaml"; then
-  echo "backend-secret.example.yaml must not be included in base kustomization resources." >&2
-  exit 1
-fi
+assert_kustomization_resource_not_included 'backend-secret.example.yaml' "${K8S_BASE_DIR}/kustomization.yaml"
 
 echo "[runtime-contract] checking committed example files for public-safe placeholders"
 assert_not_contains '[0-9]{12}' "${K8S_BASE_DIR}/backend-secret.example.yaml" "Secret example must not contain 12-digit account-like identifiers."
