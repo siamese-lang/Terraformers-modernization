@@ -1,0 +1,29 @@
+package com.terraformers.modernization.analysis;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.terraformers.modernization.storage.StubObjectReader;
+import org.junit.jupiter.api.Test;
+
+class StubAnalysisProviderTest {
+
+    @Test
+    void usesObjectReaderMetadataInResultPreview() {
+        StubAnalysisProvider provider = new StubAnalysisProvider(new StubObjectReader());
+        AnalysisRequestContext context = new AnalysisRequestContext(
+                "job-1",
+                "project-1",
+                "example-bucket",
+                "uploads/diagram.webp",
+                "corr-1",
+                AnalysisMode.INTEGRATED_JAVA
+        );
+
+        AnalysisResult result = provider.analyze(context);
+
+        assertThat(result.provider()).isEqualTo("stub-integrated-java");
+        assertThat(result.preview()).contains("s3://example-bucket/uploads/diagram.webp");
+        assertThat(result.preview()).contains("contentType=image/webp");
+        assertThat(result.terraformDraft()).contains("provider \"aws\"");
+    }
+}
