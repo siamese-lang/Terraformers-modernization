@@ -1,0 +1,52 @@
+environment = "dev"
+aws_region  = "ap-northeast-2"
+
+adapter_switches = {
+  # Keep all adapters disabled for local/stub validation.
+  # Enable them only after AWS dependencies and IAM policies are ready.
+  s3_reader_enabled              = false
+  s3_writer_enabled              = false
+  bedrock_provider_enabled       = false
+  bedrock_embedding_enabled      = false
+  opensearch_retriever_enabled   = false
+  analysis_sqs_publisher_enabled = false
+}
+
+database_runtime = {
+  datasource_url      = "jdbc:mariadb://example-rds.cluster-xxxxxxxx.ap-northeast-2.rds.amazonaws.com:3306/terraformers"
+  datasource_username = "replace-me"
+  datasource_password = "replace-me"
+}
+
+cognito_runtime = {
+  region              = "ap-northeast-2"
+  user_pool_id        = "ap-northeast-2_example"
+  user_pool_client_id = "replace-me"
+  jwks_url            = "https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_example/.well-known/jwks.json"
+}
+
+object_storage_runtime = {
+  upload_bucket_name = "terraformers-upload-bucket-example"
+  result_bucket_name = "terraformers-result-bucket-example"
+  result_key_prefix  = "analysis-results"
+}
+
+queue_runtime = {
+  ai_log_queue_url        = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/terraformers-ai-log"
+  terraform_log_queue_url = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/terraformers-terraform-log"
+}
+
+bedrock_runtime = {
+  model_id           = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+  embedding_model_id = "amazon.titan-embed-text-v2:0"
+  max_tokens         = 4096
+}
+
+opensearch_runtime = {
+  endpoint           = "https://example.aoss.ap-northeast-2.amazonaws.com"
+  service_name       = "aoss"
+  top_k              = 3
+  index_name         = "terraformers-reference-patterns"
+  vector_field_name  = "embedding"
+  content_field_name = "content"
+}
