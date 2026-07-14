@@ -15,10 +15,11 @@ POST /api/analysis/jobs
   -> ObjectReader checks the uploaded S3 object boundary
   -> ReferenceRetriever returns reference patterns
   -> AnalysisProvider analyzes the source object
+  -> AnalysisResultStorage writes generated Terraform HCL
   -> ProgressPublisher emits progress/result state
-  -> analysis_jobs row moves RUNNING -> SUCCEEDED or FAILED
+  -> analysis_jobs row stores SUCCEEDED/FAILED and result_object_key
 GET /api/analysis/jobs/{id}
-  -> returns current RDB job state
+  -> returns current RDB job state and generated result object key
 ```
 
 ## 3. Ports
@@ -38,6 +39,30 @@ Target responsibility:
 - read object metadata such as content type, content length, and ETag;
 - read object bytes when Bedrock vision integration needs base64 image payload;
 - fail clearly on missing object or access denial.
+
+### ObjectWriter
+
+`ObjectWriter` is the boundary for storing generated Terraform result files.
+
+Current implementations:
+
+- `StubObjectWriter`: default local/CI-safe writer. It returns the requested bucket/key without calling AWS.
+- `AwsS3ObjectWriter`: optional production adapter enabled by `terraformers.storage.s3-writer-enabled=true`.
+
+`AnalysisResultStorage` builds the result object key and writes the generated Terraform HCL through this port.
+
+Default object key pattern:
+
+```text
+analysis-results/{projectId}/{yyyy}/{MM}/{dd}/{analysisJobId}/main.tf
+```
+
+Operational responsibility:
+
+- store generated Terraform draft outside the database;
+- persist only the result object key in `analysis_jobs.result_object_key`;
+- keep large generated content out of relational metadata;
+- fail clearly on S3 access denial, missing bucket, or invalid object key.
 
 ### EmbeddingProvider
 
@@ -106,8 +131,8 @@ Current implementations:
 Important boundary:
 
 ```text
-Local/CI default: StubObjectReader + StubReferenceRetriever + StubAnalysisProvider
-Production optional: AwsS3ObjectReader + OpenSearchReferenceRetriever + BedrockAnalysisProvider
+Local/CI default: StubObjectReader + StubReferenceRetriever + StubAnalysisProvider + StubObjectWriter
+Production optional: AwsS3ObjectReader + OpenSearchReferenceRetriever + BedrockAnalysisProvider + AwsS3ObjectWriter
 ```
 
 This keeps CI deterministic and credential-free while making the production adapter path explicit.
@@ -132,7 +157,7 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - backend API contract
 - RDB job lifecycle
 - provider/adapter separation
-- S3 object access boundary
+- S3 object read/write boundary
 - embedding generation boundary
 - reference retrieval boundary
 - Bedrock invocation boundary
@@ -148,6 +173,9 @@ Production runtime config is injected through `application-prod.yml` and environ
 Important values:
 
 - `S3_READER_ENABLED`
+- `S3_WRITER_ENABLED`
+- `ANALYSIS_RESULT_BUCKET_NAME`
+- `ANALYSIS_RESULT_KEY_PREFIX`
 - `BEDROCK_PROVIDER_ENABLED`
 - `BEDROCK_EMBEDDING_ENABLED`
 - `BEDROCK_MODEL_ID`
@@ -164,7 +192,7 @@ Important values:
 - `TERRAFORM_LOG_QUEUE_URL`
 - `ANALYSIS_SQS_PUBLISHER_ENABLED`
 
-Secret values must not be logged. Queue URLs and endpoints should be treated as runtime configuration and managed through Secrets Manager / External Secrets or repository environment variables depending on the deployment stage.
+Secret values must not be logged. Queue URLs, endpoints, and bucket names should be treated as runtime configuration and managed through Secrets Manager / External Secrets or repository environment variables depending on the deployment stage.
 
 ## 6. Current completion boundary
 
@@ -173,6 +201,7 @@ Implemented in the public baseline:
 - backend-owned analysis job API
 - RDB job lifecycle
 - S3 object reader port and optional S3 adapter
+- S3 object writer port and optional S3 result storage adapter
 - embedding provider port and optional Bedrock embedding adapter
 - reference retrieval port, stub retriever, and optional SigV4-signed OpenSearch/AOSS retriever
 - Bedrock provider boundary and optional Bedrock Runtime adapter
@@ -181,12 +210,11 @@ Implemented in the public baseline:
 
 Not yet complete:
 
-- persistence of generated Terraform object to S3
 - full browser E2E validation
 - deployed AWS evidence
 
 ## 7. Next implementation steps
 
-1. Persist generated Terraform result object key in `analysis_jobs.result_object_key`.
-2. Add API smoke test assertions for `SUCCEEDED` and result preview.
-3. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+1. Add API smoke test assertions for `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
+2. Add runbook entries for S3 object missing, S3 access denied, S3 result write failure, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+3. Add Terraform/Kubernetes runtime variables for the new adapter switches.
