@@ -85,7 +85,17 @@ Expected result:
 [frontend] local verification completed
 ```
 
-## 6. Deliberate limitations
+The `build` script intentionally uses plain `react-scripts build` instead of shell-specific environment assignment. This keeps the command compatible with Windows CMD, Git Bash, and WSL.
+
+## 6. Dependency audit notes
+
+The first `npm install` may report vulnerabilities from the Create React App dependency tree.
+
+Do not run forced dependency upgrades as part of the smoke baseline unless the build is already stable and the impact is reviewed. Forced audit fixes can change `react-scripts` transitive dependencies and break the baseline for reasons unrelated to the frontend/API contract.
+
+Track dependency cleanup separately after the browser smoke baseline is validated.
+
+## 7. Deliberate limitations
 
 The following legacy UI contracts are not removed from the project direction, but they are not implemented in this first browser baseline:
 
@@ -106,7 +116,7 @@ The following remain deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - user-entered AWS credential storage.
 
-## 7. Portfolio explanation
+## 8. Portfolio explanation
 
 ```text
 프론트엔드는 이전 팀 프로젝트의 사용 흐름을 보존하기 위해 선별 이관하되, 아직 백엔드 계약이 없는 기능을 겉모습만 살려 두지 않았습니다. 먼저 검증된 분석 작업 생성/조회 API를 브라우저에서 호출하는 최소 smoke 화면을 추가했고, 프로젝트 트리·공개 프로젝트·댓글·코드 편집은 후속 백엔드 계약으로 분리했습니다. 이를 통해 프론트 화면을 보여주기 위한 임시 구현이 아니라, 백엔드/API 검증 가능한 단위부터 단계적으로 연결하는 방식으로 정리했습니다.
