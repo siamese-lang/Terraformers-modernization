@@ -49,10 +49,20 @@ GET  /api/analysis/jobs/{id}
 When a user selects a PNG/JPEG image, the frontend:
 
 1. shows the image in the chat thread;
-2. builds a public-safe source reference from `.env` defaults;
+2. uses the stable smoke source reference from `.env` defaults;
 3. creates an analysis job;
 4. polls the job if it is not already terminal;
 5. renders `resultPreview` as Terraform draft output.
+
+Default smoke reference:
+
+```text
+projectId=project-browser-smoke
+sourceBucket=example-bucket
+sourceKey=uploads/architecture-diagram.png
+```
+
+This matches the already validated backend local smoke contract and avoids generating arbitrary source keys before binary upload is implemented.
 
 ## 4. Why `/api/upload` is not implemented here
 
@@ -67,7 +77,7 @@ sourceKey
 correlationId
 ```
 
-Therefore this frontend pass bridges the browser-selected image into an analysis job source reference instead of pretending that object storage upload is complete.
+Therefore this frontend pass bridges a browser-selected image into a stable analysis job source reference instead of pretending that object storage upload is complete.
 
 A real upload compatibility endpoint remains future backend work.
 
@@ -116,14 +126,16 @@ Expected smoke result:
 
 ```text
 Select PNG/JPEG image
-  -> create analysis job
+  -> create analysis job using stable smoke source reference
   -> show analysis logs
   -> show SUCCEEDED result
   -> show Terraform draft preview
 ```
 
+If the browser still returns HTTP 500 after this pass, inspect the backend terminal stack trace. The frontend now prints backend response details when available, but server-side exceptions must be diagnosed from the Spring Boot log.
+
 ## 7. Portfolio explanation
 
 ```text
-기존 Terraformers의 채팅형 이미지 업로드 흐름을 그대로 새로 만들지 않고, 원본 프론트의 AiChat/Dropzone/Modal 구조를 기준으로 선별 이관했습니다. 다만 원본의 SQS queue URL 브라우저 polling과 Terraform 실행/삭제, 브라우저 AWS credential 입력은 현재 운영 보안 방향과 맞지 않거나 백엔드 계약이 없으므로 제외했습니다. 대신 이미 검증된 analysis job API에 연결하여, 이미지 선택부터 Terraform 초안 미리보기까지 브라우저에서 확인 가능한 흐름으로 안정화했습니다.
+기존 Terraformers의 채팅형 이미지 업로드 흐름을 그대로 새로 만들지 않고, 원본 프론트의 AiChat/Dropzone/Modal 구조를 기준으로 선별 이관했습니다. 다만 원본의 SQS queue URL 브라우저 polling과 Terraform 실행/삭제, 브라우저 AWS credential 입력은 현재 운영 보안 방향과 맞지 않거나 백엔드 계약이 없으므로 제외했습니다. 실제 바이너리 업로드를 완료했다고 과장하지 않고, 이미 검증된 analysis job API와 안정적인 smoke source reference를 사용해 이미지 선택부터 Terraform 초안 미리보기까지 브라우저에서 확인 가능한 흐름으로 안정화했습니다.
 ```
