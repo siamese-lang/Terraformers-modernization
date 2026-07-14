@@ -28,7 +28,7 @@ Re-enable push/PR triggers only after:
 
 ## 2. Validated baseline checkpoints
 
-The project now has two evidence-grade local checkpoints.
+The project now has three evidence-grade local checkpoints.
 
 ### 2.1 Backend local/stub baseline
 
@@ -58,6 +58,18 @@ Evidence:
 
 - [`docs/evidence/runtime-contract-verification-2026-07-14.md`](evidence/runtime-contract-verification-2026-07-14.md)
 
+### 2.3 Frontend first import baseline
+
+Validated locally after removing stale temporary frontend files:
+
+- selected original frontend routing/auth/API foundation built successfully;
+- the old repository did not need to be cloned locally;
+- no real Cognito values were committed.
+
+Evidence:
+
+- [`docs/evidence/frontend-first-import-verification-2026-07-14.md`](evidence/frontend-first-import-verification-2026-07-14.md)
+
 ## 3. Deferred checkpoint: Docker image validation
 
 Docker image validation remains useful, but it is not currently a blocker for frontend stabilization or adapter design work.
@@ -66,7 +78,7 @@ Current status:
 
 - Docker is not installed in the current local environment;
 - image validation is deferred until Docker Desktop / WSL integration is ready;
-- Maven tests, local API smoke, and runtime contract verification should remain the current evidence baseline.
+- Maven tests, local API smoke, runtime contract verification, and frontend first import build should remain the current evidence baseline.
 
 Run Docker image build later with:
 
@@ -81,7 +93,7 @@ Expected result:
 [backend] local verification completed
 ```
 
-If Docker build fails later, isolate it as an image packaging/runtime issue, not a Maven test, local API smoke, or runtime contract issue.
+If Docker build fails later, isolate it as an image packaging/runtime issue, not a Maven test, local API smoke, runtime contract, or frontend import issue.
 
 ## 4. Frontend correction
 
@@ -143,20 +155,34 @@ scripts/checks/frontend-import-verification.sh
 
 This is the original frontend's routing/auth/API foundation, not the full UI import.
 
-Intentional deferrals:
+## 7. Current target: upload/analysis UI import pass
+
+Reference:
+
+- [`docs/frontend-upload-analysis-import.md`](frontend-upload-analysis-import.md)
+
+Added in this pass:
 
 ```text
-AiChat.js
-Dropzone.js
-Modal.js
-ProjectTree.js
-Monaco editor rendering
-Project tree/editor endpoints
-Public projects/comments
-Terraform run/destroy/tfstate active behavior
-browser cloud-key settings behavior
-AppLayoutPreview / BoardContainer / board API
+frontend/src/components/AiChat.js
+frontend/src/components/Dropzone.js
+frontend/src/components/Modal.js
 ```
+
+Behavior:
+
+- `/` now opens the source-derived `AiChat` flow;
+- PNG/JPEG image selection uses `react-dropzone`;
+- the browser creates `POST /api/analysis/jobs` instead of calling legacy `POST /api/upload`;
+- the browser polls `GET /api/analysis/jobs/{id}` if the created job is not terminal;
+- result preview is rendered as Terraform draft output.
+
+Intentional adaptation:
+
+- this pass does not claim binary object upload is complete;
+- selected image files are converted into a source bucket/key reference for the already validated backend contract;
+- `/api/upload` compatibility remains backend work;
+- legacy browser-visible SQS queue URL polling is not carried forward.
 
 Local verification:
 
@@ -164,37 +190,46 @@ Local verification:
 bash scripts/checks/frontend-import-verification.sh
 ```
 
-If this build fails, fix this import boundary before importing `AiChat` or `ProjectTree`.
+Browser smoke requires the backend to be running:
 
-## 7. Next priority: upload/analysis UI import pass
+```bash
+cd backend
+mvn spring-boot:run
+```
 
-Next pass should import the original upload-to-analysis surface in a controlled way:
+Then:
 
-1. `AiChat.js`;
-2. `Dropzone.js`;
-3. `Modal.js`;
-4. required upload/chat/editor assets;
-5. required dependencies such as Monaco, dropzone, SweetAlert2, loaders, and icons;
-6. adaptation from legacy queue URL browser polling to analysis-job status/result polling.
+```bash
+cd frontend
+npm start
+```
 
-Rules:
+Expected browser path:
 
-- do not recreate a separate diagnostic frontend;
-- do not activate Terraform run/destroy/tfstate controls yet;
-- do not import browser cloud-key settings behavior;
-- if a button is product-valid but backend-missing, classify it as backend contract work instead of deleting it.
+```text
+http://localhost:3000
+```
 
-## 8. Backend contract bridge after frontend import
+Expected smoke result:
 
-Implement or adapt the core product contracts in this order:
+```text
+Select PNG/JPEG image
+  -> create analysis job
+  -> show analysis logs
+  -> show SUCCEEDED result
+  -> show Terraform draft preview
+```
 
-1. Project metadata model.
-2. Upload compatibility endpoint or frontend upload-to-analysis adaptation.
-3. Analysis job status/result polling bridge.
-4. Project tree read endpoint.
-5. Terraform draft read/update as stored draft editing only.
-6. Public project list and visibility update.
-7. Comments for public projects.
+## 8. Backend contract bridge after upload/analysis UI
+
+Implement or adapt the remaining core product contracts in this order:
+
+1. Real upload compatibility endpoint, or explicit upload-to-analysis adaptation with persisted metadata.
+2. Project metadata model.
+3. Project tree read endpoint.
+4. Stored Terraform draft read/update endpoint.
+5. Public project list and visibility update.
+6. Comments for public projects.
 
 Keep deferred until real integration exists:
 
