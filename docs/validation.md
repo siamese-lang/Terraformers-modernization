@@ -23,9 +23,25 @@ Key goals:
 - Use stub adapters for local/CI validation.
 - Enable AWS adapters one by one in deployment validation.
 
-## 3. Pre-deploy validation
+## 3. Current GitHub Actions policy
 
-### 3.1 Backend Maven and tests
+During the public baseline construction phase, verification workflows are intentionally manual-only.
+
+```text
+on: workflow_dispatch
+```
+
+Manual-only workflows:
+
+- Backend Maven Verification
+- Backend Image Build Verification
+- Runtime Contract Verification
+
+This is intentional. The repository is still stabilizing backend adapter code and deployment contract skeletons. Automatic push/PR checks should be re-enabled only after local verification and manual workflow runs pass reliably.
+
+## 4. Pre-deploy validation
+
+### 4.1 Backend Maven and tests
 
 Run:
 
@@ -41,7 +57,7 @@ Expected:
 - unit tests for runtime config, object storage, analysis orchestration, Bedrock request parsing, and OpenSearch query parsing pass;
 - no AWS credentials are required for default tests.
 
-### 3.2 Backend image build
+### 4.2 Backend image build
 
 Run:
 
@@ -56,7 +72,7 @@ Expected:
 - image contains the Spring Boot artifact;
 - healthcheck path matches `/actuator/health`.
 
-### 3.3 Runtime contract verification
+### 4.3 Runtime contract verification
 
 Preferred command:
 
@@ -92,9 +108,7 @@ Expected:
 - example values remain placeholders only;
 - no real account ID, ARN, queue URL, bucket name, password, token, kubeconfig, tfstate, or `.tfvars` content appears in output or evidence.
 
-The same check is automated by `Runtime Contract Verification` in GitHub Actions.
-
-## 4. Local/stub runtime validation
+## 5. Local/stub runtime validation
 
 Local and CI validation should run with AWS adapters disabled.
 
@@ -137,7 +151,7 @@ provider=stub-integrated-java
 resultObjectKey=analysis-results/...
 ```
 
-## 5. Production adapter validation order
+## 6. Production adapter validation order
 
 Enable one adapter class of dependency at a time.
 
@@ -152,7 +166,7 @@ Recommended order:
 
 Do not enable every adapter at once on the first deployment. If several adapters are enabled together, the failure domain becomes harder to isolate.
 
-## 6. Post-deploy Kubernetes validation
+## 7. Post-deploy Kubernetes validation
 
 Check runtime resources:
 
@@ -170,7 +184,7 @@ Expected:
 - restart count is not continuously increasing;
 - backend log does not show DB, secret, schema, S3, Bedrock, OpenSearch, or SQS startup errors.
 
-## 7. Image tag consistency
+## 8. Image tag consistency
 
 Runtime deployment must use the intended immutable image tag.
 
@@ -184,7 +198,7 @@ Expected:
 - placeholder image is removed in environment-specific overlays;
 - `latest` is not used for evidence-grade validation.
 
-## 8. Runtime config and secret validation
+## 9. Runtime config and secret validation
 
 Check key presence, not values.
 
@@ -201,7 +215,7 @@ Expected:
 - deployment uses both ConfigMap and Secret through `envFrom`;
 - no real secret value is pasted into documentation or evidence.
 
-## 9. Backend health validation
+## 10. Backend health validation
 
 Run:
 
@@ -217,7 +231,7 @@ Expected:
 - no Flyway validation error;
 - no Hibernate schema validation error.
 
-## 10. Analysis job API smoke validation
+## 11. Analysis job API smoke validation
 
 Run:
 
@@ -241,9 +255,9 @@ failureReason=null
 
 If the job fails, inspect `failureReason` first and then use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md).
 
-## 11. Adapter-specific checks
+## 12. Adapter-specific checks
 
-### 11.1 S3 source read
+### 12.1 S3 source read
 
 Expected:
 
@@ -251,7 +265,7 @@ Expected:
 - object content type is image-supported;
 - runtime role has `s3:HeadObject` and `s3:GetObject`.
 
-### 11.2 S3 result write
+### 12.2 S3 result write
 
 Expected:
 
@@ -260,7 +274,7 @@ Expected:
 - runtime role has `s3:PutObject`;
 - `analysis_jobs.result_object_key` is populated after success.
 
-### 11.3 Bedrock generation
+### 12.3 Bedrock generation
 
 Expected:
 
@@ -269,7 +283,7 @@ Expected:
 - prompt builder accepts source object media type;
 - response parser extracts Terraform HCL text.
 
-### 11.4 Bedrock embedding and OpenSearch retrieval
+### 12.4 Bedrock embedding and OpenSearch retrieval
 
 Expected:
 
@@ -278,7 +292,7 @@ Expected:
 - SigV4 service name is `aoss` for OpenSearch Serverless or `es` for classic domain when applicable;
 - index mapping matches `VECTOR_FIELD_NAME` and `CONTENT_FIELD_NAME`.
 
-### 11.5 SQS progress publishing
+### 12.5 SQS progress publishing
 
 Expected:
 
@@ -287,7 +301,7 @@ Expected:
 - frontend/backend polling uses the same job/project correlation;
 - RDB job state remains the source of truth even if SQS progress is delayed.
 
-## 12. DB migration and schema validation
+## 13. DB migration and schema validation
 
 Check startup logs and, if needed, database migration history.
 
@@ -304,13 +318,12 @@ Expected:
 - `provider`, `result_object_key`, and `result_preview` columns exist;
 - Hibernate validate passes.
 
-## 13. Evidence to keep
+## 14. Evidence to keep
 
 For portfolio or interview evidence, keep sanitized proof of:
 
-- GitHub Actions backend Maven verification;
+- manual GitHub Actions backend Maven verification after baseline stabilization;
 - backend image build;
-- Runtime Contract Verification workflow;
 - Kubernetes rendered manifest or environment overlay;
 - runtime config key presence without secret values;
 - backend rollout status;
@@ -318,8 +331,8 @@ For portfolio or interview evidence, keep sanitized proof of:
 - analysis job smoke success with `SUCCEEDED`, `resultObjectKey`, and `resultPreview`;
 - adapter failure runbook application if an intentional failure test is performed.
 
-## 14. Interview explanation
+## 15. Interview explanation
 
 ```text
-검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 분석 job은 S3 read, reference retrieval, Bedrock generation, S3 result write, SQS publish를 adapter boundary로 분리해 어느 구간에서 실패했는지 진단할 수 있게 했습니다. public base에는 Secret과 IAM ARN을 넣지 않고, 환경별 overlay나 External Secrets로 주입하도록 분리했으며, runtime contract verification workflow로 이 기준이 깨지지 않게 했습니다.
+검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 다만 현재는 baseline 구축 단계이므로 GitHub Actions는 수동 검증으로 두고, 로컬 검증과 수동 workflow가 안정화된 뒤 push/PR 자동 검증을 다시 켜는 방향으로 정리했습니다.
 ```
