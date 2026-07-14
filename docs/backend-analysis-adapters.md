@@ -39,23 +39,48 @@ Target responsibility:
 - read object bytes when Bedrock vision integration needs base64 image payload;
 - fail clearly on missing object or access denial.
 
+### EmbeddingProvider
+
+`EmbeddingProvider` is the boundary for turning retrieval text into an embedding vector.
+
+Current implementations:
+
+- `StubEmbeddingProvider`: default local/CI-safe deterministic vector provider.
+- `BedrockEmbeddingProvider`: optional production adapter enabled by `terraformers.analysis.bedrock-embedding-enabled=true`.
+
+This keeps OpenSearch reference retrieval testable without model calls while still exposing the real Bedrock embedding path for deployment.
+
 ### ReferenceRetriever
 
 `ReferenceRetriever` is the boundary for retrieving reference patterns before Terraform draft generation.
 
-Current implementation:
+Current implementations:
 
 - `StubReferenceRetriever`
-- returns deterministic reference documents for local/CI verification
-- allows `AnalysisProvider` tests to verify the reference retrieval step without OpenSearch credentials
+  - returns deterministic reference documents for local/CI verification;
+  - allows `AnalysisProvider` tests to verify the reference retrieval step without OpenSearch credentials.
 
-Target implementation:
+- `OpenSearchReferenceRetriever`
+  - optional production adapter enabled by `terraformers.analysis.opensearch-retriever-enabled=true`;
+  - uses `EmbeddingProvider` to build a vector;
+  - builds an OpenSearch k-NN query with `OpenSearchKnnQueryBuilder`;
+  - sends a SigV4 signed request with `SignedOpenSearchHttpClient`;
+  - parses ranked reference documents with `OpenSearchResponseParser`.
 
-- builds an embedding request from image analysis text or detected service names;
-- invokes Bedrock embedding model;
-- queries OpenSearch/AOSS k-NN index;
-- returns ranked reference documents;
-- fails clearly on missing index, wrong vector field, access denial, or timeout.
+Operational boundary:
+
+```text
+Local/CI default: StubEmbeddingProvider + StubReferenceRetriever
+Production optional: BedrockEmbeddingProvider + OpenSearchReferenceRetriever
+```
+
+Target responsibility:
+
+- build an embedding request from image analysis text or detected service names;
+- invoke Bedrock embedding model;
+- query OpenSearch/AOSS k-NN index;
+- return ranked reference documents;
+- fail clearly on missing index, wrong vector field, access denial, or timeout.
 
 ### AnalysisProvider
 
@@ -64,25 +89,25 @@ Target implementation:
 Current implementations:
 
 - `StubAnalysisProvider`
-  - default local/CI-safe provider
-  - reads source object metadata through `ObjectReader`
-  - retrieves reference patterns through `ReferenceRetriever`
-  - returns deterministic Terraform draft text
-  - exists so Maven, Docker, API, RDB, storage boundary, reference boundary, and status transition can be verified without AWS model calls
+  - default local/CI-safe provider;
+  - reads source object metadata through `ObjectReader`;
+  - retrieves reference patterns through `ReferenceRetriever`;
+  - returns deterministic Terraform draft text;
+  - exists so Maven, Docker, API, RDB, storage boundary, reference boundary, and status transition can be verified without AWS model calls.
 
 - `BedrockAnalysisProvider`
-  - optional production adapter enabled by `terraformers.analysis.bedrock-provider-enabled=true`
-  - reads uploaded object content through `ObjectReader`
-  - builds a Claude vision request through `BedrockPromptBuilder`
-  - invokes Bedrock Runtime through AWS SDK v2
-  - parses returned Terraform HCL through `BedrockResponseParser`
-  - keeps Bedrock call logic inside backend-owned orchestration rather than a Python side service
+  - optional production adapter enabled by `terraformers.analysis.bedrock-provider-enabled=true`;
+  - reads uploaded object content through `ObjectReader`;
+  - builds a Claude vision request through `BedrockPromptBuilder`;
+  - invokes Bedrock Runtime through AWS SDK v2;
+  - parses returned Terraform HCL through `BedrockResponseParser`;
+  - keeps Bedrock call logic inside backend-owned orchestration rather than a Python side service.
 
 Important boundary:
 
 ```text
 Local/CI default: StubObjectReader + StubReferenceRetriever + StubAnalysisProvider
-Production optional: AwsS3ObjectReader + ReferenceRetriever implementation + BedrockAnalysisProvider
+Production optional: AwsS3ObjectReader + OpenSearchReferenceRetriever + BedrockAnalysisProvider
 ```
 
 This keeps CI deterministic and credential-free while making the production adapter path explicit.
@@ -108,6 +133,7 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - RDB job lifecycle
 - provider/adapter separation
 - S3 object access boundary
+- embedding generation boundary
 - reference retrieval boundary
 - Bedrock invocation boundary
 - SQS progress boundary
@@ -123,10 +149,14 @@ Important values:
 
 - `S3_READER_ENABLED`
 - `BEDROCK_PROVIDER_ENABLED`
+- `BEDROCK_EMBEDDING_ENABLED`
 - `BEDROCK_MODEL_ID`
 - `BEDROCK_EMBEDDING_MODEL_ID`
 - `BEDROCK_MAX_TOKENS`
+- `OPENSEARCH_RETRIEVER_ENABLED`
 - `OPENSEARCH_ENDPOINT`
+- `OPENSEARCH_SERVICE_NAME`
+- `OPENSEARCH_TOP_K`
 - `INDEX_NAME`
 - `VECTOR_FIELD_NAME`
 - `CONTENT_FIELD_NAME`
@@ -143,21 +173,20 @@ Implemented in the public baseline:
 - backend-owned analysis job API
 - RDB job lifecycle
 - S3 object reader port and optional S3 adapter
-- reference retrieval port and stub retriever
+- embedding provider port and optional Bedrock embedding adapter
+- reference retrieval port, stub retriever, and optional SigV4-signed OpenSearch/AOSS retriever
 - Bedrock provider boundary and optional Bedrock Runtime adapter
 - SQS progress publisher boundary and optional SQS adapter
 - local/CI-safe stub path
 
 Not yet complete:
 
-- production OpenSearch/AOSS `ReferenceRetriever`
 - persistence of generated Terraform object to S3
 - full browser E2E validation
 - deployed AWS evidence
 
 ## 7. Next implementation steps
 
-1. Add OpenSearch/AOSS implementation behind `ReferenceRetriever`.
-2. Persist generated Terraform result object key in `analysis_jobs.result_object_key`.
-3. Add API smoke test assertions for `SUCCEEDED` and result preview.
-4. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+1. Persist generated Terraform result object key in `analysis_jobs.result_object_key`.
+2. Add API smoke test assertions for `SUCCEEDED` and result preview.
+3. Add runbook entries for S3 object missing, S3 access denied, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
