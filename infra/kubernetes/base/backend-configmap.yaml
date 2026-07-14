@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: terraformers-backend-runtime-config
+  labels:
+    app.kubernetes.io/name: terraformers-backend
+    app.kubernetes.io/part-of: terraformers-modernization
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+
+  # Adapter switches. Keep false for local/stub deployment; enable deliberately in AWS runtime.
+  S3_READER_ENABLED: "false"
+  S3_WRITER_ENABLED: "false"
+  BEDROCK_PROVIDER_ENABLED: "false"
+  BEDROCK_EMBEDDING_ENABLED: "false"
+  OPENSEARCH_RETRIEVER_ENABLED: "false"
+  ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
+
+  # Non-secret runtime defaults.
+  BEDROCK_MAX_TOKENS: "4096"
+  OPENSEARCH_SERVICE_NAME: "aoss"
+  OPENSEARCH_TOP_K: "3"
+  ANALYSIS_RESULT_KEY_PREFIX: "analysis-results"
