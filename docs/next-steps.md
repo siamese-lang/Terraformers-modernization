@@ -82,37 +82,46 @@ Expected result:
 
 If Docker build fails later, isolate it as an image packaging/runtime issue, not a Maven test, local API smoke, or runtime contract issue.
 
-## 4. Next priority: frontend stabilization preparation
+## 4. Next priority: frontend import and contract bridge
 
 Frontend work can start after the backend local/stub baseline and runtime contract baseline are stable. Docker image validation can be completed later because it depends on local Docker availability.
+
+Reference:
+
+- [`docs/frontend-import-assessment.md`](frontend-import-assessment.md)
+- [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md)
 
 Purpose:
 
 - do not rebuild the frontend;
 - do not turn this into a frontend portfolio;
-- stabilize the existing team-project UI enough to demonstrate backend/cloud improvements.
+- stabilize the existing team-project UI enough to demonstrate backend/cloud improvements;
+- do not remove non-working buttons by default;
+- promote valid product flows to backend contracts when implementation is appropriate.
 
-Planned checks:
+Immediate frontend/backend contract sequence:
 
-1. Import public-safe frontend source.
-2. Run `npm install` and build.
-3. Fix signup black screen or post-signup route failure.
-4. Fix main screen icons/buttons that do not route or trigger any action.
-5. Align API base URL, Cognito config, Authorization header, and CORS/CloudFront assumptions.
-6. Connect or hide controls for flows the backend can actually support.
-7. Verify browser smoke flow:
+1. Import public-safe frontend source from `siamese-lang/rdb-refactor/app/Terraformers-main/frontend`.
+2. Exclude `.env*`, `aws-exports*.js`, `node_modules`, `build`, workflow files, and any environment-specific values.
+3. Run `npm install` and `npm run build`.
+4. Implement or adapt the core upload-to-analysis contract:
+   - `POST /api/upload` compatibility endpoint, or frontend call into `POST /api/analysis/jobs` after upload metadata exists;
+   - analysis job status/result polling without exposing queue URL as the browser contract.
+5. Implement project metadata and tree endpoints before relying on dashboard/users icons.
+6. Implement Terraform draft read/update only as stored draft editing, not real Terraform execution.
+7. Keep Terraform run/destroy/tfstate deferred until real execution/state integration exists.
+8. Replace AWS credential settings with runtime configuration status, or remove it from the smoke path.
+9. Run browser smoke flow:
 
 ```text
 Open app
-  -> sign up or sign in
+  -> sign up or use local demo auth mode if auth is deferred
   -> reach main screen
-  -> create or open project flow
   -> upload/select architecture image
   -> create analysis job
-  -> display status/result preview/result object key
+  -> display SUCCEEDED status, result preview, and result object key
+  -> open generated Terraform draft in editor
 ```
-
-Detailed scope is documented in [`docs/frontend-stabilization-plan.md`](frontend-stabilization-plan.md).
 
 ## 5. Adapter validation
 
