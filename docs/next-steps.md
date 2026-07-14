@@ -21,7 +21,7 @@ Re-enable push/PR triggers only after:
 
 1. backend local verification passes;
 2. runtime contract verification passes;
-3. Docker image validation passes;
+3. Docker image validation passes or is clearly documented as environment-pending;
 4. manual GitHub Actions runs pass;
 5. the README clearly states the validated baseline scope.
 
@@ -57,11 +57,17 @@ Evidence:
 
 - [`docs/evidence/runtime-contract-verification-2026-07-14.md`](evidence/runtime-contract-verification-2026-07-14.md)
 
-## 3. Next priority: Docker image validation
+## 3. Deferred checkpoint: Docker image validation
 
-Keep Docker image validation separate from Maven/API smoke validation.
+Docker image validation remains useful, but it is not currently a blocker for frontend stabilization or adapter design work.
 
-Run Docker image build only when Docker Desktop / WSL integration is ready:
+Current status:
+
+- Docker is not installed in the current local environment;
+- image validation is deferred until Docker Desktop / WSL integration is ready;
+- Maven tests, local API smoke, and runtime contract verification should remain the current evidence baseline.
+
+Run Docker image build later with:
 
 ```bash
 RUN_DOCKER_BUILD=true bash scripts/checks/backend-local-verification.sh
@@ -74,11 +80,11 @@ Expected result:
 [backend] local verification completed
 ```
 
-If Docker build fails, isolate it as an image packaging/runtime issue, not a Maven test or local API smoke issue.
+If Docker build fails later, isolate it as an image packaging/runtime issue, not a Maven test, local API smoke, or runtime contract issue.
 
-## 4. Frontend stabilization after backend, runtime contract, and image baseline
+## 4. Next priority: frontend stabilization preparation
 
-Frontend work should start only after the backend local/stub baseline, runtime contract baseline, and image build baseline are stable.
+Frontend work can start after the backend local/stub baseline and runtime contract baseline are stable. Docker image validation can be completed later because it depends on local Docker availability.
 
 Purpose:
 
