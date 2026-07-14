@@ -64,6 +64,13 @@ Validate Kubernetes skeleton:
 kubectl kustomize infra/kubernetes/base
 ```
 
+Expected:
+
+- ConfigMap, Deployment, ServiceAccount, and Service render;
+- `backend-secret.example.yaml` is not rendered by the base kustomization;
+- ServiceAccount does not contain a public committed IAM role ARN;
+- environment-specific overlays or External Secrets must create `terraformers-backend-runtime-secrets` before apply/rollout.
+
 Validate Terraform runtime contract shape:
 
 ```bash
@@ -75,9 +82,9 @@ terraform plan -var-file=terraform.tfvars.example
 
 Expected:
 
-- Kubernetes manifests render;
 - Terraform variable contract validates;
-- example values remain placeholders only.
+- example values remain placeholders only;
+- no real account ID, ARN, queue URL, bucket name, password, token, kubeconfig, tfstate, or `.tfvars` content appears in output or evidence.
 
 ## 4. Local/stub runtime validation
 
@@ -305,5 +312,5 @@ For portfolio or interview evidence, keep sanitized proof of:
 ## 14. Interview explanation
 
 ```text
-검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 분석 job은 S3 read, reference retrieval, Bedrock generation, S3 result write, SQS publish를 adapter boundary로 분리해 어느 구간에서 실패했는지 진단할 수 있게 했습니다.
+검증은 workflow 성공에서 끝내지 않고, 실제 runtime에서 backend image가 반영됐는지, ConfigMap/Secret 계약이 맞는지, health check와 analysis job smoke가 통과하는지까지 확인하도록 구성했습니다. 분석 job은 S3 read, reference retrieval, Bedrock generation, S3 result write, SQS publish를 adapter boundary로 분리해 어느 구간에서 실패했는지 진단할 수 있게 했습니다. public base에는 Secret과 IAM ARN을 넣지 않고, 환경별 overlay나 External Secrets로 주입하도록 분리했습니다.
 ```
