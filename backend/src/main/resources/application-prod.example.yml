@@ -1,0 +1,15 @@
+# Example only. Do not put real credentials in this file.
+# Real values must be injected through environment variables, Kubernetes Secret,
+# ExternalSecret, or another runtime secret delivery mechanism.
+
+SPRING_PROFILES_ACTIVE: prod
+SPRING_DATASOURCE_URL: jdbc:mariadb://<rds-endpoint>:3306/<database>?sslMode=trust
+SPRING_DATASOURCE_USERNAME: <db-username>
+SPRING_DATASOURCE_PASSWORD: <injected-secret>
+COGNITO_REGION: <aws-region>
+COGNITO_USER_POOL_ID: <user-pool-id>
+COGNITO_USER_POOL_CLIENT_ID: <app-client-id>
+COGNITO_JWKS_URL: https://cognito-idp.<aws-region>.amazonaws.com/<user-pool-id>/.well-known/jwks.json
+S3_BUCKET_NAME: <project-bucket-name>
+AI_LOG_QUEUE_URL: https://sqs.<aws-region>.amazonaws.com/<account-id>/<ai-log-queue>
+TERRAFORM_LOG_QUEUE_URL: https://sqs.<aws-region>.amazonaws.com/<account-id>/<terraform-log-queue>
