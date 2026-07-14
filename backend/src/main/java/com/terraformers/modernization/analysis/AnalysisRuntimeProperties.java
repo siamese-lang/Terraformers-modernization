@@ -13,6 +13,9 @@ public class AnalysisRuntimeProperties {
     private String vectorFieldName;
     private String contentFieldName;
     private String externalPythonServiceUrl;
+    private boolean sqsPublisherEnabled;
+    private String progressQueueUrl;
+    private String resultQueueUrl;
 
     public AnalysisMode getMode() {
         return mode;
@@ -76,5 +79,29 @@ public class AnalysisRuntimeProperties {
 
     public void setExternalPythonServiceUrl(String externalPythonServiceUrl) {
         this.externalPythonServiceUrl = externalPythonServiceUrl;
+    }
+
+    public boolean isSqsPublisherEnabled() {
+        return sqsPublisherEnabled;
+    }
+
+    public void setSqsPublisherEnabled(boolean sqsPublisherEnabled) {
+        this.sqsPublisherEnabled = sqsPublisherEnabled;
+    }
+
+    public String getProgressQueueUrl() {
+        return progressQueueUrl;
+    }
+
+    public void setProgressQueueUrl(String progressQueueUrl) {
+        this.progressQueueUrl = progressQueueUrl;
+    }
+
+    public String getResultQueueUrl() {
+        return resultQueueUrl;
+    }
+
+    public void setResultQueueUrl(String resultQueueUrl) {
+        this.resultQueueUrl = resultQueueUrl;
     }
 }
