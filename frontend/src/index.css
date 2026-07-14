@@ -51,6 +51,7 @@ pre {
 
 h1,
 h2,
+h3,
 p {
   margin-top: 0;
 }
@@ -196,6 +197,12 @@ textarea {
   background: rgba(15, 23, 42, 0.72);
 }
 
+.chat-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+  min-height: 0;
+}
+
 .chat-list {
   overflow: auto;
   padding: 28px 32px;
@@ -235,7 +242,8 @@ textarea {
 }
 
 .terraform-code,
-.analysis-log-panel pre {
+.analysis-log-panel pre,
+.project-tree-preview pre {
   overflow: auto;
   white-space: pre-wrap;
   border-radius: 14px;
@@ -244,12 +252,18 @@ textarea {
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
-.analysis-log-panel {
+.analysis-log-panel,
+.project-tree-panel {
   margin: 24px 0;
   padding: 18px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.76);
+}
+
+.project-tree-panel {
+  overflow: auto;
+  margin: 28px 28px 28px 0;
 }
 
 .panel-heading {
@@ -259,7 +273,8 @@ textarea {
   gap: 12px;
 }
 
-.status-running {
+.status-running,
+.project-tree-count {
   color: var(--brand);
 }
 
@@ -339,6 +354,111 @@ textarea {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+.project-tree-metadata {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.project-tree-metadata div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.62);
+}
+
+.project-tree-metadata dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.project-tree-metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-tree-list,
+.project-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project-tree-node-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+  margin: 0 0 6px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.62);
+  text-align: left;
+}
+
+.project-tree-node-button.clickable:hover {
+  border-color: rgba(56, 189, 248, 0.44);
+}
+
+.project-tree-node-icon {
+  color: var(--brand);
+}
+
+.project-tree-node-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.project-tree-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tree-node-subtitle {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tree-error,
+.project-tree-empty {
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+.project-tree-error {
+  color: var(--danger);
+}
+
+.project-tree-preview {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.project-tree-preview p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .chat-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .project-tree-panel {
+    margin: 0 32px 28px;
+  }
 }
 
 @media (max-width: 900px) {
