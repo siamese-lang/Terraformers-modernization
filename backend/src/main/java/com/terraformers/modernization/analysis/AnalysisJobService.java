@@ -9,10 +9,16 @@ public class AnalysisJobService {
 
     private final AnalysisJobRepository repository;
     private final AnalysisRuntimeProperties properties;
+    private final AnalysisJobOrchestrator orchestrator;
 
-    public AnalysisJobService(AnalysisJobRepository repository, AnalysisRuntimeProperties properties) {
+    public AnalysisJobService(
+            AnalysisJobRepository repository,
+            AnalysisRuntimeProperties properties,
+            AnalysisJobOrchestrator orchestrator
+    ) {
         this.repository = repository;
         this.properties = properties;
+        this.orchestrator = orchestrator;
     }
 
     @Transactional
@@ -24,7 +30,10 @@ public class AnalysisJobService {
         entity.setCorrelationId(request.correlationId());
         entity.setStatus(AnalysisJobStatus.PENDING);
         entity.setAnalysisMode(properties.getMode());
-        return AnalysisJobResponse.from(repository.save(entity));
+
+        AnalysisJobEntity saved = repository.save(entity);
+        orchestrator.run(saved);
+        return AnalysisJobResponse.from(saved);
     }
 
     @Transactional(readOnly = true)
