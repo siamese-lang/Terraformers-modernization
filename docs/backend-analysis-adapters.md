@@ -201,14 +201,16 @@ Implemented in the public baseline:
 - SQS progress publisher boundary and optional SQS adapter
 - local/CI-safe stub path
 - smoke script assertions for `SUCCEEDED`, `resultObjectKey`, and `resultPreview`
+- adapter failure runbook for S3, Bedrock, OpenSearch/AOSS, SQS, and RDB job state
 
 Not yet complete:
 
+- Terraform/Kubernetes runtime variables for the new adapter switches
 - full browser E2E validation
 - deployed AWS evidence
 
 ## 7. Next implementation steps
 
-1. Add runbook entries for S3 object missing, S3 access denied, S3 result write failure, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
-2. Add Terraform/Kubernetes runtime variables for the new adapter switches.
-3. Add browser E2E validation after deployment manifests are available.
+1. Add Terraform/Kubernetes runtime variables for the new adapter switches.
+2. Add browser E2E validation after deployment manifests are available.
+3. Collect deployed AWS evidence after runtime validation.
