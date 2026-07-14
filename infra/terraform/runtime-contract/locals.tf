@@ -1,17 +1,17 @@
 locals {
   backend_runtime_config = {
-    SPRING_PROFILES_ACTIVE             = "prod"
-    AWS_REGION                         = var.aws_region
-    S3_READER_ENABLED                  = tostring(var.adapter_switches.s3_reader_enabled)
-    S3_WRITER_ENABLED                  = tostring(var.adapter_switches.s3_writer_enabled)
-    BEDROCK_PROVIDER_ENABLED           = tostring(var.adapter_switches.bedrock_provider_enabled)
-    BEDROCK_EMBEDDING_ENABLED          = tostring(var.adapter_switches.bedrock_embedding_enabled)
-    OPENSEARCH_RETRIEVER_ENABLED       = tostring(var.adapter_switches.opensearch_retriever_enabled)
-    ANALYSIS_SQS_PUBLISHER_ENABLED     = tostring(var.adapter_switches.analysis_sqs_publisher_enabled)
-    BEDROCK_MAX_TOKENS                 = tostring(var.bedrock_runtime.max_tokens)
-    OPENSEARCH_SERVICE_NAME            = var.opensearch_runtime.service_name
-    OPENSEARCH_TOP_K                   = tostring(var.opensearch_runtime.top_k)
-    ANALYSIS_RESULT_KEY_PREFIX         = var.object_storage_runtime.result_key_prefix
+    SPRING_PROFILES_ACTIVE         = "prod"
+    AWS_REGION                     = var.aws_region
+    S3_READER_ENABLED              = tostring(var.adapter_switches.s3_reader_enabled)
+    S3_WRITER_ENABLED              = tostring(var.adapter_switches.s3_writer_enabled)
+    BEDROCK_PROVIDER_ENABLED       = tostring(var.adapter_switches.bedrock_provider_enabled)
+    BEDROCK_EMBEDDING_ENABLED      = tostring(var.adapter_switches.bedrock_embedding_enabled)
+    OPENSEARCH_RETRIEVER_ENABLED   = tostring(var.adapter_switches.opensearch_retriever_enabled)
+    ANALYSIS_SQS_PUBLISHER_ENABLED = tostring(var.adapter_switches.analysis_sqs_publisher_enabled)
+    BEDROCK_MAX_TOKENS             = tostring(var.bedrock_runtime.max_tokens)
+    OPENSEARCH_SERVICE_NAME        = var.opensearch_runtime.service_name
+    OPENSEARCH_TOP_K               = tostring(var.opensearch_runtime.top_k)
+    ANALYSIS_RESULT_KEY_PREFIX     = var.object_storage_runtime.result_key_prefix
   }
 
   backend_runtime_secret_values = {
