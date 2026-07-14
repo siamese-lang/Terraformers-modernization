@@ -1,8 +1,8 @@
 package com.terraformers.modernization.projecttree;
 
+import com.terraformers.modernization.project.ProjectMetadataService;
 import com.terraformers.modernization.project.ProjectResponse;
 import com.terraformers.modernization.project.ProjectVisibility;
-import com.terraformers.modernization.project.ProjectMetadataService;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -90,7 +90,7 @@ public class ProjectTreeService {
                 "main.tf",
                 project.projectId(),
                 folderId,
-                "/api/analysis/jobs/" + project.latestAnalysisJobId(),
+                "/api/projects/" + project.projectId() + "/terraform/main.tf",
                 null,
                 null,
                 project.latestResultObjectKey()
