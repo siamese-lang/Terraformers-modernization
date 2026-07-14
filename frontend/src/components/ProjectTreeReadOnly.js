@@ -84,6 +84,19 @@ function normalizeTreeResponse(data, selectedProjectId) {
   };
 }
 
+function previewContentFromResponse(data) {
+  if (typeof data === 'string') {
+    return data;
+  }
+  if (typeof data?.content === 'string') {
+    return data.content;
+  }
+  if (typeof data?.resultPreview === 'string') {
+    return data.resultPreview;
+  }
+  return JSON.stringify(data, null, 2);
+}
+
 function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
   const [treeState, setTreeState] = useState({ roots: [], metadata: null });
   const [selectedNode, setSelectedNode] = useState(null);
@@ -139,16 +152,7 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
 
     try {
       const response = await api.get(node.apiPath);
-      const data = response.data;
-      if (typeof data === 'string') {
-        setFilePreview(data);
-        return;
-      }
-      if (data?.resultPreview) {
-        setFilePreview(data.resultPreview);
-        return;
-      }
-      setFilePreview(JSON.stringify(data, null, 2));
+      setFilePreview(previewContentFromResponse(response.data));
     } catch (previewError) {
       setFilePreview(`파일 미리보기 조회 실패: ${previewError?.message || 'unknown error'}`);
     }
