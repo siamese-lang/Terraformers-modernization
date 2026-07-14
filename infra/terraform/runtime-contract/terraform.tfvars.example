@@ -13,40 +13,40 @@ adapter_switches = {
 }
 
 database_runtime = {
-  datasource_url      = "jdbc:mariadb://example-rds.cluster-xxxxxxxx.ap-northeast-2.rds.amazonaws.com:3306/terraformers"
-  datasource_username = "replace-me"
-  datasource_password = "replace-me"
+  datasource_url      = "<jdbc-datasource-url>"
+  datasource_username = "<datasource-username>"
+  datasource_password = "<datasource-password>"
 }
 
 cognito_runtime = {
-  region              = "ap-northeast-2"
-  user_pool_id        = "ap-northeast-2_example"
-  user_pool_client_id = "replace-me"
-  jwks_url            = "https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_example/.well-known/jwks.json"
+  region              = "<aws-region>"
+  user_pool_id        = "<cognito-user-pool-id>"
+  user_pool_client_id = "<cognito-user-pool-client-id>"
+  jwks_url            = "<cognito-jwks-url>"
 }
 
 object_storage_runtime = {
-  upload_bucket_name = "terraformers-upload-bucket-example"
-  result_bucket_name = "terraformers-result-bucket-example"
+  upload_bucket_name = "<upload-bucket-name>"
+  result_bucket_name = "<result-bucket-name>"
   result_key_prefix  = "analysis-results"
 }
 
 queue_runtime = {
-  ai_log_queue_url        = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/terraformers-ai-log"
-  terraform_log_queue_url = "https://sqs.ap-northeast-2.amazonaws.com/123456789012/terraformers-terraform-log"
+  ai_log_queue_url        = "<ai-log-queue-url>"
+  terraform_log_queue_url = "<terraform-log-queue-url>"
 }
 
 bedrock_runtime = {
-  model_id           = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-  embedding_model_id = "amazon.titan-embed-text-v2:0"
+  model_id           = "<bedrock-vision-model-id>"
+  embedding_model_id = "<bedrock-embedding-model-id>"
   max_tokens         = 4096
 }
 
 opensearch_runtime = {
-  endpoint           = "https://example.aoss.ap-northeast-2.amazonaws.com"
+  endpoint           = "<opensearch-or-aoss-endpoint>"
   service_name       = "aoss"
   top_k              = 3
-  index_name         = "terraformers-reference-patterns"
-  vector_field_name  = "embedding"
-  content_field_name = "content"
+  index_name         = "<reference-index-name>"
+  vector_field_name  = "<vector-field-name>"
+  content_field_name = "<content-field-name>"
 }
