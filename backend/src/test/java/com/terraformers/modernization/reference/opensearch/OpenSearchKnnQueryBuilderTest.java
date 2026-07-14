@@ -19,7 +19,7 @@ class OpenSearchKnnQueryBuilderTest {
         JsonNode root = objectMapper.readTree(body);
         assertThat(root.path("size").asInt()).isEqualTo(3);
         assertThat(root.path("query").path("knn").path("embedding").path("k").asInt()).isEqualTo(3);
-        assertThat(root.path("query").path("knn").path("embedding").path("vector")).hasSize(3);
+        assertThat(root.path("query").path("knn").path("embedding").path("vector").size()).isEqualTo(3);
         assertThat(root.path("_source").toString()).contains("content");
     }
 }
