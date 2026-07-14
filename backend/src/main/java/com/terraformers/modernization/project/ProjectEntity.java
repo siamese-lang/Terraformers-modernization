@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -30,6 +31,13 @@ public class ProjectEntity {
 
     @Column(name = "latest_result_object_key", length = 1024)
     private String latestResultObjectKey;
+
+    @Lob
+    @Column(name = "terraform_draft")
+    private String terraformDraft;
+
+    @Column(name = "terraform_draft_updated_at")
+    private Instant terraformDraftUpdatedAt;
 
     @Column(name = "source_bucket", length = 255)
     private String sourceBucket;
@@ -102,6 +110,22 @@ public class ProjectEntity {
 
     public void setLatestResultObjectKey(String latestResultObjectKey) {
         this.latestResultObjectKey = latestResultObjectKey;
+    }
+
+    public String getTerraformDraft() {
+        return terraformDraft;
+    }
+
+    public void setTerraformDraft(String terraformDraft) {
+        this.terraformDraft = terraformDraft;
+    }
+
+    public Instant getTerraformDraftUpdatedAt() {
+        return terraformDraftUpdatedAt;
+    }
+
+    public void setTerraformDraftUpdatedAt(Instant terraformDraftUpdatedAt) {
+        this.terraformDraftUpdatedAt = terraformDraftUpdatedAt;
     }
 
     public String getSourceBucket() {
