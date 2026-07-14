@@ -1,11 +1,11 @@
 package com.terraformers.modernization.reference;
 
 import java.util.List;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnMissingBean(EmbeddingProvider.class)
+@ConditionalOnProperty(prefix = "terraformers.analysis", name = "bedrock-embedding-enabled", havingValue = "false", matchIfMissing = true)
 public class StubEmbeddingProvider implements EmbeddingProvider {
 
     @Override
