@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
+import '../styles/public-projects.css';
 
 function projectIdOf(project) {
   return project.projectId || project.id || '';
