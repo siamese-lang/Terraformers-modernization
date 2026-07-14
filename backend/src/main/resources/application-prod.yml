@@ -43,3 +43,18 @@ terraformers:
       - S3_BUCKET_NAME
       - AI_LOG_QUEUE_URL
       - TERRAFORM_LOG_QUEUE_URL
+      - BEDROCK_MODEL_ID
+      - BEDROCK_EMBEDDING_MODEL_ID
+      - OPENSEARCH_ENDPOINT
+      - INDEX_NAME
+      - VECTOR_FIELD_NAME
+      - CONTENT_FIELD_NAME
+  analysis:
+    mode: integrated-java
+    bedrock-model-id: ${BEDROCK_MODEL_ID}
+    bedrock-embedding-model-id: ${BEDROCK_EMBEDDING_MODEL_ID}
+    opensearch-endpoint: ${OPENSEARCH_ENDPOINT}
+    index-name: ${INDEX_NAME}
+    vector-field-name: ${VECTOR_FIELD_NAME}
+    content-field-name: ${CONTENT_FIELD_NAME}
+    external-python-service-url: ${PYTHON_ANALYSIS_SERVICE_URL:}
