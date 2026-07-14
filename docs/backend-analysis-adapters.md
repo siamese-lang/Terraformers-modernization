@@ -15,11 +15,11 @@ POST /api/analysis/jobs
   -> ObjectReader checks the uploaded S3 object boundary
   -> ReferenceRetriever returns reference patterns
   -> AnalysisProvider analyzes the source object
-  -> AnalysisResultStorage writes generated Terraform HCL
+  -> AnalysisResultStorage writes generated Terraform HCL through ObjectWriter
   -> ProgressPublisher emits progress/result state
-  -> analysis_jobs row stores SUCCEEDED/FAILED and result_object_key
+  -> analysis_jobs row moves RUNNING -> SUCCEEDED or FAILED
 GET /api/analysis/jobs/{id}
-  -> returns current RDB job state and generated result object key
+  -> returns current RDB job state, provider, resultObjectKey, resultPreview, and failureReason
 ```
 
 ## 3. Ports
@@ -42,27 +42,19 @@ Target responsibility:
 
 ### ObjectWriter
 
-`ObjectWriter` is the boundary for storing generated Terraform result files.
+`ObjectWriter` is the boundary for writing generated Terraform HCL.
 
 Current implementations:
 
 - `StubObjectWriter`: default local/CI-safe writer. It returns the requested bucket/key without calling AWS.
 - `AwsS3ObjectWriter`: optional production adapter enabled by `terraformers.storage.s3-writer-enabled=true`.
 
-`AnalysisResultStorage` builds the result object key and writes the generated Terraform HCL through this port.
+Target responsibility:
 
-Default object key pattern:
-
-```text
-analysis-results/{projectId}/{yyyy}/{MM}/{dd}/{analysisJobId}/main.tf
-```
-
-Operational responsibility:
-
-- store generated Terraform draft outside the database;
-- persist only the result object key in `analysis_jobs.result_object_key`;
-- keep large generated content out of relational metadata;
-- fail clearly on S3 access denial, missing bucket, or invalid object key.
+- write generated Terraform HCL to object storage;
+- return the persisted object key;
+- let `AnalysisJobOrchestrator` store that key in `analysis_jobs.result_object_key`;
+- fail clearly on missing bucket, access denial, or blocked prefix.
 
 ### EmbeddingProvider
 
@@ -157,7 +149,8 @@ By moving orchestration ownership to Spring Boot backend, the project can show:
 - backend API contract
 - RDB job lifecycle
 - provider/adapter separation
-- S3 object read/write boundary
+- S3 object access boundary
+- S3 result persistence boundary
 - embedding generation boundary
 - reference retrieval boundary
 - Bedrock invocation boundary
@@ -207,6 +200,7 @@ Implemented in the public baseline:
 - Bedrock provider boundary and optional Bedrock Runtime adapter
 - SQS progress publisher boundary and optional SQS adapter
 - local/CI-safe stub path
+- smoke script assertions for `SUCCEEDED`, `resultObjectKey`, and `resultPreview`
 
 Not yet complete:
 
@@ -215,6 +209,6 @@ Not yet complete:
 
 ## 7. Next implementation steps
 
-1. Add API smoke test assertions for `SUCCEEDED`, `resultObjectKey`, and `resultPreview`.
-2. Add runbook entries for S3 object missing, S3 access denied, S3 result write failure, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
-3. Add Terraform/Kubernetes runtime variables for the new adapter switches.
+1. Add runbook entries for S3 object missing, S3 access denied, S3 result write failure, Bedrock timeout, OpenSearch query failure, and SQS publish failure.
+2. Add Terraform/Kubernetes runtime variables for the new adapter switches.
+3. Add browser E2E validation after deployment manifests are available.
