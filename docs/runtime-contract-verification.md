@@ -70,20 +70,21 @@ terraform plan -input=false -lock=false -var-file=terraform.tfvars.example
 
 The example file is for contract validation only. It must not be applied to a real AWS account as-is.
 
-## 3. GitHub Actions workflow
+## 3. GitHub Actions workflow status
 
-The same check runs in:
+The matching workflow is:
 
 ```text
 .github/workflows/runtime-contract-verification.yml
 ```
 
-The workflow is triggered when these paths change:
+During the public baseline construction phase, this workflow is intentionally **manual-only**.
 
-- `infra/kubernetes/**`;
-- `infra/terraform/runtime-contract/**`;
-- `scripts/checks/runtime-contract-verification.sh`;
-- `.github/workflows/runtime-contract-verification.yml`.
+```text
+on: workflow_dispatch
+```
+
+It should be run manually when the Kubernetes base, Terraform runtime contract, or verification script changes. Automatic push/PR execution should be re-enabled only after the backend baseline and runtime contract are stable enough that repeated public red checks no longer obscure meaningful progress.
 
 ## 4. Failure interpretation
 
@@ -98,5 +99,5 @@ The workflow is triggered when these paths change:
 ## 5. Portfolio explanation
 
 ```text
-배포 manifest와 runtime 변수도 포트폴리오 품질에 포함된다고 보고, public base에 Secret이나 계정별 IAM ARN이 들어가지 않도록 정적 검증을 추가했습니다. Kubernetes base는 ConfigMap/Deployment/ServiceAccount/Service만 렌더링하고, Secret과 IRSA ARN은 환경별 overlay나 External Secrets로 주입하도록 분리했습니다. Terraform runtime contract도 plan 단계까지 검증해 adapter switch와 Secret key 계약이 깨지지 않도록 했습니다.
+배포 manifest와 runtime 변수도 포트폴리오 품질에 포함된다고 보고, public base에 Secret이나 계정별 IAM ARN이 들어가지 않도록 정적 검증을 추가했습니다. 다만 아직 baseline 구축 중이므로 자동 CI가 계속 실패 표시를 만들지 않게 수동 실행으로 두고, backend와 runtime contract가 안정화된 뒤 push/PR 자동 검증을 다시 켤 계획입니다.
 ```
