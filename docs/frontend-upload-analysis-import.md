@@ -6,7 +6,7 @@ This pass imports the original Terraformers frontend's core product direction:
 
 ```text
 chat-style architecture image selection
-  -> analysis request
+  -> upload request
   -> analysis logs/status
   -> Terraform draft preview
 ```
@@ -39,47 +39,50 @@ The previous `AiChat` listened for Bedrock events and rendered Terraform code in
 
 ## 3. Modernized behavior in this pass
 
-The browser flow now uses the backend contract already validated by local smoke tests:
+The browser now keeps the original upload entry point:
 
 ```text
-POST /api/analysis/jobs
-GET  /api/analysis/jobs/{id}
+POST /api/upload
 ```
+
+The backend compatibility endpoint creates an analysis job internally and returns the analysis job result fields to the browser.
 
 When a user selects a PNG/JPEG image, the frontend:
 
 1. shows the image in the chat thread;
-2. uses the stable smoke source reference from `.env` defaults;
-3. creates an analysis job;
-4. polls the job if it is not already terminal;
+2. sends the file as multipart form data to `/api/upload`;
+3. receives the created analysis job id and source reference;
+4. polls `GET /api/analysis/jobs/{id}` only if the upload response is not already terminal;
 5. renders `resultPreview` as Terraform draft output.
 
-Default smoke reference:
+## 4. Current compatibility boundary
+
+This pass does not yet claim production binary object persistence.
+
+Current stage:
 
 ```text
-projectId=project-browser-smoke
-sourceBucket=example-bucket
-sourceKey=uploads/architecture-diagram.png
+browser multipart upload
+  -> backend captures upload metadata
+  -> backend generates source reference
+  -> backend creates analysis job
+  -> browser renders Terraform draft preview
 ```
 
-This matches the already validated backend local smoke contract and avoids generating arbitrary source keys before binary upload is implemented.
-
-## 4. Why `/api/upload` is not implemented here
-
-This pass does not claim binary upload is complete.
-
-The current backend contract accepts:
+Future production stage:
 
 ```text
-projectId
-sourceBucket
-sourceKey
-correlationId
+browser multipart upload
+  -> backend stores binary object through S3 writer
+  -> persisted object reference is used by analysis provider
+  -> project metadata and file tree are updated
 ```
 
-Therefore this frontend pass bridges a browser-selected image into a stable analysis job source reference instead of pretending that object storage upload is complete.
+This boundary is documented in:
 
-A real upload compatibility endpoint remains future backend work.
+```text
+docs/backend-upload-compatibility.md
+```
 
 ## 5. Explicit exclusions
 
@@ -100,6 +103,12 @@ Run from the repository root:
 
 ```bash
 bash scripts/checks/frontend-import-verification.sh
+```
+
+Backend contract coverage:
+
+```text
+backend/src/test/java/com/terraformers/modernization/analysis/AnalysisUploadControllerTest.java
 ```
 
 For browser smoke, start the backend first:
@@ -126,16 +135,17 @@ Expected smoke result:
 
 ```text
 Select PNG/JPEG image
-  -> create analysis job using stable smoke source reference
+  -> POST /api/upload
+  -> create analysis job
   -> show analysis logs
   -> show SUCCEEDED result
   -> show Terraform draft preview
 ```
 
-If the browser still returns HTTP 500 after this pass, inspect the backend terminal stack trace. The frontend now prints backend response details when available, but server-side exceptions must be diagnosed from the Spring Boot log.
+If the browser still returns HTTP 500 after this pass, inspect the backend terminal stack trace. The frontend prints backend response details when available, but server-side exceptions must be diagnosed from the Spring Boot log.
 
 ## 7. Portfolio explanation
 
 ```text
-기존 Terraformers의 채팅형 이미지 업로드 흐름을 그대로 새로 만들지 않고, 원본 프론트의 AiChat/Dropzone/Modal 구조를 기준으로 선별 이관했습니다. 다만 원본의 SQS queue URL 브라우저 polling과 Terraform 실행/삭제, 브라우저 AWS credential 입력은 현재 운영 보안 방향과 맞지 않거나 백엔드 계약이 없으므로 제외했습니다. 실제 바이너리 업로드를 완료했다고 과장하지 않고, 이미 검증된 analysis job API와 안정적인 smoke source reference를 사용해 이미지 선택부터 Terraform 초안 미리보기까지 브라우저에서 확인 가능한 흐름으로 안정화했습니다.
+기존 Terraformers의 채팅형 이미지 업로드 흐름을 그대로 새로 만들지 않고, 원본 프론트의 AiChat/Dropzone/Modal 구조를 기준으로 선별 이관했습니다. 원본과 동일한 `/api/upload` 진입점을 유지하되, 내부적으로는 현재 검증된 analysis job 파이프라인에 연결했습니다. 다만 실제 S3 바이너리 저장까지 완료했다고 과장하지 않고, 현재 단계는 업로드 메타데이터와 source reference를 통해 Terraform 초안 미리보기를 확인하는 호환 계약으로 분리했습니다.
 ```
