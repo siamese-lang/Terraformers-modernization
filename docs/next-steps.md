@@ -94,7 +94,7 @@ Reason:
 - the project direction is to preserve and stabilize the original team-project UI flow where appropriate;
 - frontend work should not replace backend/cloud modernization with a separate demo page.
 
-The `frontend/` path should now be reserved for a selective, public-safe import from:
+The `frontend/` path is reserved for a selective, public-safe import from:
 
 ```text
 siamese-lang/rdb-refactor/app/Terraformers-main/frontend
@@ -112,54 +112,79 @@ Inventory status:
 
 - original source repository inspected through the GitHub connector;
 - source groups identified for build files, auth/routing, API wrapper, upload/analysis, project tree/editor, public projects/comments, board layout, settings, and assets;
-- first import pass identified;
 - backend contract work created by frontend import is ordered;
 - local clone of the old repository is not required.
 
-## 6. Next priority: first original frontend import pass
+## 6. Completed: first original frontend import pass
 
-Import the first public-safe source set from the original frontend, not a new diagnostic screen.
+Reference:
 
-Recommended first pass:
+- [`docs/frontend-first-import.md`](frontend-first-import.md)
+
+Imported in this pass:
 
 ```text
-package.json
-public/index.html
-src/index.js
-src/App.js
-src/utils/api.js
-src/utils/eventBus.js
-src/utils/chatSupport.js
-src/utils/visibility.js
-src/components/AiChat.js
-src/components/Dropzone.js
-src/components/Modal.js
-src/components/ProjectTree.js
-src/components/EntryPage.js
-src/components/ConfirmSignUpPage.js
-minimum styles required for build
-minimum assets required by selected components
+frontend/package.json
+frontend/public/index.html
+frontend/src/index.js
+frontend/src/App.js
+frontend/src/awsConfig.js
+frontend/src/components/EntryPage.js
+frontend/src/components/ConfirmSignUpPage.js
+frontend/src/utils/api.js
+frontend/src/utils/eventBus.js
+frontend/src/utils/chatSupport.js
+frontend/src/utils/visibility.js
+frontend/src/index.css
+frontend/src/styles/login.css
+frontend/.env.example
+scripts/checks/frontend-import-verification.sh
 ```
 
-Do not include in the first pass unless required by build:
+This is the original frontend's routing/auth/API foundation, not the full UI import.
+
+Intentional deferrals:
 
 ```text
-AppLayoutPreview.js
-BoardContainer.js
-src/api/board.js
+AiChat.js
+Dropzone.js
+Modal.js
+ProjectTree.js
+Monaco editor rendering
+Project tree/editor endpoints
+Public projects/comments
 Terraform run/destroy/tfstate active behavior
 browser cloud-key settings behavior
-old deployment workflows
+AppLayoutPreview / BoardContainer / board API
 ```
 
-Build stabilization rules:
+Local verification:
 
-1. Exclude `.env*`, `aws-exports*.js`, `node_modules`, `build`, old workflow files, and environment-specific values.
-2. Replace missing binary assets with neutral placeholders only when necessary for build stabilization.
-3. Keep broken controls only when they are clearly disabled or backed by a planned backend contract.
-4. Remove only features that conflict with the project direction.
+```bash
+bash scripts/checks/frontend-import-verification.sh
+```
 
-## 7. Backend contract bridge after first frontend import
+If this build fails, fix this import boundary before importing `AiChat` or `ProjectTree`.
+
+## 7. Next priority: upload/analysis UI import pass
+
+Next pass should import the original upload-to-analysis surface in a controlled way:
+
+1. `AiChat.js`;
+2. `Dropzone.js`;
+3. `Modal.js`;
+4. required upload/chat/editor assets;
+5. required dependencies such as Monaco, dropzone, SweetAlert2, loaders, and icons;
+6. adaptation from legacy queue URL browser polling to analysis-job status/result polling.
+
+Rules:
+
+- do not recreate a separate diagnostic frontend;
+- do not activate Terraform run/destroy/tfstate controls yet;
+- do not import browser cloud-key settings behavior;
+- if a button is product-valid but backend-missing, classify it as backend contract work instead of deleting it.
+
+## 8. Backend contract bridge after frontend import
 
 Implement or adapt the core product contracts in this order:
 
@@ -177,7 +202,7 @@ Keep deferred until real integration exists:
 - real S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 8. Adapter validation
+## 9. Adapter validation
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once.
 
@@ -192,7 +217,7 @@ Recommended order:
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 9. Infrastructure import
+## 10. Infrastructure import
 
 After backend, runtime contract, and image validation, import Terraform in this order:
 
@@ -206,7 +231,7 @@ After backend, runtime contract, and image validation, import Terraform in this 
 
 Do not import the full private repository history.
 
-## 10. Documentation updates
+## 11. Documentation updates
 
 After each infrastructure/runtime change, update:
 
