@@ -1,0 +1,133 @@
+package com.terraformers.modernization.analysis;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "analysis_jobs")
+public class AnalysisJobEntity {
+
+    @Id
+    @Column(length = 36, nullable = false, updatable = false)
+    private String id;
+
+    @Column(name = "project_id", nullable = false, length = 64)
+    private String projectId;
+
+    @Column(name = "source_bucket", nullable = false, length = 255)
+    private String sourceBucket;
+
+    @Column(name = "source_key", nullable = false, length = 1024)
+    private String sourceKey;
+
+    @Column(name = "correlation_id", length = 128)
+    private String correlationId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private AnalysisJobStatus status = AnalysisJobStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_mode", nullable = false, length = 32)
+    private AnalysisMode analysisMode = AnalysisMode.INTEGRATED_JAVA;
+
+    @Column(name = "failure_reason", length = 2000)
+    private String failureReason;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @PrePersist
+    void prePersist() {
+        Instant now = Instant.now();
+        if (id == null) {
+            id = UUID.randomUUID().toString();
+        }
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = Instant.now();
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getProjectId() {
+        return projectId;
+    }
+
+    public void setProjectId(String projectId) {
+        this.projectId = projectId;
+    }
+
+    public String getSourceBucket() {
+        return sourceBucket;
+    }
+
+    public void setSourceBucket(String sourceBucket) {
+        this.sourceBucket = sourceBucket;
+    }
+
+    public String getSourceKey() {
+        return sourceKey;
+    }
+
+    public void setSourceKey(String sourceKey) {
+        this.sourceKey = sourceKey;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
+    }
+
+    public AnalysisJobStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(AnalysisJobStatus status) {
+        this.status = status;
+    }
+
+    public AnalysisMode getAnalysisMode() {
+        return analysisMode;
+    }
+
+    public void setAnalysisMode(AnalysisMode analysisMode) {
+        this.analysisMode = analysisMode;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+}
