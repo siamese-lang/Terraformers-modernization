@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: terraformers-backend
+  labels:
+    app.kubernetes.io/name: terraformers-backend
+    app.kubernetes.io/part-of: terraformers-modernization
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: terraformers-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: terraformers-backend
+        app.kubernetes.io/part-of: terraformers-modernization
+    spec:
+      serviceAccountName: terraformers-backend
+      containers:
+        - name: backend
+          image: public.ecr.aws/example/terraformers-backend:replace-with-immutable-tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: terraformers-backend-runtime-config
+            - secretRef:
+                name: terraformers-backend-runtime-secrets
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
