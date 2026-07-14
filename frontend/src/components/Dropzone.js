@@ -5,7 +5,8 @@ import { eventBus } from '../utils/eventBus';
 
 const maxFileSize = 524288000;
 const defaultBucket = process.env.REACT_APP_ANALYSIS_SOURCE_BUCKET || 'example-bucket';
-const defaultPrefix = process.env.REACT_APP_ANALYSIS_SOURCE_PREFIX || 'uploads';
+const defaultSourceKey = process.env.REACT_APP_ANALYSIS_SOURCE_KEY || 'uploads/architecture-diagram.png';
+const defaultProjectId = process.env.REACT_APP_ANALYSIS_PROJECT_ID || 'project-browser-smoke';
 
 const baseStyle = {
   flex: 1,
@@ -28,15 +29,21 @@ const focusedStyle = { borderColor: '#38bdf8' };
 const acceptStyle = { borderColor: '#34d399', backgroundColor: '#052e2b' };
 const rejectStyle = { borderColor: '#f87171', backgroundColor: '#3b1111' };
 
-function normalizeProjectId(fileName) {
-  const baseName = fileName.replace(/\.[^.]+$/, '');
-  const normalized = baseName.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-  return (normalized || 'architecture-image').slice(0, 48);
-}
+function buildErrorMessage(error) {
+  const status = error?.response?.status;
+  const data = error?.response?.data;
 
-function buildSourceKey(fileName) {
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '-');
-  return `${defaultPrefix}/${Date.now()}-${safeName}`;
+  if (typeof data === 'string' && data.trim()) {
+    return status ? `Request failed with status code ${status}: ${data}` : data;
+  }
+
+  if (data && typeof data === 'object') {
+    return status
+      ? `Request failed with status code ${status}: ${JSON.stringify(data)}`
+      : JSON.stringify(data);
+  }
+
+  return error?.message || 'Analysis job request failed.';
 }
 
 async function waitForJob(jobId) {
@@ -89,15 +96,16 @@ function Dropzone({ closeModal, setDataMain }) {
     }
 
     const file = files[0];
-    const projectId = normalizeProjectId(file.name);
-    const sourceKey = buildSourceKey(file.name);
+    const projectId = defaultProjectId;
+    const sourceKey = defaultSourceKey;
 
     setIsUploading(true);
     eventBus.emit('bedrock:start');
     eventBus.emit('bedrock:logs', [
       `Selected image: ${file.name}`,
       `Creating analysis job for projectId=${projectId}`,
-      `Using source reference: s3://${defaultBucket}/${sourceKey}`,
+      `Using smoke source reference: s3://${defaultBucket}/${sourceKey}`,
+      'Binary object upload is not implemented in this pass; this uses the validated backend smoke reference.',
     ]);
 
     setDataMain((previous) => [
@@ -144,7 +152,7 @@ function Dropzone({ closeModal, setDataMain }) {
       eventBus.emit('bedrock:complete');
       closeModal();
     } catch (error) {
-      eventBus.emit('bedrock:error', error?.message || 'Analysis job request failed.');
+      eventBus.emit('bedrock:error', buildErrorMessage(error));
     } finally {
       setIsUploading(false);
     }
@@ -155,7 +163,7 @@ function Dropzone({ closeModal, setDataMain }) {
       <h2>Upload architecture image</h2>
       <p className="muted-copy">
         원본 Terraformers의 이미지 업로드 흐름을 현재 백엔드의 analysis job 계약에 연결합니다.
-        이 단계에서는 실제 바이너리 업로드 대신 source bucket/key 참조를 생성합니다.
+        이 단계에서는 실제 바이너리 업로드 대신 검증된 smoke source reference를 사용합니다.
       </p>
       <div {...getRootProps({ style })}>
         <input {...getInputProps()} />
