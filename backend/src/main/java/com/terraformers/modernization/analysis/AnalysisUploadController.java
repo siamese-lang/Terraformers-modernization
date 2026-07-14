@@ -8,6 +8,7 @@ import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -67,6 +68,11 @@ public class AnalysisUploadController {
                 .body(response);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleBadUploadRequest(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(exception.getMessage());
+    }
+
     private String buildSourceKey(String projectId, String originalFilename) {
         String prefix = normalizePrefix(sourcePrefix);
         String datePath = DATE_PATH.format(Instant.now());
@@ -92,7 +98,8 @@ public class AnalysisUploadController {
         if (originalFilename == null || originalFilename.isBlank()) {
             return "architecture-image.png";
         }
-        return originalFilename.replace('\\', '/').substring(originalFilename.replace('\\', '/').lastIndexOf('/') + 1);
+        String normalized = originalFilename.replace('\\', '/');
+        return normalized.substring(normalized.lastIndexOf('/') + 1);
     }
 
     private String sanitizeFilename(String filename) {
