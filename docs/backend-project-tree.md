@@ -46,7 +46,7 @@ project metadata
   + source folder
     + uploaded image reference node
   + terraform folder
-    + main.tf latest result node
+    + main.tf stored draft node
 ```
 
 Missing project returns `404`.
@@ -61,7 +61,7 @@ Missing project returns `404`.
   "projectId": "aws",
   "parentId": "aws:terraform",
   "isLeaf": true,
-  "apiPath": "/api/analysis/jobs/{jobId}",
+  "apiPath": "/api/projects/aws/terraform/main.tf",
   "resultObjectKey": "analysis-results/aws/.../main.tf",
   "children": []
 }
@@ -79,7 +79,13 @@ project
 
 The source node is metadata-only in this pass. Real binary read/download remains future work.
 
-The `main.tf` node points to the latest analysis job API path for now. A dedicated Terraform draft read/update API remains future work.
+The `main.tf` node now points to the project-scoped stored draft endpoint:
+
+```text
+GET /api/projects/{projectId}/terraform/main.tf
+```
+
+That endpoint returns the current stored draft `content` instead of forcing the frontend to read the raw analysis job response.
 
 ## 6. Verification
 
@@ -92,6 +98,7 @@ POST /api/upload
   -> project root returned
   -> source folder and uploaded image node returned
   -> terraform folder and main.tf result node returned
+  -> main.tf apiPath points to /api/projects/{projectId}/terraform/main.tf
   -> missing project returns 404
 ```
 
@@ -104,5 +111,5 @@ Backend Local Verification
 ## 7. Portfolio explanation
 
 ```text
-기존 Terraformers의 프로젝트 트리 화면을 그대로 복원하기 전에, 백엔드에서 프로젝트 단위 파일 구조를 읽기 전용 계약으로 먼저 정의했습니다. 업로드된 이미지 메타데이터와 최신 Terraform 초안 결과를 source/terraform 폴더 구조로 반환하여, 프론트가 프로젝트별 산출물을 탐색할 수 있는 기반을 만들었습니다. 단, Terraform 실행·삭제·파일 생성·이름 변경은 아직 실제 운영 계약이 없으므로 제외했습니다.
+기존 Terraformers의 프로젝트 트리 화면을 그대로 복원하기 전에, 백엔드에서 프로젝트 단위 파일 구조를 읽기 전용 계약으로 먼저 정의했습니다. 업로드된 이미지 메타데이터와 저장된 Terraform 초안을 source/terraform 폴더 구조로 반환하여, 프론트가 프로젝트별 산출물을 탐색할 수 있는 기반을 만들었습니다. 단, Terraform 실행·삭제·파일 생성·이름 변경은 아직 실제 운영 계약이 없으므로 제외했습니다.
 ```
