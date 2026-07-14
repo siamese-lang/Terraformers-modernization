@@ -22,8 +22,13 @@ fi
 
 cd "${FRONTEND_DIR}"
 
-echo "[frontend] installing dependencies"
-npm install
+if [ -f package-lock.json ]; then
+  echo "[frontend] installing dependencies with npm ci"
+  npm ci
+else
+  echo "[frontend] installing dependencies with npm install"
+  npm install
+fi
 
 echo "[frontend] building browser smoke baseline"
 npm run build
