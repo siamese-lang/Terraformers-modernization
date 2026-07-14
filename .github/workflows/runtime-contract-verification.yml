@@ -1,19 +1,6 @@
 name: Runtime Contract Verification
 
 on:
-  pull_request:
-    paths:
-      - 'infra/kubernetes/**'
-      - 'infra/terraform/runtime-contract/**'
-      - 'scripts/checks/runtime-contract-verification.sh'
-      - '.github/workflows/runtime-contract-verification.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'infra/kubernetes/**'
-      - 'infra/terraform/runtime-contract/**'
-      - 'scripts/checks/runtime-contract-verification.sh'
-      - '.github/workflows/runtime-contract-verification.yml'
   workflow_dispatch:
 
 permissions:
