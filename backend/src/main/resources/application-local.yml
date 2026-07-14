@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:terraformers;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+
+terraformers:
+  storage:
+    s3-reader-enabled: false
+    s3-writer-enabled: false
+  analysis:
+    mode: integrated-java
+    bedrock-provider-enabled: false
+    bedrock-embedding-enabled: false
+    opensearch-retriever-enabled: false
+    result-key-prefix: analysis-results
+    sqs-publisher-enabled: false
