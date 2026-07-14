@@ -18,7 +18,6 @@ import software.amazon.awssdk.auth.signer.params.Aws4SignerParams;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 
 @Component
 public class SignedOpenSearchHttpClient {
@@ -34,7 +33,7 @@ public class SignedOpenSearchHttpClient {
                 .build();
         this.signer = Aws4Signer.create();
         this.credentialsProvider = DefaultCredentialsProvider.create();
-        this.region = new DefaultAwsRegionProviderChain().getRegion();
+        this.region = resolveRegion();
     }
 
     public String post(URI uri, String body, String serviceName) {
@@ -78,5 +77,16 @@ public class SignedOpenSearchHttpClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("OpenSearch query interrupted", exception);
         }
+    }
+
+    private Region resolveRegion() {
+        String regionName = System.getenv("AWS_REGION");
+        if (regionName == null || regionName.isBlank()) {
+            regionName = System.getenv("AWS_DEFAULT_REGION");
+        }
+        if (regionName == null || regionName.isBlank()) {
+            regionName = "ap-northeast-2";
+        }
+        return Region.of(regionName);
     }
 }
