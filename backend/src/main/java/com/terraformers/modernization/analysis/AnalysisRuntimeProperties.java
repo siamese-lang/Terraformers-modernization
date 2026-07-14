@@ -13,6 +13,8 @@ public class AnalysisRuntimeProperties {
     private String vectorFieldName;
     private String contentFieldName;
     private String externalPythonServiceUrl;
+    private boolean bedrockProviderEnabled;
+    private int bedrockMaxTokens = 4096;
     private boolean sqsPublisherEnabled;
     private String progressQueueUrl;
     private String resultQueueUrl;
@@ -79,6 +81,22 @@ public class AnalysisRuntimeProperties {
 
     public void setExternalPythonServiceUrl(String externalPythonServiceUrl) {
         this.externalPythonServiceUrl = externalPythonServiceUrl;
+    }
+
+    public boolean isBedrockProviderEnabled() {
+        return bedrockProviderEnabled;
+    }
+
+    public void setBedrockProviderEnabled(boolean bedrockProviderEnabled) {
+        this.bedrockProviderEnabled = bedrockProviderEnabled;
+    }
+
+    public int getBedrockMaxTokens() {
+        return bedrockMaxTokens;
+    }
+
+    public void setBedrockMaxTokens(int bedrockMaxTokens) {
+        this.bedrockMaxTokens = bedrockMaxTokens;
     }
 
     public boolean isSqsPublisherEnabled() {
