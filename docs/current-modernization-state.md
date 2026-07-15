@@ -18,7 +18,20 @@ Runtime Contract Verification
 
 `Runtime Contract Verification` now covers both infrastructure runtime boundaries and selected backend API contract tests.
 
-## 3. Product contract now represented in backend tests
+## 3. Recent merged checkpoint
+
+The current checkpoint includes the following completed PR sequence:
+
+```text
+PR #6 OpenSearch reference retriever contract
+PR #7 Bedrock prompt reference-context integration
+PR #8 Backend verification diagnostics improvement
+PR #9 Runtime verification backend API contract coverage
+```
+
+This sequence should be treated as a stable post-modernization baseline. Further work should start from a new branch and should not reopen or expand the completed PRs.
+
+## 4. Product contract now represented in backend tests
 
 The backend contract now preserves the main original Terraformers product path at a testable API-contract level:
 
@@ -50,7 +63,7 @@ GET  /api/getProjectComments/{projectId}
 POST /api/addProjectComment
 ```
 
-## 4. Runtime and adapter boundaries now represented
+## 5. Runtime and adapter boundaries now represented
 
 The current backend/runtime boundary includes:
 
@@ -77,7 +90,7 @@ AnalysisProgressPublisher
 
 These are contract and adapter boundaries. Production operation still requires environment-specific AWS resources, IAM, secrets, and manual production validation workflows where applicable.
 
-## 5. Verification workflows
+## 6. Verification workflows
 
 Current workflow roles:
 
@@ -100,7 +113,7 @@ S3 Writer Production Validation
   -> optional manual evidence path for real S3 object persistence
 ```
 
-## 6. Current non-claims
+## 7. Current non-claims
 
 The current branch does not claim the following:
 
@@ -120,14 +133,14 @@ production EKS rollout evidence
 
 These are either explicitly excluded or require separate, smaller PRs with their own validation gates.
 
-## 7. Recommended next PR candidates
+## 8. Recommended next PR candidates
 
 Choose only one next PR at a time.
 
 Most useful remaining candidates are:
 
 ```text
-1. Documentation checkpoint: README and portfolio explanation update
+1. README and portfolio explanation update
 2. Optional S3 writer production evidence run, if AWS bucket/IAM are ready
 3. SQS publisher/log contract refinement
 4. Cognito/auth boundary documentation or minimal backend contract
@@ -136,7 +149,7 @@ Most useful remaining candidates are:
 
 Do not add Terraform execution, tfstate APIs, or browser AWS credential controls unless the project direction is explicitly changed.
 
-## 8. Portfolio explanation
+## 9. Portfolio explanation
 
 ```text
 Terraformers 현대화 작업은 원본 팀 프로젝트의 핵심 제품 흐름을 그대로 다시 만드는 것이 아니라, 이미지 업로드에서 분석 job, 프로젝트 메타데이터, 프로젝트 트리, Terraform main.tf preview, 공개 프로젝트와 댓글까지 이어지는 흐름을 Spring Boot backend의 검증 가능한 API 계약으로 정리한 작업입니다. 또한 S3 writer, ObjectReader, OpenSearch retriever, Bedrock Runtime provider, SQS publisher 같은 외부 의존성은 한 번에 production 복원하지 않고, local/test 기본 경로와 opt-in adapter 경계로 분리했습니다. 이를 통해 기능 시연 중심이었던 팀 프로젝트를 백엔드 구조, runtime config, 외부 AWS 의존성, CI 검증, 실패 진단 관점에서 설명 가능한 상태로 고도화했습니다.
