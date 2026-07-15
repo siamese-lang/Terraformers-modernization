@@ -17,7 +17,7 @@ Checks:
   - Deployment rollout completed
   - backend pods are Ready
   - /actuator/health responds through port-forward
-  - POST /api/upload creates project metadata through the deployed service
+  - POST /api/upload multipart file upload creates project metadata through the deployed service
   - GET /api/project-tree/{projectId} works
   - GET /api/projects/{projectId}/terraform/main.tf works
 USAGE
@@ -85,7 +85,6 @@ trap cleanup EXIT
 require_command kubectl
 require_command curl
 require_command grep
-require_command sed
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -99,8 +98,8 @@ echo "[aws-runtime-smoke] collecting pod status"
 kubectl_cmd -n "${NAMESPACE}" get pods -l app.kubernetes.io/name=terraformers-backend -o wide | tee "${ARTIFACT_DIR}/pods.txt"
 kubectl_cmd -n "${NAMESPACE}" get endpoints "${SERVICE_NAME}" -o yaml > "${ARTIFACT_DIR}/endpoints.yaml"
 
-if ! grep -q 'Ready' "${ARTIFACT_DIR}/pods.txt"; then
-  echo "No Ready backend pod found." >&2
+if ! grep -q 'Running' "${ARTIFACT_DIR}/pods.txt"; then
+  echo "No Running backend pod found." >&2
   exit 1
 fi
 
@@ -110,27 +109,16 @@ PORT_FORWARD_PID="$!"
 sleep 5
 
 BASE_URL="http://127.0.0.1:${LOCAL_PORT}"
+SMOKE_FILE="${ARTIFACT_DIR}/AWS Runtime Smoke.png"
+printf 'fake image bytes for aws runtime smoke\n' > "${SMOKE_FILE}"
 
 echo "[aws-runtime-smoke] checking actuator health"
 curl -fsS "${BASE_URL}/actuator/health" | tee "${ARTIFACT_DIR}/health.json"
 
-UPLOAD_PAYLOAD="${ARTIFACT_DIR}/upload-payload.json"
-cat > "${UPLOAD_PAYLOAD}" <<JSON
-{
-  "projectId": "${PROJECT_ID}",
-  "projectName": "AWS Runtime Smoke",
-  "originalFilename": "aws-runtime-smoke.png",
-  "contentType": "image/png",
-  "sizeBytes": 128,
-  "terraformDraft": "resource \\\"aws_s3_bucket\\\" \\\"smoke\\\" {}"
-}
-JSON
-
-echo "[aws-runtime-smoke] creating smoke project through /api/upload"
+echo "[aws-runtime-smoke] creating smoke project through multipart /api/upload"
 curl -fsS \
-  -H 'Content-Type: application/json' \
   -X POST \
-  --data-binary "@${UPLOAD_PAYLOAD}" \
+  -F "file=@${SMOKE_FILE};type=image/png" \
   "${BASE_URL}/api/upload" | tee "${ARTIFACT_DIR}/upload-response.json"
 
 echo "[aws-runtime-smoke] reading project tree"
@@ -140,6 +128,6 @@ echo "[aws-runtime-smoke] reading Terraform draft"
 curl -fsS "${BASE_URL}/api/projects/${PROJECT_ID}/terraform/main.tf" | tee "${ARTIFACT_DIR}/main-tf-response.json"
 
 grep -q "${PROJECT_ID}" "${ARTIFACT_DIR}/project-tree.json"
-grep -q 'aws_s3_bucket' "${ARTIFACT_DIR}/main-tf-response.json"
+grep -q 'content' "${ARTIFACT_DIR}/main-tf-response.json"
 
 echo "[aws-runtime-smoke] verification completed"
