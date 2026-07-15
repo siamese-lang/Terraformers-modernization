@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,7 @@ public class BedrockRuntimeAnalysisProvider implements AnalysisProvider {
     private final ObjectMapper objectMapper;
     private final AnalysisRuntimeProperties properties;
 
+    @Autowired
     public BedrockRuntimeAnalysisProvider(ObjectMapper objectMapper, AnalysisRuntimeProperties properties) {
         this(BedrockRuntimeClient.builder().build(), objectMapper, properties);
     }

@@ -7,8 +7,33 @@ RUN_DOCKER_BUILD="${RUN_DOCKER_BUILD:-false}"
 
 cd "${BACKEND_DIR}"
 
+print_surefire_reports() {
+  local reports_dir="${BACKEND_DIR}/target/surefire-reports"
+
+  if [[ ! -d "${reports_dir}" ]]; then
+    echo "[backend] surefire reports directory not found: ${reports_dir}" >&2
+    return
+  fi
+
+  echo "[backend] printing surefire failure reports" >&2
+  find "${reports_dir}" -maxdepth 1 -type f \( -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) -print0 \
+    | sort -z \
+    | while IFS= read -r -d '' report; do
+        echo "===== ${report#${BACKEND_DIR}/} =====" >&2
+        cat "${report}" >&2
+        echo >&2
+      done
+}
+
+run_maven_tests() {
+  mvn -e clean test
+}
+
 echo "[backend] running Maven clean tests"
-mvn -q clean test
+if ! run_maven_tests; then
+  print_surefire_reports
+  exit 1
+fi
 
 echo "[backend] packaging application without re-running tests"
 mvn -q -DskipTests package

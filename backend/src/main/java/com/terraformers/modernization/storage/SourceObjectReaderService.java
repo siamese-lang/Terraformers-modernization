@@ -5,6 +5,7 @@ import com.terraformers.modernization.project.ProjectRepository;
 import java.util.NoSuchElementException;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class SourceObjectReaderService {
     private final boolean s3ReaderEnabled;
     private final Supplier<S3Client> s3ClientSupplier;
 
+    @Autowired
     public SourceObjectReaderService(
             ProjectRepository repository,
             ObjectProvider<S3Client> s3ClientProvider,
