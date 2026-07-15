@@ -52,10 +52,10 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(local.tags, {
-    Name                                      = "${local.name_prefix}-public-${count.index + 1}"
-    Tier                                      = "public"
+    Name                                             = "${local.name_prefix}-public-${count.index + 1}"
+    Tier                                             = "public"
     "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
-    "kubernetes.io/role/elb"                 = "1"
+    "kubernetes.io/role/elb"                        = "1"
   })
 }
 
@@ -67,10 +67,10 @@ resource "aws_subnet" "private" {
   availability_zone = local.availability_zones[count.index]
 
   tags = merge(local.tags, {
-    Name                                      = "${local.name_prefix}-private-${count.index + 1}"
-    Tier                                      = "private"
+    Name                                             = "${local.name_prefix}-private-${count.index + 1}"
+    Tier                                             = "private"
     "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
-    "kubernetes.io/role/internal-elb"        = "1"
+    "kubernetes.io/role/internal-elb"               = "1"
   })
 }
 
@@ -170,7 +170,7 @@ resource "aws_security_group" "interface_endpoints" {
 }
 
 resource "aws_vpc_endpoint" "interface" {
-  for_each = var.enable_vpc_endpoints ? toset(local.interface_endpoint_service_names) : []
+  for_each = var.enable_vpc_endpoints ? toset(local.interface_endpoint_service_names) : toset([])
 
   vpc_id              = aws_vpc.runtime.id
   service_name        = each.value
