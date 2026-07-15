@@ -42,14 +42,4 @@ public record ProjectTreeResponse(
                 project.updatedAt()
         );
     }
-
-    public record ProjectTreeNode(
-            String name,
-            String path,
-            String type,
-            String contentType,
-            String apiPath,
-            List<ProjectTreeNode> children
-    ) {
-    }
 }
