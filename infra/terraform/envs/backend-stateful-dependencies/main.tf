@@ -1,6 +1,6 @@
 locals {
   name_prefix = lower(replace("${var.project_name}-${var.environment}", "_", "-"))
-  tags = merge(
+  tags        = merge(
     var.common_tags,
     {
       Project     = var.project_name
