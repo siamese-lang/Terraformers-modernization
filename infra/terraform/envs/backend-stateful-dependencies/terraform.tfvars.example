@@ -1,0 +1,36 @@
+project_name = "terraformers-modernization"
+environment  = "dev"
+aws_region   = "ap-northeast-2"
+
+common_tags = {
+  Application = "terraformers-modernization"
+  Owner       = "portfolio"
+}
+
+# Existing network values. Do not commit real account IDs or production network identifiers.
+vpc_id = "vpc-00000000000000000"
+private_subnet_ids = [
+  "subnet-00000000000000000",
+  "subnet-11111111111111111"
+]
+
+# Prefer security group based access from the EKS/backend runtime boundary.
+allowed_app_security_group_ids = [
+  "sg-00000000000000000"
+]
+
+allowed_database_cidr_blocks = []
+
+database_name     = "terraformers"
+database_username = "terraformers_app"
+database_password = "replace-with-secure-database-password"
+
+# Keep small/disposable defaults for validation environments.
+database_instance_class         = "db.t4g.micro"
+database_allocated_storage_gb  = 20
+database_engine_version        = "10.11"
+database_backup_retention_days = 1
+database_deletion_protection   = false
+database_skip_final_snapshot   = true
+
+cognito_deletion_protection = false
