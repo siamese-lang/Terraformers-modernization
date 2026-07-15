@@ -3,25 +3,9 @@ output "database_security_group_id" {
   value       = aws_security_group.backend_database.id
 }
 
-output "database_subnet_group_name" {
-  description = "DB subnet group name attached to the backend MariaDB database."
-  value       = aws_db_subnet_group.backend.name
-}
-
-output "database_instance_id" {
-  description = "RDS MariaDB instance ID."
-  value       = aws_db_instance.backend.id
-}
-
-output "database_instance_arn" {
-  description = "RDS MariaDB instance ARN."
-  value       = aws_db_instance.backend.arn
-}
-
 output "database_endpoint" {
   description = "RDS MariaDB endpoint hostname."
   value       = aws_db_instance.backend.address
-  sensitive   = true
 }
 
 output "database_port" {
@@ -36,14 +20,12 @@ output "database_name" {
 
 output "database_username" {
   description = "Application database username."
-  value       = aws_db_instance.backend.username
-  sensitive   = true
+  value       = var.database_username
 }
 
 output "spring_datasource_url" {
   description = "JDBC URL for SPRING_DATASOURCE_URL."
-  value       = "jdbc:mariadb://${aws_db_instance.backend.address}:${aws_db_instance.backend.port}/${var.database_name}?${var.database_jdbc_ssl_params}"
-  sensitive   = true
+  value       = "jdbc:mariadb://${aws_db_instance.backend.address}:${aws_db_instance.backend.port}/${var.database_name}"
 }
 
 output "cognito_region" {
