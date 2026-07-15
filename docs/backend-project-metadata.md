@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Project metadata is the backend bridge between the original Terraformers upload flow and later project tree, public project, comment, and Terraform draft editing features.
+Project metadata is the backend bridge between the original Terraformers upload flow and later project tree, public project, comment, Terraform draft editing, and source object persistence features.
 
 This model does not claim that the complete original project-management surface has been restored. It provides the minimum persisted project record needed after upload analysis.
 
@@ -16,8 +16,13 @@ displayName
 visibility
 latestAnalysisJobId
 latestResultObjectKey
+terraformDraft
+terraformDraftUpdatedAt
 sourceBucket
 sourceKey
+sourceStorageProvider
+sourceBinaryPersisted
+sourceETag
 originalFilename
 contentType
 uploadSizeBytes
@@ -31,17 +36,27 @@ Default visibility is:
 PRIVATE
 ```
 
+`sourceStorageProvider/sourceBinaryPersisted/sourceETag` describe whether the uploaded architecture image is only represented by metadata or was actually persisted through the S3 writer boundary.
+
 ## 3. Upload integration
 
-`POST /api/upload` now performs two actions:
+`POST /api/upload` now performs these actions:
 
 ```text
-multipart image upload metadata
+multipart image upload
+  -> UploadObjectStorageService
+  -> source reference or persisted S3 object
   -> create analysis job
   -> upsert project metadata
 ```
 
-The upload endpoint still uses the existing analysis job contract for analysis execution. Binary object persistence through a real S3 writer remains future work.
+Default local/test behavior remains metadata-only. S3 object persistence is enabled only when the S3 writer adapter is explicitly turned on.
+
+Reference:
+
+```text
+docs/backend-upload-binary-persistence.md
+```
 
 ## 4. Endpoints
 
@@ -95,6 +110,7 @@ Covered by `ProjectMetadataControllerTest`:
 POST /api/upload
   -> creates project metadata
   -> GET /api/projects/{projectId} returns latest job/source/upload metadata
+  -> sourceStorageProvider/sourceBinaryPersisted are exposed
   -> PATCH visibility changes PRIVATE/PUBLIC
   -> GET /api/projects/public lists public project
   -> missing project returns 404
@@ -109,5 +125,5 @@ Backend Local Verification
 ## 6. Portfolio explanation
 
 ```text
-업로드된 아키텍처 이미지를 단순 분석 요청으로만 처리하지 않고, 프로젝트 단위 메타데이터로 저장되도록 백엔드 계약을 확장했습니다. 이를 통해 이후 프로젝트 트리, 공개 프로젝트 목록, 댓글, Terraform 초안 편집 기능이 특정 분석 작업이 아니라 프로젝트 기준으로 연결될 수 있게 했습니다. 다만 실제 바이너리 객체 저장과 전체 프로젝트 파일 트리는 후속 단계로 분리해, 현재 구현 범위를 과장하지 않았습니다.
+업로드된 아키텍처 이미지를 단순 분석 요청으로만 처리하지 않고, 프로젝트 단위 메타데이터로 저장되도록 백엔드 계약을 확장했습니다. 또한 sourceBucket/sourceKey뿐 아니라 sourceStorageProvider와 sourceBinaryPersisted를 함께 저장해, 로컬 metadata-only 모드와 실제 S3 writer 모드를 구분할 수 있게 했습니다. 이를 통해 이후 프로젝트 트리, 공개 프로젝트 목록, 댓글, Terraform 초안 편집 기능이 특정 분석 작업이 아니라 프로젝트 기준으로 연결될 수 있게 했습니다.
 ```
