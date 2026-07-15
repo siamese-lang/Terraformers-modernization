@@ -61,6 +61,20 @@ variable "node_instance_types" {
   default     = ["t3.medium"]
 }
 
+variable "node_disk_size" {
+  description = "Worker node disk size in GiB."
+  type        = number
+  default     = 20
+}
+
+variable "node_labels" {
+  description = "Labels applied to the managed backend node group."
+  type        = map(string)
+  default = {
+    role = "backend-runtime"
+  }
+}
+
 variable "node_desired_size" {
   description = "Desired backend node count."
   type        = number

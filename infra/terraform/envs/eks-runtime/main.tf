@@ -30,6 +30,11 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+resource "aws_iam_role_policy_attachment" "eks_cluster_vpc_resource_controller" {
+  role       = aws_iam_role.eks_cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+}
+
 resource "aws_security_group" "eks_cluster" {
   name        = "${local.name_prefix}-eks-cluster-sg"
   description = "Security group attached to the Terraformers EKS control plane."
@@ -65,7 +70,8 @@ resource "aws_eks_cluster" "backend" {
   tags = local.common_tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_policy
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_iam_role_policy_attachment.eks_cluster_vpc_resource_controller
   ]
 }
 
@@ -107,6 +113,8 @@ resource "aws_eks_node_group" "backend" {
   node_role_arn   = aws_iam_role.eks_node.arn
   subnet_ids      = var.private_subnet_ids
   instance_types  = var.node_instance_types
+  disk_size       = var.node_disk_size
+  labels          = var.node_labels
 
   scaling_config {
     desired_size = var.node_desired_size
