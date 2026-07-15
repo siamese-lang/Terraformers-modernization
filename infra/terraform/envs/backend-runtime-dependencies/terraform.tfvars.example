@@ -1,0 +1,21 @@
+environment = "dev"
+aws_region  = "ap-northeast-2"
+name_prefix = "terraformers"
+
+backend_ecr_repository_name = "terraformers-backend"
+
+# S3 bucket names are globally unique. Replace these before terraform apply.
+upload_bucket_name = "terraformers-dev-uploads-example"
+result_bucket_name = "terraformers-dev-results-example"
+
+analysis_result_key_prefix = "analysis-results"
+
+ai_log_queue_name        = "terraformers-dev-ai-log"
+terraform_log_queue_name = "terraformers-dev-terraform-log"
+
+# This creates the secret container only. Do not commit secret values.
+runtime_secret_name = "terraformers/dev/backend/runtime"
+
+tags = {
+  Owner = "portfolio"
+}
