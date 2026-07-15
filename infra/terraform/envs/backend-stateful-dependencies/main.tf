@@ -70,15 +70,15 @@ resource "aws_db_instance" "backend" {
   db_name  = var.database_name
   port     = var.database_port
   username = var.database_username
+  password = var.database_password
 
   allocated_storage     = var.database_allocated_storage_gb
   max_allocated_storage = var.database_max_allocated_storage_gb
   storage_type          = var.database_storage_type
   storage_encrypted     = var.database_storage_encrypted
 
-  multi_az                    = var.database_multi_az
-  manage_master_user_password = true
-  publicly_accessible         = var.database_publicly_accessible
+  multi_az            = var.database_multi_az
+  publicly_accessible = var.database_publicly_accessible
 
   db_subnet_group_name   = aws_db_subnet_group.backend.name
   vpc_security_group_ids = [aws_security_group.backend_database.id]
