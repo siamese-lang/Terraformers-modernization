@@ -67,8 +67,8 @@ resource "aws_db_instance" "backend" {
   engine_version = var.database_engine_version
   instance_class = var.database_instance_class
 
-  db_name = var.database_name
-  port    = var.database_port
+  db_name  = var.database_name
+  port     = var.database_port
   username = var.database_username
   password = var.database_manage_master_user_password ? null : var.database_password
 
