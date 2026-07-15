@@ -1,0 +1,116 @@
+name: Backend Image Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_uri:
+        description: Full image URI to tag. Use an ECR URI when push_image=true.
+        required: true
+        default: terraformers-backend:manual
+      push_image:
+        description: Push image after build. Keep false for build-only verification.
+        required: true
+        type: boolean
+        default: false
+      aws_region:
+        description: AWS region for ECR login when push_image=true.
+        required: true
+        default: ap-northeast-2
+      aws_role_to_assume:
+        description: Optional IAM role ARN for GitHub OIDC. Leave blank to use repository AWS secrets when push_image=true.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backend-image-publish:
+    name: Build and optionally publish backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        run: |
+          set -euo pipefail
+          docker build -f backend/Dockerfile -t "${{ inputs.image_uri }}" backend
+          docker image inspect "${{ inputs.image_uri }}" > backend-image-inspect.json
+
+      - name: Configure AWS credentials through OIDC role
+        if: ${{ inputs.push_image && inputs.aws_role_to_assume != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_to_assume }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Export static AWS credentials from repository secrets
+        if: ${{ inputs.push_image && inputs.aws_role_to_assume == '' }}
+        env:
+          SECRET_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          SECRET_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SECRET_AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SECRET_AWS_ACCESS_KEY_ID}" || -z "${SECRET_AWS_SECRET_ACCESS_KEY}" ]]; then
+            echo "Set aws_role_to_assume or repository secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY before pushing." >&2
+            exit 1
+          fi
+          {
+            echo "AWS_ACCESS_KEY_ID=${SECRET_AWS_ACCESS_KEY_ID}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET_AWS_SECRET_ACCESS_KEY}"
+            if [[ -n "${SECRET_AWS_SESSION_TOKEN}" ]]; then
+              echo "AWS_SESSION_TOKEN=${SECRET_AWS_SESSION_TOKEN}"
+            fi
+            echo "AWS_REGION=${{ inputs.aws_region }}"
+            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Login to ECR
+        if: ${{ inputs.push_image }}
+        run: |
+          set -euo pipefail
+          ECR_REGISTRY="$(echo "${{ inputs.image_uri }}" | cut -d/ -f1)"
+          if [[ "${ECR_REGISTRY}" != *.amazonaws.com ]]; then
+            echo "image_uri must be an ECR URI when push_image=true: ${{ inputs.image_uri }}" >&2
+            exit 1
+          fi
+          aws ecr get-login-password --region "${{ inputs.aws_region }}" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Push backend image
+        if: ${{ inputs.push_image }}
+        run: |
+          set -euo pipefail
+          docker push "${{ inputs.image_uri }}"
+          {
+            echo "image_uri=${{ inputs.image_uri }}"
+            echo "pushed=true"
+            echo "pushed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > backend-image-publish-summary.txt
+
+      - name: Record build-only image summary
+        if: ${{ !inputs.push_image }}
+        run: |
+          set -euo pipefail
+          {
+            echo "image_uri=${{ inputs.image_uri }}"
+            echo "pushed=false"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > backend-image-publish-summary.txt
+
+      - name: Upload image build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image-publish-evidence
+          path: |
+            backend-image-inspect.json
+            backend-image-publish-summary.txt
