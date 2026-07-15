@@ -92,9 +92,9 @@ variable "database_storage_type" {
 }
 
 variable "database_engine_version" {
-  description = "MariaDB engine version. Keep null in disposable validation environments to use the region-supported default; pin explicitly when needed."
+  description = "MariaDB engine version. Keep pinned for predictable Terraform validation and live smoke planning."
   type        = string
-  default     = null
+  default     = "10.11"
 }
 
 variable "database_multi_az" {
