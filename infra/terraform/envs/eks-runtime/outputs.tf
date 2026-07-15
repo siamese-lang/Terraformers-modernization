@@ -14,9 +14,19 @@ output "cluster_certificate_authority_data" {
   sensitive   = true
 }
 
+output "cluster_security_group_id" {
+  description = "Security group ID attached to the EKS control plane."
+  value       = aws_security_group.eks_cluster.id
+}
+
 output "node_group_name" {
   description = "Backend node group name."
   value       = aws_eks_node_group.backend.node_group_name
+}
+
+output "node_role_arn" {
+  description = "IAM role ARN attached to the backend managed node group."
+  value       = aws_iam_role.eks_node.arn
 }
 
 output "oidc_provider_arn" {
