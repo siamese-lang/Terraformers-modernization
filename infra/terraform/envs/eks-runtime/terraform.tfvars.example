@@ -1,0 +1,36 @@
+project_name = "terraformers"
+environment  = "dev"
+aws_region   = "ap-northeast-2"
+
+# Existing network values. Do not commit real account-specific values here.
+vpc_id = "vpc-00000000000000000"
+private_subnet_ids = [
+  "subnet-00000000000000000",
+  "subnet-11111111111111111"
+]
+
+kubernetes_version = "1.30"
+
+# Use a narrow operator CIDR when public access is required.
+cluster_endpoint_public_access       = true
+cluster_endpoint_public_access_cidrs = ["203.0.113.10/32"]
+
+enabled_cluster_log_types = ["api", "audit", "authenticator"]
+
+node_instance_types = ["t3.medium"]
+node_desired_size   = 1
+node_min_size       = 1
+node_max_size       = 2
+
+backend_namespace            = "terraformers-runtime"
+backend_service_account_name = "terraformers-backend"
+
+# Outputs from backend-runtime-dependencies.
+upload_bucket_arn          = "arn:aws:s3:::terraformers-dev-uploads-example"
+result_bucket_arn          = "arn:aws:s3:::terraformers-dev-results-example"
+ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:000000000000:terraformers-dev-ai-log"
+terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:000000000000:terraformers-dev-terraform-log"
+backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:000000000000:secret:terraformers/dev/backend/runtime-placeholder"
+
+# Keep empty until Bedrock adapter access is intentionally validated.
+bedrock_model_resource_arns = []
