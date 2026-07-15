@@ -9,6 +9,7 @@ Usage:
     --secret-manifest /path/to/backend-runtime-secret.yaml \
     [--namespace terraformers-runtime] \
     [--context kube-context] \
+    [--cluster-check true|false] \
     [--server-dry-run true|false]
 
 Purpose:
@@ -18,12 +19,13 @@ Purpose:
 Checks:
   - kubectl is available
   - manifest files exist and do not contain obvious placeholders
-  - current or provided kube context can reach the cluster
-  - namespace exists
-  - caller has basic permissions for Secret, ServiceAccount, Deployment, and Service
   - rendered manifest contains backend Deployment, ServiceAccount, prod profile, SecretRef, and IRSA annotation
   - client-side dry-run succeeds
-  - optional server-side dry-run succeeds
+  - when --cluster-check=true:
+    - current or provided kube context can reach the cluster
+    - namespace exists
+    - caller has basic permissions for Secret, ServiceAccount, Deployment, and Service
+    - optional server-side dry-run succeeds
 USAGE
 }
 
@@ -31,6 +33,7 @@ NAMESPACE="terraformers-runtime"
 KUBE_CONTEXT=""
 RUNTIME_MANIFEST=""
 SECRET_MANIFEST=""
+CLUSTER_CHECK="true"
 SERVER_DRY_RUN="true"
 
 while [[ $# -gt 0 ]]; do
@@ -49,6 +52,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --secret-manifest)
       SECRET_MANIFEST="$2"
+      shift 2
+      ;;
+    --cluster-check)
+      CLUSTER_CHECK="$2"
       shift 2
       ;;
     --server-dry-run)
@@ -128,6 +135,14 @@ require_permission() {
   fi
 }
 
+case "${CLUSTER_CHECK}" in
+  true|false) ;;
+  *)
+    echo "--cluster-check must be true or false." >&2
+    exit 1
+    ;;
+esac
+
 case "${SERVER_DRY_RUN}" in
   true|false) ;;
   *)
@@ -135,6 +150,11 @@ case "${SERVER_DRY_RUN}" in
     exit 1
     ;;
 esac
+
+if [[ "${CLUSTER_CHECK}" == "false" && "${SERVER_DRY_RUN}" == "true" ]]; then
+  echo "--server-dry-run=true requires --cluster-check=true." >&2
+  exit 1
+fi
 
 require_command kubectl
 require_command grep
@@ -154,34 +174,38 @@ assert_contains 'eks\.amazonaws\.com/role-arn:' "${RUNTIME_MANIFEST}" "Runtime m
 assert_contains '^kind: Secret$' "${SECRET_MANIFEST}" "Secret manifest must contain a Secret."
 assert_contains 'name: terraformers-backend-runtime-secrets' "${SECRET_MANIFEST}" "Secret manifest must create terraformers-backend-runtime-secrets."
 
-printf '[aws-runtime-preflight] kube context: '
-kubectl_cmd config current-context
-
-kubectl_cmd version --client >/dev/null
-kubectl_cmd get namespace "${NAMESPACE}" >/dev/null
-
-require_permission get pods
-require_permission get deployments
-require_permission get services
-require_permission get serviceaccounts
-require_permission get secrets
-require_permission create secrets
-require_permission patch secrets
-require_permission create deployments
-require_permission patch deployments
-require_permission create services
-require_permission patch services
-require_permission create serviceaccounts
-require_permission patch serviceaccounts
-
 echo "[aws-runtime-preflight] client-side dry-run"
 kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
 kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
 
-if [[ "${SERVER_DRY_RUN}" == "true" ]]; then
-  echo "[aws-runtime-preflight] server-side dry-run"
-  kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
-  kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
+if [[ "${CLUSTER_CHECK}" == "true" ]]; then
+  printf '[aws-runtime-preflight] kube context: '
+  kubectl_cmd config current-context
+
+  kubectl_cmd version --client >/dev/null
+  kubectl_cmd get namespace "${NAMESPACE}" >/dev/null
+
+  require_permission get pods
+  require_permission get deployments
+  require_permission get services
+  require_permission get serviceaccounts
+  require_permission get secrets
+  require_permission create secrets
+  require_permission patch secrets
+  require_permission create deployments
+  require_permission patch deployments
+  require_permission create services
+  require_permission patch services
+  require_permission create serviceaccounts
+  require_permission patch serviceaccounts
+
+  if [[ "${SERVER_DRY_RUN}" == "true" ]]; then
+    echo "[aws-runtime-preflight] server-side dry-run"
+    kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
+    kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
+  fi
+else
+  echo "[aws-runtime-preflight] cluster checks skipped"
 fi
 
 echo "[aws-runtime-preflight] verification completed"
