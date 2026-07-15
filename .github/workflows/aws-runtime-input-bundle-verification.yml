@@ -1,0 +1,27 @@
+name: AWS Runtime Input Bundle Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aws-runtime-input-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify AWS runtime input bundle path
+        run: bash scripts/checks/aws-runtime-input-bundle-verification.sh
+
+      - name: Upload input bundle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-runtime-input-bundle-evidence
+          path: artifacts/aws-runtime-input-bundle
+          if-no-files-found: ignore
