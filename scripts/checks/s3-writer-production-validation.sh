@@ -84,7 +84,7 @@ SOURCE_BUCKET="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))
 SOURCE_KEY="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sourceKey"])' "${UPLOAD_RESPONSE_JSON}")"
 STORAGE_PROVIDER="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("storageProvider", ""))' "${UPLOAD_RESPONSE_JSON}")"
 BINARY_PERSISTED="$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1])).get("binaryPersisted", "")).lower())' "${UPLOAD_RESPONSE_JSON}")"
-SOURCE_ETAG="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("sourceETag") or "")' "${UPLOAD_RESPONSE_JSON}")"
+STORAGE_ETAG="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("storageETag") or "")' "${UPLOAD_RESPONSE_JSON}")"
 
 if [[ "${SOURCE_BUCKET}" != "${S3_UPLOAD_BUCKET}" ]]; then
   echo "Expected sourceBucket=${S3_UPLOAD_BUCKET}, got ${SOURCE_BUCKET}" >&2
@@ -104,8 +104,8 @@ if [[ "${BINARY_PERSISTED}" != "true" ]]; then
   exit 1
 fi
 
-if [[ -z "${SOURCE_ETAG}" ]]; then
-  echo "Expected non-empty sourceETag" >&2
+if [[ -z "${STORAGE_ETAG}" ]]; then
+  echo "Expected non-empty storageETag" >&2
   cat "${UPLOAD_RESPONSE_JSON}" >&2
   exit 1
 fi
@@ -137,7 +137,7 @@ cat > "${EVIDENCE_MD}" <<EOF
 - sourceKey: ${SOURCE_KEY}
 - storageProvider: ${STORAGE_PROVIDER}
 - binaryPersisted: ${BINARY_PERSISTED}
-- sourceETag: ${SOURCE_ETAG}
+- storageETag: ${STORAGE_ETAG}
 - headObjectContentLength: ${HEAD_LENGTH}
 - headObjectContentType: ${HEAD_CONTENT_TYPE}
 - cleanupRequested: ${CLEANUP_S3_OBJECT}
