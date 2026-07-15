@@ -1,0 +1,45 @@
+name: AWS Runtime Deployment Package Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aws-runtime-deployment-package-verification.yml"
+      - "scripts/checks/aws-runtime-deployment-package-verification.sh"
+      - "scripts/deploy/build-aws-runtime-deployment-package.sh"
+      - "scripts/deploy/build-aws-runtime-input-bundle.py"
+      - "scripts/deploy/render-backend-runtime-secret.sh"
+      - "scripts/deploy/render-aws-runtime-manifest.sh"
+      - "scripts/deploy/aws-runtime-deploy-preflight.sh"
+      - "infra/kubernetes/**"
+      - "docs/aws-runtime-deployment-package.md"
+
+permissions:
+  contents: read
+
+jobs:
+  aws-runtime-deployment-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Verify AWS runtime deployment package path
+        run: bash scripts/checks/aws-runtime-deployment-package-verification.sh
+
+      - name: Upload deployment package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-runtime-deployment-package-evidence
+          path: artifacts/aws-runtime-deployment-package-verification
+          if-no-files-found: ignore
