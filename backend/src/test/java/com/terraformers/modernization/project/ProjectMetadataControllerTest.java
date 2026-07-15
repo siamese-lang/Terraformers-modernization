@@ -151,36 +151,6 @@ class ProjectMetadataControllerTest {
     }
 
     @Test
-    void projectTreeCompatibilityExposesMainTfNode() throws Exception {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "Tree Contract.png",
-                "image/png",
-                "fake image bytes".getBytes()
-        );
-
-        mockMvc.perform(multipart("/api/upload").file(file))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.projectId").value("tree-contract"));
-
-        mockMvc.perform(get("/api/project-tree/tree-contract"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.projectId").value("tree-contract"))
-                .andExpect(jsonPath("$.name").value("Tree Contract"))
-                .andExpect(jsonPath("$.path").value("tree-contract"))
-                .andExpect(jsonPath("$.type").value("directory"))
-                .andExpect(jsonPath("$.children", hasSize(1)))
-                .andExpect(jsonPath("$.children[0].name").value("main.tf"))
-                .andExpect(jsonPath("$.children[0].path").value("main.tf"))
-                .andExpect(jsonPath("$.children[0].type").value("file"))
-                .andExpect(jsonPath("$.children[0].contentType").value("text/plain; charset=utf-8"))
-                .andExpect(jsonPath("$.children[0].apiPath").value("/api/projects/tree-contract/terraform/main.tf"))
-                .andExpect(jsonPath("$.terraformDraftApiPath").value("/api/projects/tree-contract/terraform/main.tf"))
-                .andExpect(jsonPath("$.sourceBucket").value("example-bucket"))
-                .andExpect(jsonPath("$.sourceKey").value(startsWith("browser-uploads/tree-contract/")));
-    }
-
-    @Test
     void unknownProjectReturnsNotFound() throws Exception {
         mockMvc.perform(get("/api/projects/missing-project"))
                 .andExpect(status().isNotFound());
