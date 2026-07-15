@@ -1,9 +1,13 @@
 package com.terraformers.modernization.analysis;
 
+import com.terraformers.modernization.storage.StoredUploadObject;
 import java.time.Instant;
 
 public record AnalysisUploadResponse(
         String uploadMode,
+        String storageProvider,
+        boolean binaryPersisted,
+        String storageETag,
         String analysisJobId,
         String projectId,
         String sourceBucket,
@@ -24,10 +28,14 @@ public record AnalysisUploadResponse(
             AnalysisJobResponse job,
             String originalFilename,
             String contentType,
-            long size
+            long size,
+            StoredUploadObject storedUpload
     ) {
         return new AnalysisUploadResponse(
                 "analysis-job-compatibility",
+                storedUpload.provider(),
+                storedUpload.binaryPersisted(),
+                storedUpload.eTag(),
                 job.id(),
                 job.projectId(),
                 job.sourceBucket(),

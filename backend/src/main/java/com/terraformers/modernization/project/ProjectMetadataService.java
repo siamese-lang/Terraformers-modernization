@@ -27,6 +27,9 @@ public class ProjectMetadataService {
         entity.setTerraformDraftUpdatedAt(Instant.now());
         entity.setSourceBucket(upload.sourceBucket());
         entity.setSourceKey(upload.sourceKey());
+        entity.setSourceStorageProvider(upload.storageProvider());
+        entity.setSourceBinaryPersisted(upload.binaryPersisted());
+        entity.setSourceETag(upload.storageETag());
         entity.setOriginalFilename(upload.originalFilename());
         entity.setContentType(upload.contentType());
         entity.setUploadSizeBytes(upload.size());

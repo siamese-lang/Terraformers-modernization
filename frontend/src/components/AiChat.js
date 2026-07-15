@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 import Dropzone from './Dropzone';
 import ProjectTreeReadOnly from './ProjectTreeReadOnly';
+import PublicProjectsReadOnly from './PublicProjectsReadOnly';
 import { eventBus } from '../utils/eventBus';
 import { buildUnsupportedTextChatMessage } from '../utils/chatSupport';
 
@@ -153,6 +154,15 @@ function AiChat() {
     setInputText('');
   };
 
+  const selectPublicProject = (project) => {
+    const nextProjectId = project.projectId || project.id;
+    if (!nextProjectId) {
+      return;
+    }
+    setSelectedProjectId(nextProjectId);
+    setProjectTreeRefresh((previous) => previous + 1);
+  };
+
   return (
     <main className="terraformers-chat-shell">
       <aside className="terraformers-sidebar">
@@ -162,7 +172,7 @@ function AiChat() {
         <nav className="sidebar-nav" aria-label="Frontend import status">
           <span className="active">Chat / Upload</span>
           <span className="active">Project Tree - read-only</span>
-          <span className="disabled">Public Projects - next contract</span>
+          <span className="active">Public Projects - read-only</span>
           <span className="disabled">Runtime Config - safe replacement pending</span>
         </nav>
       </aside>
@@ -170,8 +180,8 @@ function AiChat() {
       <section className="chat-main">
         <header className="chat-header">
           <div>
-            <p className="eyebrow">Original frontend import pass 3</p>
-            <h2>Image upload, analysis, and project tree</h2>
+            <p className="eyebrow">Original frontend import pass 4</p>
+            <h2>Image upload, public projects, and project tree</h2>
           </div>
           <button type="button" className="primary-button" onClick={() => setIsModalOpen(true)}>
             이미지 업로드
@@ -185,7 +195,10 @@ function AiChat() {
             <div ref={chatEndRef} />
           </section>
 
-          <ProjectTreeReadOnly selectedProjectId={selectedProjectId} refreshToken={projectTreeRefresh} />
+          <section className="right-inspector-column" aria-label="Project inspectors">
+            <PublicProjectsReadOnly selectedProjectId={selectedProjectId} onSelectProject={selectPublicProject} />
+            <ProjectTreeReadOnly selectedProjectId={selectedProjectId} refreshToken={projectTreeRefresh} />
+          </section>
         </section>
 
         <section className="chat-input-row">

@@ -45,6 +45,15 @@ public class ProjectEntity {
     @Column(name = "source_key", length = 1024)
     private String sourceKey;
 
+    @Column(name = "source_storage_provider", length = 64)
+    private String sourceStorageProvider;
+
+    @Column(name = "source_binary_persisted", nullable = false)
+    private boolean sourceBinaryPersisted;
+
+    @Column(name = "source_etag", length = 255)
+    private String sourceETag;
+
     @Column(name = "original_filename", length = 255)
     private String originalFilename;
 
@@ -142,6 +151,30 @@ public class ProjectEntity {
 
     public void setSourceKey(String sourceKey) {
         this.sourceKey = sourceKey;
+    }
+
+    public String getSourceStorageProvider() {
+        return sourceStorageProvider;
+    }
+
+    public void setSourceStorageProvider(String sourceStorageProvider) {
+        this.sourceStorageProvider = sourceStorageProvider;
+    }
+
+    public boolean isSourceBinaryPersisted() {
+        return sourceBinaryPersisted;
+    }
+
+    public void setSourceBinaryPersisted(boolean sourceBinaryPersisted) {
+        this.sourceBinaryPersisted = sourceBinaryPersisted;
+    }
+
+    public String getSourceETag() {
+        return sourceETag;
+    }
+
+    public void setSourceETag(String sourceETag) {
+        this.sourceETag = sourceETag;
     }
 
     public String getOriginalFilename() {
