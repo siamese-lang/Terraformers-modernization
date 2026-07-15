@@ -20,10 +20,13 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          show-progress: false
+      - name: Quiet checkout
+        run: |
+          git config --global advice.detachedHead false
+          git init -q .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch -q --depth=1 origin "${GITHUB_REF}"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
