@@ -51,12 +51,19 @@ resource "aws_subnet" "public" {
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = true
 
-  tags = merge(local.tags, {
-    Name                                             = "${local.name_prefix}-public-${count.index + 1}"
-    Tier                                             = "public"
-    "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
-    "kubernetes.io/role/elb"                        = "1"
-  })
+  tags = merge(
+    local.tags,
+    {
+      Name = "${local.name_prefix}-public-${count.index + 1}"
+      Tier = "public"
+    },
+    {
+      "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
+    },
+    {
+      "kubernetes.io/role/elb" = "1"
+    }
+  )
 }
 
 resource "aws_subnet" "private" {
@@ -66,12 +73,19 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = local.availability_zones[count.index]
 
-  tags = merge(local.tags, {
-    Name                                             = "${local.name_prefix}-private-${count.index + 1}"
-    Tier                                             = "private"
-    "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
-    "kubernetes.io/role/internal-elb"               = "1"
-  })
+  tags = merge(
+    local.tags,
+    {
+      Name = "${local.name_prefix}-private-${count.index + 1}"
+      Tier = "private"
+    },
+    {
+      "kubernetes.io/cluster/${local.eks_cluster_name}" = "shared"
+    },
+    {
+      "kubernetes.io/role/internal-elb" = "1"
+    }
+  )
 }
 
 resource "aws_route_table" "public" {
