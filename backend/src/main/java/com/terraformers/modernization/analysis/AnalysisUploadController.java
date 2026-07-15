@@ -1,12 +1,12 @@
 package com.terraformers.modernization.analysis;
 
 import com.terraformers.modernization.project.ProjectMetadataService;
+import com.terraformers.modernization.storage.StoredUploadObject;
+import com.terraformers.modernization.storage.UploadObjectStorageService;
+import com.terraformers.modernization.storage.UploadStorageException;
 import java.net.URI;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,24 +20,18 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class AnalysisUploadController {
 
-    private static final DateTimeFormatter DATE_PATH = DateTimeFormatter.ofPattern("yyyy/MM/dd")
-            .withZone(ZoneOffset.UTC);
-
     private final AnalysisJobService analysisJobService;
     private final ProjectMetadataService projectMetadataService;
-    private final String sourceBucket;
-    private final String sourcePrefix;
+    private final UploadObjectStorageService uploadObjectStorageService;
 
     public AnalysisUploadController(
             AnalysisJobService analysisJobService,
             ProjectMetadataService projectMetadataService,
-            @Value("${terraformers.upload.source-bucket:example-bucket}") String sourceBucket,
-            @Value("${terraformers.upload.source-prefix:browser-uploads}") String sourcePrefix
+            UploadObjectStorageService uploadObjectStorageService
     ) {
         this.analysisJobService = analysisJobService;
         this.projectMetadataService = projectMetadataService;
-        this.sourceBucket = sourceBucket;
-        this.sourcePrefix = sourcePrefix;
+        this.uploadObjectStorageService = uploadObjectStorageService;
     }
 
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -51,12 +45,12 @@ public class AnalysisUploadController {
 
         String originalFilename = safeOriginalFilename(file);
         String projectId = normalizeProjectId(requestedProjectId, originalFilename);
-        String sourceKey = buildSourceKey(projectId, originalFilename);
+        StoredUploadObject storedUpload = uploadObjectStorageService.store(file, projectId, originalFilename);
 
         AnalysisJobResponse job = analysisJobService.create(new AnalysisJobRequest(
                 projectId,
-                sourceBucket,
-                sourceKey,
+                storedUpload.bucket(),
+                storedUpload.key(),
                 "upload-compat-" + System.currentTimeMillis()
         ));
 
@@ -64,7 +58,8 @@ public class AnalysisUploadController {
                 job,
                 originalFilename,
                 resolveContentType(file),
-                file.getSize()
+                file.getSize(),
+                storedUpload
         );
         projectMetadataService.upsertFromUpload(response);
 
@@ -78,10 +73,9 @@ public class AnalysisUploadController {
         return ResponseEntity.badRequest().body(exception.getMessage());
     }
 
-    private String buildSourceKey(String projectId, String originalFilename) {
-        String prefix = normalizePrefix(sourcePrefix);
-        String datePath = DATE_PATH.format(Instant.now());
-        return prefix + "/" + projectId + "/" + datePath + "/" + System.currentTimeMillis() + "-" + sanitizeFilename(originalFilename);
+    @ExceptionHandler(UploadStorageException.class)
+    public ResponseEntity<String> handleUploadStorageFailure(UploadStorageException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(exception.getMessage());
     }
 
     private String normalizeProjectId(String requestedProjectId, String originalFilename) {
@@ -107,32 +101,12 @@ public class AnalysisUploadController {
         return normalized.substring(normalized.lastIndexOf('/') + 1);
     }
 
-    private String sanitizeFilename(String filename) {
-        String sanitized = filename.replaceAll("[^a-zA-Z0-9._-]+", "-")
-                .replaceAll("^-+|-+$", "");
-        return sanitized.isBlank() ? "architecture-image.png" : sanitized;
-    }
-
     private String stripExtension(String filename) {
         int dotIndex = filename.lastIndexOf('.');
         if (dotIndex <= 0) {
             return filename;
         }
         return filename.substring(0, dotIndex);
-    }
-
-    private String normalizePrefix(String prefix) {
-        if (prefix == null || prefix.isBlank()) {
-            return "browser-uploads";
-        }
-        String normalized = prefix.strip();
-        while (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized.isBlank() ? "browser-uploads" : normalized;
     }
 
     private String resolveContentType(MultipartFile file) {
