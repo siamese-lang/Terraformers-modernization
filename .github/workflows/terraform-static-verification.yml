@@ -2,6 +2,15 @@ name: Terraform Static Verification
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/terraform-static-verification.yml"
+      - "scripts/checks/terraform-static-verification.sh"
+      - "infra/terraform/**"
+      - "docs/backend-stateful-rds-contract.md"
+      - "docs/source-repository-reuse-audit.md"
 
 permissions:
   contents: read
@@ -14,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          show-progress: false
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
