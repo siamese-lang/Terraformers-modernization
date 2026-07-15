@@ -4,13 +4,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_EXAMPLE="${REPO_ROOT}/infra/kubernetes/runtime-secret.env.example"
 RENDER_SCRIPT="${REPO_ROOT}/scripts/deploy/render-backend-runtime-secret.sh"
-RENDERED_SECRET="$(mktemp)"
-INVALID_ENV="$(mktemp)"
-
-cleanup() {
-  rm -f "${RENDERED_SECRET}" "${INVALID_ENV}"
-}
-trap cleanup EXIT
+ARTIFACT_DIR="${REPO_ROOT}/artifacts/kubernetes-runtime-secret"
+RENDERED_SECRET="${ARTIFACT_DIR}/backend-runtime-secret.yaml"
+INVALID_ENV="${ARTIFACT_DIR}/missing-password.env"
+MISSING_KEY_OUTPUT="${ARTIFACT_DIR}/missing-password-output.txt"
 
 require_command() {
   local command_name="$1"
@@ -46,6 +43,8 @@ require_command kubectl
 require_command bash
 require_command grep
 
+rm -rf "${ARTIFACT_DIR}"
+mkdir -p "${ARTIFACT_DIR}"
 chmod +x "${RENDER_SCRIPT}"
 
 echo "[kubernetes-secret] rendering runtime Secret from example env"
@@ -70,9 +69,11 @@ cp "${ENV_EXAMPLE}" "${INVALID_ENV}"
 sed -i '/^SPRING_DATASOURCE_PASSWORD=/d' "${INVALID_ENV}"
 
 echo "[kubernetes-secret] verifying missing required key is rejected"
-if "${RENDER_SCRIPT}" --env-file "${INVALID_ENV}" >/dev/null 2>&1; then
+if "${RENDER_SCRIPT}" --env-file "${INVALID_ENV}" >"${MISSING_KEY_OUTPUT}" 2>&1; then
   echo "render script must reject env files missing required keys" >&2
   exit 1
 fi
+
+assert_contains 'Missing required key.*SPRING_DATASOURCE_PASSWORD' "${MISSING_KEY_OUTPUT}" "Missing password failure must be explicit."
 
 echo "[kubernetes-secret] verification completed"
