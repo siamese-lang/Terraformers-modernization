@@ -20,6 +20,12 @@ function sourceSummary(project) {
   return 'No source metadata yet';
 }
 
+function storageSummary(project) {
+  const provider = project.sourceStorageProvider || 'metadata-only';
+  const persisted = project.sourceBinaryPersisted ? 'persisted' : 'metadata only';
+  return `${provider} · ${persisted}`;
+}
+
 function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [projects, setProjects] = useState([]);
   const [comments, setComments] = useState([]);
@@ -143,6 +149,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                   <span className="public-project-title">{projectNameOf(project)}</span>
                   <span className="public-project-meta">{project.visibility || 'PUBLIC'}</span>
                   <span className="public-project-source">{sourceSummary(project)}</span>
+                  <span className="public-project-source">{storageSummary(project)}</span>
                 </button>
               </li>
             );
