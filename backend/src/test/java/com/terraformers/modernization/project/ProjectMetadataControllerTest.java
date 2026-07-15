@@ -64,6 +64,23 @@ class ProjectMetadataControllerTest {
     }
 
     @Test
+    void metadataOnlySourceObjectReadReturnsConflict() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "Project Source.png",
+                "image/png",
+                "fake image bytes".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/upload").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.projectId").value("project-source"));
+
+        mockMvc.perform(get("/api/projects/project-source/source-object"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void visibilityCanBeUpdatedAndListedAsPublic() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
