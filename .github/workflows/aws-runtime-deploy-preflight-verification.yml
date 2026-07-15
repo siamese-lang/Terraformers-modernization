@@ -1,0 +1,30 @@
+name: AWS Runtime Deploy Preflight Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aws-runtime-deploy-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Verify AWS runtime deploy preflight path
+        run: bash scripts/checks/aws-runtime-deploy-preflight-verification.sh
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-runtime-deploy-preflight-evidence
+          path: artifacts/aws-runtime-deploy-preflight
+          if-no-files-found: ignore

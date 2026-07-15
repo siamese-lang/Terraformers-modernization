@@ -2,7 +2,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TEMPLATE_DIR="${REPO_ROOT}/infra/kubernetes/overlays/aws-runtime-template"
+KUBERNETES_DIR="${REPO_ROOT}/infra/kubernetes"
+TEMPLATE_RELATIVE_DIR="overlays/aws-runtime-template"
 DEFAULT_NAMESPACE="terraformers-runtime"
 
 IMAGE_URI="${BACKEND_IMAGE_URI:-}"
@@ -127,8 +128,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp -R "${TEMPLATE_DIR}" "${WORK_DIR}/aws-runtime"
-OVERLAY_DIR="${WORK_DIR}/aws-runtime"
+# Preserve the original infra/kubernetes layout so the template overlay can still
+# resolve its ../../base resource path while being patched with environment values.
+mkdir -p "${WORK_DIR}/infra"
+cp -R "${KUBERNETES_DIR}" "${WORK_DIR}/infra/kubernetes"
+OVERLAY_DIR="${WORK_DIR}/infra/kubernetes/${TEMPLATE_RELATIVE_DIR}"
 
 python3 - "${OVERLAY_DIR}/kustomization.yaml" "${IMAGE_REPOSITORY}" "${IMAGE_TAG}" "${NAMESPACE}" <<'PY'
 from pathlib import Path
