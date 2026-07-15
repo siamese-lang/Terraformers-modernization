@@ -176,7 +176,7 @@ public class BedrockRuntimeAnalysisProvider implements AnalysisProvider {
                             "user",
                             List.of(new AnthropicContent("text", prompt))
                     ))
-            );
+            ));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("failed to serialize Bedrock request", exception);
         }
