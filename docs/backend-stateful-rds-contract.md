@@ -85,7 +85,7 @@ Therefore, live validation should treat backend startup failure from missing tab
 
 ## Verification boundary
 
-`Terraform Static Verification` must run on this PR before merge. The workflow PR trigger is enabled separately on `main`; this document update exists to create a new PR synchronize event after that trigger is available.
+`Terraform Static Verification` must pass on this PR before merge. The PR trigger is already enabled on `main`, so any later change to this branch should produce an observable pull-request workflow run.
 
 ## Stop condition
 
