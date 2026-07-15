@@ -25,3 +25,12 @@ jobs:
 
       - name: Verify backend local baseline
         run: bash scripts/checks/backend-local-verification.sh
+
+      - name: Upload backend verification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-local-verification-diagnostics
+          path: |
+            backend/target/backend-local-verification-maven.log
+            backend/target/surefire-reports
