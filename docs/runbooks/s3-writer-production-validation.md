@@ -105,10 +105,19 @@ The workflow must prove all of the following:
 3. response.binaryPersisted == true.
 4. response.sourceBucket == selected upload bucket.
 5. response.sourceKey is under the selected prefix.
-6. response.sourceETag is non-empty.
+6. response.storageETag is non-empty.
 7. aws s3api head-object succeeds for sourceBucket/sourceKey.
 8. head-object ContentType is image/png.
 ```
+
+Field naming note:
+
+```text
+/api/upload response: storageETag
+project metadata: sourceETag
+```
+
+The workflow validates the upload response directly, so it reads `storageETag`.
 
 The workflow uploads the evidence artifact:
 
@@ -136,10 +145,11 @@ Common failures and likely causes:
 | backend does not become healthy | application config/runtime error; inspect `backend.log` |
 | `/api/upload` returns 502 | S3 PutObject failed; inspect backend log and IAM permissions |
 | `storageProvider` is not `s3` | S3 writer flag did not bind correctly |
+| `storageETag` is empty | upload response did not receive the S3 PutObject eTag |
 | `head-object` fails | object was not written, wrong bucket/key, or missing GetObject/HeadObject permission |
 
 ## 8. Portfolio explanation
 
 ```text
-S3 writer 검증은 전체 AWS 연동을 한 번에 켠 것이 아니라, 업로드 이미지가 실제 S3 객체로 저장되는 경계만 분리해 검증한 작업입니다. `/api/upload` 요청 후 응답의 `storageProvider=s3`, `binaryPersisted=true`, `sourceETag`를 확인하고, 같은 bucket/key에 대해 `head-object`를 수행해 객체 존재를 검증했습니다. 이 단계에서는 S3 read, Bedrock, OpenSearch, SQS는 의도적으로 비활성화하여 장애 원인 범위를 S3 writer로 제한했습니다.
+S3 writer 검증은 전체 AWS 연동을 한 번에 켠 것이 아니라, 업로드 이미지가 실제 S3 객체로 저장되는 경계만 분리해 검증한 작업입니다. `/api/upload` 요청 후 응답의 `storageProvider=s3`, `binaryPersisted=true`, `storageETag`를 확인하고, 같은 bucket/key에 대해 `head-object`를 수행해 객체 존재를 검증했습니다. 이 단계에서는 S3 read, Bedrock, OpenSearch, SQS는 의도적으로 비활성화하여 장애 원인 범위를 S3 writer로 제한했습니다.
 ```
