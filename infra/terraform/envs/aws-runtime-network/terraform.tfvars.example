@@ -1,0 +1,27 @@
+project_name = "terraformers-modernization"
+environment  = "dev"
+aws_region   = "ap-northeast-2"
+
+vpc_cidr             = "10.40.0.0/16"
+public_subnet_count  = 2
+private_subnet_count = 2
+subnet_newbits       = 4
+
+# Must match the EKS cluster name produced by infra/terraform/envs/eks-runtime.
+eks_cluster_name = "terraformers-dev-backend"
+
+# Keep false for low-cost static planning. Enable for live EKS node egress
+# when endpoint-only networking is insufficient.
+enable_nat_gateway = false
+single_nat_gateway = true
+
+# S3 gateway endpoint is low-cost and helps private subnet access to S3.
+enable_s3_gateway_endpoint = true
+
+# This prepares network reachability only. It does not enable the backend
+# Bedrock adapter or grant Bedrock permissions.
+enable_bedrock_runtime_endpoint = false
+
+common_tags = {
+  Owner = "terraformers-modernization"
+}
