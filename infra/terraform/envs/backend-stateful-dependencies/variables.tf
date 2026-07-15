@@ -61,6 +61,12 @@ variable "database_username" {
   default     = "terraformers_app"
 }
 
+variable "database_password" {
+  description = "Application database password. Supply from a secure source such as GitHub Actions secret, tfvars outside git, or an operator-approved secret workflow. Do not commit real values."
+  type        = string
+  sensitive   = true
+}
+
 variable "database_port" {
   description = "MariaDB port."
   type        = number
