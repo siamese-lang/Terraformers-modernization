@@ -1,0 +1,94 @@
+name: S3 Writer Production Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for the upload bucket
+        required: true
+        default: ap-northeast-2
+      upload_bucket:
+        description: Existing S3 bucket that the validation may write to
+        required: true
+      upload_prefix:
+        description: Object prefix for temporary validation uploads
+        required: true
+        default: terraformers-modernization-validation
+      cleanup_object:
+        description: Remove the validation object after head-object succeeds
+        required: true
+        type: boolean
+        default: true
+      aws_role_to_assume:
+        description: Optional IAM role ARN for GitHub OIDC. Leave blank to use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY repository secrets.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  s3-writer-production-validation:
+    name: Validate S3 writer boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Configure AWS credentials through OIDC role
+        if: ${{ inputs.aws_role_to_assume != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_to_assume }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Export static AWS credentials from repository secrets
+        if: ${{ inputs.aws_role_to_assume == '' }}
+        env:
+          SECRET_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          SECRET_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SECRET_AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SECRET_AWS_ACCESS_KEY_ID}" || -z "${SECRET_AWS_SECRET_ACCESS_KEY}" ]]; then
+            echo "Set aws_role_to_assume or repository secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY before running this workflow." >&2
+            exit 1
+          fi
+          {
+            echo "AWS_ACCESS_KEY_ID=${SECRET_AWS_ACCESS_KEY_ID}"
+            echo "AWS_SECRET_ACCESS_KEY=${SECRET_AWS_SECRET_ACCESS_KEY}"
+            if [[ -n "${SECRET_AWS_SESSION_TOKEN}" ]]; then
+              echo "AWS_SESSION_TOKEN=${SECRET_AWS_SESSION_TOKEN}"
+            fi
+            echo "AWS_REGION=${{ inputs.aws_region }}"
+            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Verify AWS caller identity
+        run: aws sts get-caller-identity --region "${{ inputs.aws_region }}"
+
+      - name: Run S3 writer production validation
+        env:
+          AWS_REGION: ${{ inputs.aws_region }}
+          AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
+          S3_UPLOAD_BUCKET: ${{ inputs.upload_bucket }}
+          S3_UPLOAD_PREFIX: ${{ inputs.upload_prefix }}
+          CLEANUP_S3_OBJECT: ${{ inputs.cleanup_object }}
+        run: bash scripts/checks/s3-writer-production-validation.sh
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-writer-production-validation
+          path: artifacts/s3-writer-production-validation
