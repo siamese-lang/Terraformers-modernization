@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          show-progress: false
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -30,3 +32,11 @@ jobs:
 
       - name: Verify Terraform configurations
         run: bash scripts/checks/terraform-static-verification.sh
+
+      - name: Upload Terraform static verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-static-verification
+          path: artifacts/terraform-static-verification
+          if-no-files-found: ignore
