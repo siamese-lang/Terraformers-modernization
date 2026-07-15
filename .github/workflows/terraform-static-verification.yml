@@ -31,4 +31,9 @@ jobs:
           terraform_version: 1.8.5
 
       - name: Verify Terraform configurations
-        run: bash scripts/checks/terraform-static-verification.sh
+        run: |
+          bash scripts/checks/terraform-static-verification.sh > terraform-static.log 2>&1 || {
+            tail -n 120 terraform-static.log
+            exit 1
+          }
+          cat terraform-static.log
