@@ -22,8 +22,14 @@ function sourceSummary(project) {
 
 function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [projects, setProjects] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [commentContent, setCommentContent] = useState('');
+  const [commentUserEmail, setCommentUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [error, setError] = useState('');
+  const [commentError, setCommentError] = useState('');
 
   const loadPublicProjects = useCallback(async () => {
     setIsLoading(true);
@@ -39,16 +45,72 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     }
   }, []);
 
+  const loadComments = useCallback(async (projectId) => {
+    if (!projectId) {
+      setComments([]);
+      return;
+    }
+
+    setIsCommentsLoading(true);
+    setCommentError('');
+    try {
+      const response = await api.get(`/api/getProjectComments/${encodeURIComponent(projectId)}`);
+      setComments(Array.isArray(response.data) ? response.data : []);
+    } catch (loadError) {
+      setCommentError(loadError?.response?.status === 403
+        ? 'PUBLIC 프로젝트의 댓글만 조회할 수 있습니다.'
+        : loadError?.message || '댓글 조회에 실패했습니다.');
+      setComments([]);
+    } finally {
+      setIsCommentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadPublicProjects();
   }, [loadPublicProjects]);
+
+  useEffect(() => {
+    loadComments(selectedProjectId);
+  }, [loadComments, selectedProjectId]);
+
+  const handleSelectProject = (project) => {
+    onSelectProject(project);
+    loadComments(projectIdOf(project));
+  };
+
+  const handleSubmitComment = async (event) => {
+    event.preventDefault();
+
+    if (!selectedProjectId || !commentContent.trim()) {
+      return;
+    }
+
+    setIsSubmittingComment(true);
+    setCommentError('');
+    try {
+      await api.post('/api/addProjectComment', {
+        projectId: selectedProjectId,
+        content: commentContent,
+        userEmail: commentUserEmail || undefined,
+      });
+      setCommentContent('');
+      await loadComments(selectedProjectId);
+    } catch (submitError) {
+      setCommentError(submitError?.response?.status === 403
+        ? 'PUBLIC 프로젝트에만 댓글을 남길 수 있습니다.'
+        : submitError?.message || '댓글 저장에 실패했습니다.');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
 
   return (
     <section className="public-projects-panel" aria-label="Read-only public projects">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Public projects</p>
-          <h2>Read-only shared projects</h2>
+          <h2>Shared projects and comments</h2>
         </div>
         <button type="button" className="compact-button" onClick={loadPublicProjects} disabled={isLoading}>
           {isLoading ? 'loading' : 'refresh'}
@@ -56,8 +118,8 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       </div>
 
       <p className="muted-copy">
-        기존 Terraformers의 `/api/public-projects` 흐름을 현재 프로젝트 메타데이터 계약에 맞춘 조회 전용 목록입니다.
-        댓글, 좋아요, 공유 편집은 아직 연결하지 않았습니다.
+        기존 Terraformers의 `/api/public-projects`와 댓글 흐름을 현재 프로젝트 메타데이터 계약에 맞춘 PUBLIC 전용 화면입니다.
+        좋아요, 공유 편집, 삭제는 아직 연결하지 않았습니다.
       </p>
 
       {error && <p className="public-projects-error">{error}</p>}
@@ -76,7 +138,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                 <button
                   type="button"
                   className={isSelected ? 'public-project-card selected' : 'public-project-card'}
-                  onClick={() => onSelectProject(project)}
+                  onClick={() => handleSelectProject(project)}
                 >
                   <span className="public-project-title">{projectNameOf(project)}</span>
                   <span className="public-project-meta">{project.visibility || 'PUBLIC'}</span>
@@ -87,6 +149,57 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
           })}
         </ul>
       )}
+
+      <section className="public-comments-panel" aria-label="Public project comments">
+        <h3>Comments</h3>
+        {!selectedProjectId && (
+          <p className="public-projects-empty">댓글을 보려면 공개 프로젝트를 선택하세요.</p>
+        )}
+
+        {selectedProjectId && (
+          <>
+            {commentError && <p className="public-projects-error">{commentError}</p>}
+            {isCommentsLoading && <p className="public-projects-empty">댓글을 불러오는 중입니다.</p>}
+            {!isCommentsLoading && comments.length === 0 && !commentError && (
+              <p className="public-projects-empty">아직 댓글이 없습니다.</p>
+            )}
+            {comments.length > 0 && (
+              <ul className="public-comment-list">
+                {comments.map((comment) => (
+                  <li key={comment.id || `${comment.projectId}-${comment.createdAt}`} className="public-comment-item">
+                    <div className="public-comment-meta">
+                      <span>{comment.userEmail || 'anonymous'}</span>
+                      <span>{comment.createdAt ? new Date(comment.createdAt).toLocaleString() : ''}</span>
+                    </div>
+                    <p>{comment.content}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <form className="public-comment-form" onSubmit={handleSubmitComment}>
+              <input
+                type="email"
+                value={commentUserEmail}
+                onChange={(event) => setCommentUserEmail(event.target.value)}
+                placeholder="email optional"
+              />
+              <textarea
+                value={commentContent}
+                onChange={(event) => setCommentContent(event.target.value)}
+                placeholder="PUBLIC 프로젝트에 남길 댓글"
+              />
+              <button
+                type="submit"
+                className="compact-button"
+                disabled={isSubmittingComment || !commentContent.trim()}
+              >
+                {isSubmittingComment ? 'saving' : 'add comment'}
+              </button>
+            </form>
+          </>
+        )}
+      </section>
     </section>
   );
 }
