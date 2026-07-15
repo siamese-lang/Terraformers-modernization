@@ -117,7 +117,7 @@ This is intentional: when a production adapter is enabled, downstream analysis s
 
 ## 6. Verification
 
-Covered by:
+Covered by routine backend tests:
 
 ```text
 backend/src/test/java/com/terraformers/modernization/analysis/AnalysisUploadControllerTest.java
@@ -138,14 +138,40 @@ s3-writer-enabled=true
   -> eTag is returned
 ```
 
-Run through GitHub Actions:
+Routine local/stub verification:
 
 ```text
 Backend Local Verification
 ```
 
+Real AWS adapter evidence should use the dedicated manual workflow:
+
+```text
+S3 Writer Production Validation
+```
+
+That workflow runs:
+
+```text
+scripts/checks/s3-writer-production-validation.sh
+```
+
+Success criteria:
+
+```text
+POST /api/upload returns storageProvider=s3
+binaryPersisted=true
+sourceETag is non-empty
+aws s3api head-object succeeds for sourceBucket/sourceKey
+S3 reader, Bedrock, OpenSearch, and SQS publisher remain disabled
+```
+
+Reference:
+
+- [`docs/runbooks/s3-writer-production-validation.md`](runbooks/s3-writer-production-validation.md)
+
 ## 7. Portfolio explanation
 
 ```text
-기존 Terraformers의 이미지 업로드 진입점은 유지하되, 업로드 파일을 분석 job에 넘기기 전에 저장소 경계를 분리했습니다. 로컬·테스트에서는 기존과 동일하게 metadata-only source reference를 사용하고, 운영 검증에서는 `S3_WRITER_ENABLED`를 켰을 때 실제 S3 PutObject 결과를 sourceBucket/sourceKey/eTag로 기록하도록 했습니다. 이로써 실제 바이너리 저장 여부를 응답과 프로젝트 메타데이터에서 확인할 수 있게 했으며, AWS credential을 브라우저에 입력하는 방식은 되살리지 않았습니다.
+기존 Terraformers의 이미지 업로드 진입점은 유지하되, 업로드 파일을 분석 job에 넘기기 전에 저장소 경계를 분리했습니다. 로컬·테스트에서는 기존과 동일하게 metadata-only source reference를 사용하고, 운영 검증에서는 `S3_WRITER_ENABLED`를 켰을 때 실제 S3 PutObject 결과를 sourceBucket/sourceKey/eTag로 기록하도록 했습니다. 이후 별도 S3 writer production validation workflow에서 `/api/upload` 응답과 `head-object` 결과를 함께 확인해 실제 바이너리 저장 여부를 증거화할 수 있도록 했으며, AWS credential을 브라우저에 입력하는 방식은 되살리지 않았습니다.
 ```
