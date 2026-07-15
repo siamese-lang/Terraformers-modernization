@@ -17,14 +17,15 @@ Purpose:
   to be applied to an existing Kubernetes cluster. This script does not apply resources.
 
 Checks:
-  - kubectl is available
   - manifest files exist and do not contain obvious placeholders
-  - rendered manifest contains backend Deployment, ServiceAccount, prod profile, SecretRef, and IRSA annotation
-  - client-side dry-run succeeds
+  - rendered manifest contains backend Deployment, ServiceAccount, Service, prod profile, SecretRef, and IRSA annotation
+  - Secret manifest contains the expected runtime Secret
   - when --cluster-check=true:
+    - kubectl is available
     - current or provided kube context can reach the cluster
     - namespace exists
     - caller has basic permissions for Secret, ServiceAccount, Deployment, and Service
+    - client-side dry-run succeeds
     - optional server-side dry-run succeeds
 USAGE
 }
@@ -156,7 +157,6 @@ if [[ "${CLUSTER_CHECK}" == "false" && "${SERVER_DRY_RUN}" == "true" ]]; then
   exit 1
 fi
 
-require_command kubectl
 require_command grep
 require_file "${RUNTIME_MANIFEST}" "runtime manifest"
 require_file "${SECRET_MANIFEST}" "Secret manifest"
@@ -174,11 +174,9 @@ assert_contains 'eks\.amazonaws\.com/role-arn:' "${RUNTIME_MANIFEST}" "Runtime m
 assert_contains '^kind: Secret$' "${SECRET_MANIFEST}" "Secret manifest must contain a Secret."
 assert_contains 'name: terraformers-backend-runtime-secrets' "${SECRET_MANIFEST}" "Secret manifest must create terraformers-backend-runtime-secrets."
 
-echo "[aws-runtime-preflight] client-side dry-run"
-kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
-kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
-
 if [[ "${CLUSTER_CHECK}" == "true" ]]; then
+  require_command kubectl
+
   printf '[aws-runtime-preflight] kube context: '
   kubectl_cmd config current-context
 
@@ -199,13 +197,17 @@ if [[ "${CLUSTER_CHECK}" == "true" ]]; then
   require_permission create serviceaccounts
   require_permission patch serviceaccounts
 
+  echo "[aws-runtime-preflight] client-side dry-run"
+  kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
+  kubectl_cmd apply --dry-run=client -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
+
   if [[ "${SERVER_DRY_RUN}" == "true" ]]; then
     echo "[aws-runtime-preflight] server-side dry-run"
     kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${SECRET_MANIFEST}" >/dev/null
     kubectl_cmd apply --dry-run=server -n "${NAMESPACE}" -f "${RUNTIME_MANIFEST}" >/dev/null
   fi
 else
-  echo "[aws-runtime-preflight] cluster checks skipped"
+  echo "[aws-runtime-preflight] cluster checks and kubectl dry-runs skipped"
 fi
 
 echo "[aws-runtime-preflight] verification completed"

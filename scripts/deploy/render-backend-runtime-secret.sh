@@ -66,6 +66,11 @@ if ! command -v kubectl >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v awk >/dev/null 2>&1; then
+  echo "Required command not found: awk" >&2
+  exit 1
+fi
+
 required_keys=(
   SPRING_DATASOURCE_URL
   SPRING_DATASOURCE_USERNAME
@@ -114,6 +119,15 @@ rendered_manifest="$(kubectl \
   --from-env-file="${ENV_FILE}" \
   --dry-run=client \
   -o yaml)"
+
+# Some kubectl versions omit the default Secret type from client-side generated YAML.
+# Declare it explicitly so the manifest shape remains stable across local and CI tools.
+if ! grep -Eq '^type:' <<< "${rendered_manifest}"; then
+  rendered_manifest="$(printf '%s\n' "${rendered_manifest}" | awk '
+    { print }
+    /^kind: Secret$/ { print "type: Opaque" }
+  ')"
+fi
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
   mkdir -p "$(dirname "${OUTPUT_FILE}")"
