@@ -3,8 +3,8 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  name_prefix      = lower(replace("${var.project_name}-${var.environment}", "_", "-"))
-  eks_cluster_name = "${local.name_prefix}-backend"
+  name_prefix        = lower(replace("${var.project_name}-${var.environment}", "_", "-"))
+  eks_cluster_name   = "${local.name_prefix}-backend"
   availability_zones = slice(
     data.aws_availability_zones.available.names,
     0,
