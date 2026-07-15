@@ -1,6 +1,6 @@
 locals {
   name_prefix = lower(replace("${var.project_name}-${var.environment}", "_", "-"))
-  tags        = merge(
+  tags = merge(
     var.common_tags,
     {
       Project     = var.project_name
@@ -98,7 +98,7 @@ resource "aws_cognito_user_pool" "backend" {
     temporary_password_validity_days = 7
   }
 
-  mfa_configuration  = "OFF"
+  mfa_configuration   = "OFF"
   deletion_protection = var.cognito_deletion_protection ? "ACTIVE" : "INACTIVE"
 
   tags = local.tags
