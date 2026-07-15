@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BACKEND_DIR="${REPO_ROOT}/backend"
 K8S_BASE_DIR="${REPO_ROOT}/infra/kubernetes/base"
 TERRAFORM_CONTRACT_DIR="${REPO_ROOT}/infra/terraform/runtime-contract"
 RENDERED_MANIFEST="$(mktemp)"
@@ -55,6 +56,7 @@ assert_kustomization_resource_not_included() {
 
 require_command kubectl
 require_command terraform
+require_command mvn
 require_command grep
 
 cd "${REPO_ROOT}"
@@ -81,6 +83,10 @@ echo "[runtime-contract] checking committed example files for public-safe placeh
 assert_not_contains '[0-9]{12}' "${K8S_BASE_DIR}/backend-secret.example.yaml" "Secret example must not contain 12-digit account-like identifiers."
 assert_not_contains '[0-9]{12}' "${TERRAFORM_CONTRACT_DIR}/terraform.tfvars.example" "Terraform tfvars example must not contain 12-digit account-like identifiers."
 assert_not_contains 'arn:aws:iam::[0-9]{12}:' "${K8S_BASE_DIR}/backend-serviceaccount.yaml" "ServiceAccount base must not contain account-specific IAM ARN."
+
+echo "[runtime-contract] verifying backend API contract flow"
+cd "${BACKEND_DIR}"
+mvn -q -Dtest=ProjectMetadataControllerTest,ProjectTreeControllerTest,TerraformDraftControllerTest,ProjectCommentControllerTest test
 
 echo "[runtime-contract] validating Terraform runtime contract"
 cd "${TERRAFORM_CONTRACT_DIR}"
