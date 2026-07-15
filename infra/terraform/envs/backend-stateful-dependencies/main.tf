@@ -70,7 +70,6 @@ resource "aws_db_instance" "backend" {
   db_name  = var.database_name
   port     = var.database_port
   username = var.database_username
-  password = var.database_manage_master_user_password ? null : var.database_password
 
   allocated_storage     = var.database_allocated_storage_gb
   max_allocated_storage = var.database_max_allocated_storage_gb
@@ -78,7 +77,7 @@ resource "aws_db_instance" "backend" {
   storage_encrypted     = var.database_storage_encrypted
 
   multi_az                    = var.database_multi_az
-  manage_master_user_password = var.database_manage_master_user_password
+  manage_master_user_password = true
   publicly_accessible         = var.database_publicly_accessible
 
   db_subnet_group_name   = aws_db_subnet_group.backend.name
