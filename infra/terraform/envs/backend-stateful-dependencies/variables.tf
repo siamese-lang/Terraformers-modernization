@@ -61,19 +61,6 @@ variable "database_username" {
   default     = "terraformers_app"
 }
 
-variable "database_password" {
-  description = "Application database password only when database_manage_master_user_password=false. Prefer the RDS-managed secret path."
-  type        = string
-  default     = null
-  sensitive   = true
-}
-
-variable "database_manage_master_user_password" {
-  description = "Let RDS manage the master user password and expose the generated Secrets Manager ARN as an output. This follows the rdb-refactor RDS contract."
-  type        = bool
-  default     = true
-}
-
 variable "database_port" {
   description = "MariaDB port."
   type        = number
