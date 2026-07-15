@@ -24,6 +24,7 @@ const AUTH_OPTIONAL_PATHS = [
   '/api/project-tree/',
   '/api/getProjectInfrastructureImage/',
   '/api/getProjectComments/',
+  '/api/addProjectComment',
 ];
 
 export const isAuthRequiredRequest = (config = {}) => {
