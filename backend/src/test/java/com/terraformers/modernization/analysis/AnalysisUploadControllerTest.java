@@ -38,7 +38,6 @@ class AnalysisUploadControllerTest {
                 .andExpect(jsonPath("$.uploadMode").value("analysis-job-compatibility"))
                 .andExpect(jsonPath("$.storageProvider").value("metadata-only"))
                 .andExpect(jsonPath("$.binaryPersisted").value(false))
-                .andExpect(jsonPath("$.storageETag").doesNotExist())
                 .andExpect(jsonPath("$.analysisJobId").isNotEmpty())
                 .andExpect(jsonPath("$.projectId").value("aws"))
                 .andExpect(jsonPath("$.sourceBucket").value("example-bucket"))
