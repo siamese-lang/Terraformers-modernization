@@ -16,6 +16,28 @@ resource "aws_security_group" "backend_database" {
   description = "Allow backend runtime to connect to the Terraformers MariaDB database."
   vpc_id      = var.vpc_id
 
+  dynamic "ingress" {
+    for_each = toset(var.allowed_app_security_group_ids)
+    content {
+      description     = "MariaDB from backend security group"
+      from_port       = var.database_port
+      to_port         = var.database_port
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = toset(var.allowed_database_cidr_blocks)
+    content {
+      description = "MariaDB from approved CIDR"
+      from_port   = var.database_port
+      to_port     = var.database_port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
   egress {
     description = "Allow outbound responses"
     from_port   = 0
@@ -27,28 +49,6 @@ resource "aws_security_group" "backend_database" {
   tags = merge(local.tags, {
     Name = "${local.name_prefix}-rds-sg"
   })
-}
-
-resource "aws_vpc_security_group_ingress_rule" "database_from_security_groups" {
-  for_each = toset(var.allowed_app_security_group_ids)
-
-  security_group_id            = aws_security_group.backend_database.id
-  referenced_security_group_id = each.value
-  from_port                    = var.database_port
-  to_port                      = var.database_port
-  ip_protocol                  = "tcp"
-  description                  = "Allow MariaDB from approved backend security group"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "database_from_cidr_blocks" {
-  for_each = toset(var.allowed_database_cidr_blocks)
-
-  security_group_id = aws_security_group.backend_database.id
-  cidr_ipv4         = each.value
-  from_port         = var.database_port
-  to_port           = var.database_port
-  ip_protocol       = "tcp"
-  description       = "Allow MariaDB from approved CIDR block"
 }
 
 resource "aws_db_subnet_group" "backend" {
