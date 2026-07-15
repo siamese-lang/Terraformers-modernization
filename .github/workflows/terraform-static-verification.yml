@@ -33,6 +33,9 @@ jobs:
         with:
           terraform_version: 1.8.5
 
+      - name: Diagnose Terraform fmt
+        run: terraform fmt -diff -check infra/terraform/envs/backend-stateful-dependencies/main.tf
+
       - name: Verify Terraform configurations
         run: |
           bash scripts/checks/terraform-static-verification.sh > terraform-static.log 2>&1 || {
