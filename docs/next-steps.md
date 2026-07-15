@@ -258,42 +258,106 @@ Important boundary:
 
 - private projects are not returned;
 - `imageUrl` and `description` remain null until real contracts exist;
-- comments, likes, edit/delete, and share workflows remain deferred;
+- likes, edit/delete, and share workflows remain deferred;
 - browser cloud credential settings are still not restored.
 
-## 10. Next priority: comments for public projects
+## 10. Completed: public project comments
 
-The next product contract should add comments only after project-level public visibility and read-only project inspection are stable.
+PUBLIC projects now have a minimal comment contract and a small frontend comment surface.
 
-Recommended scope:
+Current modern endpoints:
 
 ```text
 GET  /api/projects/{projectId}/comments
 POST /api/projects/{projectId}/comments
 ```
 
+Original frontend compatibility endpoints:
+
+```text
+GET  /api/getProjectComments/{projectId}
+POST /api/addProjectComment
+```
+
+Current backend behavior:
+
+```text
+PUBLIC project -> list/create comments
+PRIVATE project -> 403
+missing project -> 404
+blank content -> 400
+```
+
+Current frontend flow:
+
+```text
+select public project
+  -> GET /api/getProjectComments/{projectId}
+  -> render comments
+  -> POST /api/addProjectComment
+  -> refresh comments
+```
+
+Current files:
+
+```text
+backend/src/main/java/com/terraformers/modernization/projectcomment/ProjectCommentEntity.java
+backend/src/main/java/com/terraformers/modernization/projectcomment/ProjectCommentRepository.java
+backend/src/main/java/com/terraformers/modernization/projectcomment/ProjectCommentService.java
+backend/src/main/java/com/terraformers/modernization/projectcomment/ProjectCommentController.java
+frontend/src/components/PublicProjectsReadOnly.js
+frontend/src/utils/api.js
+frontend/src/styles/public-projects.css
+```
+
+Reference:
+
+- [`docs/backend-public-comments.md`](backend-public-comments.md)
+- [`docs/frontend-public-comments.md`](frontend-public-comments.md)
+
+Important boundary:
+
+- comments are allowed only for PUBLIC projects;
+- user ownership and authentication are not claimed yet;
+- comment edit/delete, likes/dislikes, nested replies, and board dashboard restoration remain deferred.
+
+## 11. Next priority: real upload binary persistence through S3 writer
+
+The next backend product contract should replace metadata-only upload handling with a validated S3 writer boundary.
+
+Recommended scope:
+
+```text
+S3_WRITER_ENABLED=true
+POST /api/upload
+  -> write uploaded image bytes to object storage
+  -> persist sourceBucket/sourceKey from actual writer result
+  -> keep analysis provider boundary stable
+```
+
 Rules:
 
-- only attach comments to existing projects;
-- decide whether comments require authentication before adding frontend input;
-- do not reintroduce board-like likes/dislikes yet;
-- do not import the whole original dashboard surface.
+- do not enable every production adapter at once;
+- keep local/test stub behavior intact;
+- first validate S3 write only, then move to S3 read or Bedrock provider;
+- do not expose browser cloud credential settings.
 
-## 11. Remaining backend product contracts
+## 12. Remaining backend product contracts
 
 Implement in this order:
 
-1. Comments for public projects.
-2. Real upload binary persistence through S3 writer.
-3. Production adapter validation one boundary at a time.
+1. Real upload binary persistence through S3 writer.
+2. Production adapter validation one boundary at a time.
+3. Docker image validation, if needed.
+4. Infrastructure import.
 
 Keep deferred until real integration exists:
 
 - Terraform run/destroy/tfstate;
-- real S3/SQS/Bedrock/OpenSearch browser behavior;
+- full S3/SQS/Bedrock/OpenSearch browser behavior;
 - browser-provided cloud key storage.
 
-## 12. Adapter validation order
+## 13. Adapter validation order
 
 Validate one production adapter at a time instead of enabling every runtime dependency at once:
 
@@ -308,7 +372,7 @@ ANALYSIS_SQS_PUBLISHER_ENABLED=true
 
 Use [`docs/runbooks/backend-analysis-adapter-failures.md`](runbooks/backend-analysis-adapter-failures.md) to isolate failures by adapter boundary.
 
-## 13. Infrastructure import
+## 14. Infrastructure import
 
 After backend, runtime contract, frontend import, and image validation are stable, import Terraform in this order:
 
