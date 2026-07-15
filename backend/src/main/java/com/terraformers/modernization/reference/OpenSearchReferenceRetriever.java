@@ -2,6 +2,8 @@ package com.terraformers.modernization.reference;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import java.io.IOException;
 import java.net.URI;
@@ -69,16 +71,21 @@ public class OpenSearchReferenceRetriever implements ReferenceRetriever {
     private String buildSearchBody(ReferenceQuery query, String contentField, int limit) {
         try {
             String queryText = buildQueryText(query);
-            return objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("size", limit)
-                    .set("query", objectMapper.createObjectNode()
-                            .set("multi_match", objectMapper.createObjectNode()
-                                    .put("query", queryText)
-                                    .set("fields", objectMapper.createArrayNode()
-                                            .add("title^2")
-                                            .add(contentField)
-                                            .add("service")
-                                            .add("tags")))));
+            ObjectNode root = objectMapper.createObjectNode();
+            ObjectNode queryNode = objectMapper.createObjectNode();
+            ObjectNode multiMatchNode = objectMapper.createObjectNode();
+            ArrayNode fields = objectMapper.createArrayNode()
+                    .add("title^2")
+                    .add(contentField)
+                    .add("service")
+                    .add("tags");
+
+            multiMatchNode.put("query", queryText);
+            multiMatchNode.set("fields", fields);
+            queryNode.set("multi_match", multiMatchNode);
+            root.put("size", limit);
+            root.set("query", queryNode);
+            return objectMapper.writeValueAsString(root);
         } catch (IOException exception) {
             throw new IllegalStateException("failed to build OpenSearch reference query", exception);
         }
