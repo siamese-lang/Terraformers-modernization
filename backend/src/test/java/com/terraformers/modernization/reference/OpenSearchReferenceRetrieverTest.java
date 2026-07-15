@@ -6,10 +6,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 
 class OpenSearchReferenceRetrieverTest {
@@ -133,7 +138,7 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public <T> java.util.concurrent.CompletableFuture<HttpResponse<T>> sendAsync(
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
                 HttpRequest request,
                 HttpResponse.BodyHandler<T> responseBodyHandler
         ) {
@@ -141,7 +146,7 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public <T> java.util.concurrent.CompletableFuture<HttpResponse<T>> sendAsync(
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
                 HttpRequest request,
                 HttpResponse.BodyHandler<T> responseBodyHandler,
                 HttpResponse.PushPromiseHandler<T> pushPromiseHandler
@@ -150,13 +155,13 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public java.util.Optional<java.net.CookieHandler> cookieHandler() {
-            return java.util.Optional.empty();
+        public Optional<java.net.CookieHandler> cookieHandler() {
+            return Optional.empty();
         }
 
         @Override
-        public java.util.Optional<java.time.Duration> connectTimeout() {
-            return java.util.Optional.empty();
+        public Optional<java.time.Duration> connectTimeout() {
+            return Optional.empty();
         }
 
         @Override
@@ -165,8 +170,8 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public java.util.Optional<java.net.ProxySelector> proxy() {
-            return java.util.Optional.empty();
+        public Optional<java.net.ProxySelector> proxy() {
+            return Optional.empty();
         }
 
         @Override
@@ -180,8 +185,8 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public java.util.Optional<java.net.Authenticator> authenticator() {
-            return java.util.Optional.empty();
+        public Optional<java.net.Authenticator> authenticator() {
+            return Optional.empty();
         }
 
         @Override
@@ -190,8 +195,8 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public java.util.concurrent.Executor executor() {
-            return null;
+        public Optional<Executor> executor() {
+            return Optional.empty();
         }
 
         private String readBody(HttpRequest request) throws IOException {
@@ -203,8 +208,8 @@ class OpenSearchReferenceRetrieverTest {
 
     private record TestHttpResponse<T>(HttpRequest request, int statusCode, T body) implements HttpResponse<T> {
         @Override
-        public java.util.Optional<HttpResponse<T>> previousResponse() {
-            return java.util.Optional.empty();
+        public Optional<HttpResponse<T>> previousResponse() {
+            return Optional.empty();
         }
 
         @Override
@@ -213,8 +218,8 @@ class OpenSearchReferenceRetrieverTest {
         }
 
         @Override
-        public java.util.Optional<javax.net.ssl.SSLSession> sslSession() {
-            return java.util.Optional.empty();
+        public Optional<javax.net.ssl.SSLSession> sslSession() {
+            return Optional.empty();
         }
 
         @Override
