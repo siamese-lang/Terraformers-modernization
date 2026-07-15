@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: terraformers-backend-runtime-config
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  AWS_REGION: "ap-northeast-2"
+
+  # Enable adapters only after the required AWS dependency and IAM policy are validated.
+  S3_READER_ENABLED: "false"
+  S3_WRITER_ENABLED: "false"
+  BEDROCK_PROVIDER_ENABLED: "false"
+  BEDROCK_EMBEDDING_ENABLED: "false"
+  OPENSEARCH_RETRIEVER_ENABLED: "false"
+  ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
+
+  BEDROCK_MAX_TOKENS: "4096"
+  OPENSEARCH_SERVICE_NAME: "aoss"
+  OPENSEARCH_TOP_K: "3"
+  ANALYSIS_RESULT_KEY_PREFIX: "analysis-results"
