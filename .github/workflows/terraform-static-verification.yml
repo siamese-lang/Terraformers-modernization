@@ -2,6 +2,14 @@ name: Terraform Static Verification
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "infra/terraform/**"
+      - "scripts/checks/terraform-static-verification.sh"
+      - ".github/workflows/terraform-static-verification.yml"
+      - "docs/**"
 
 permissions:
   contents: read
