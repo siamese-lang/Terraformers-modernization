@@ -40,12 +40,6 @@ output "database_username" {
   sensitive   = true
 }
 
-output "database_master_user_secret_arn" {
-  description = "Secrets Manager ARN for the RDS-managed master user password when database_manage_master_user_password=true."
-  value       = try(aws_db_instance.backend.master_user_secret[0].secret_arn, null)
-  sensitive   = true
-}
-
 output "spring_datasource_url" {
   description = "JDBC URL for SPRING_DATASOURCE_URL."
   value       = "jdbc:mariadb://${aws_db_instance.backend.address}:${aws_db_instance.backend.port}/${var.database_name}?${var.database_jdbc_ssl_params}"
