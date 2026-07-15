@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: terraformers-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: terraformers-backend-runtime-config

@@ -4,12 +4,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
 K8S_BASE_DIR="${REPO_ROOT}/infra/kubernetes/base"
+K8S_LOCAL_STUB_OVERLAY_DIR="${REPO_ROOT}/infra/kubernetes/overlays/local-stub"
 TERRAFORM_CONTRACT_DIR="${REPO_ROOT}/infra/terraform/runtime-contract"
 RENDERED_MANIFEST="$(mktemp)"
+RENDERED_LOCAL_STUB_MANIFEST="$(mktemp)"
 PLAN_FILE="$(mktemp)"
 
 cleanup() {
-  rm -f "${RENDERED_MANIFEST}" "${PLAN_FILE}"
+  rm -f "${RENDERED_MANIFEST}" "${RENDERED_LOCAL_STUB_MANIFEST}" "${PLAN_FILE}"
 }
 trap cleanup EXIT
 
@@ -78,6 +80,17 @@ assert_not_contains '[0-9]{12}' "${RENDERED_MANIFEST}" "Base manifest must not c
 assert_not_contains 'replace-me' "${RENDERED_MANIFEST}" "Base rendered manifest must not contain replace-me placeholders."
 
 assert_kustomization_resource_not_included 'backend-secret.example.yaml' "${K8S_BASE_DIR}/kustomization.yaml"
+
+echo "[runtime-contract] rendering Kubernetes local-stub overlay"
+kubectl kustomize "${K8S_LOCAL_STUB_OVERLAY_DIR}" > "${RENDERED_LOCAL_STUB_MANIFEST}"
+
+assert_contains 'namespace: terraformers-local' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must render into terraformers-local namespace."
+assert_contains 'SPRING_PROFILES_ACTIVE: local' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must run the backend with local profile."
+assert_contains 'image: terraformers-backend:local-stub' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must use the local backend image tag."
+assert_contains 'imagePullPolicy: Never' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must use a preloaded local image."
+assert_not_contains 'terraformers-backend-runtime-secrets' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must not require runtime Secret injection."
+assert_not_contains '^kind: Secret$' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must not render placeholder Secret resources."
+
 
 echo "[runtime-contract] checking committed example files for public-safe placeholders"
 assert_not_contains '[0-9]{12}' "${K8S_BASE_DIR}/backend-secret.example.yaml" "Secret example must not contain 12-digit account-like identifiers."
