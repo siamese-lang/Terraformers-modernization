@@ -3,10 +3,10 @@ environment  = "dev"
 aws_region   = "ap-northeast-2"
 
 # Existing network values. Do not commit real account-specific values here.
-vpc_id = "vpc-00000000000000000"
+vpc_id = "<vpc-id>"
 private_subnet_ids = [
-  "subnet-00000000000000000",
-  "subnet-11111111111111111"
+  "<private-subnet-id-a>",
+  "<private-subnet-id-b>"
 ]
 
 kubernetes_version = "1.30"
@@ -26,11 +26,11 @@ backend_namespace            = "terraformers-runtime"
 backend_service_account_name = "terraformers-backend"
 
 # Outputs from backend-runtime-dependencies.
-upload_bucket_arn          = "arn:aws:s3:::terraformers-dev-uploads-example"
-result_bucket_arn          = "arn:aws:s3:::terraformers-dev-results-example"
-ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:000000000000:terraformers-dev-ai-log"
-terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:000000000000:terraformers-dev-terraform-log"
-backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:000000000000:secret:terraformers/dev/backend/runtime-placeholder"
+upload_bucket_arn          = "arn:aws:s3:::<upload-bucket-name>"
+result_bucket_arn          = "arn:aws:s3:::<result-bucket-name>"
+ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:<account-id>:<ai-log-queue-name>"
+terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:<account-id>:<terraform-log-queue-name>"
+backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:<account-id>:secret:<backend-runtime-secret-name>"
 
 # Keep empty until Bedrock adapter access is intentionally validated.
 bedrock_model_resource_arns = []
