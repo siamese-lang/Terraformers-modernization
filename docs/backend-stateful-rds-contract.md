@@ -83,6 +83,10 @@ spring.jpa.hibernate.ddl-auto=validate
 
 Therefore, live validation should treat backend startup failure from missing tables or mismatched columns as a schema/migration issue, not as a network or RDS provisioning issue.
 
+## Verification boundary
+
+`Terraform Static Verification` must run on this PR before merge. The workflow PR trigger is enabled separately on `main`; this document update exists to create a new PR synchronize event after that trigger is available.
+
 ## Stop condition
 
 This alignment is complete when:
