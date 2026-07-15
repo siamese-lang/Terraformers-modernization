@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +26,7 @@ public class UploadObjectStorageService {
     private final String sourcePrefix;
     private final Supplier<S3Client> s3ClientSupplier;
 
+    @Autowired
     public UploadObjectStorageService(
             ObjectProvider<S3Client> s3ClientProvider,
             @Value("${terraformers.storage.s3-writer-enabled:false}") boolean s3WriterEnabled,
