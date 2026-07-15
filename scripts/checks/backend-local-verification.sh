@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
 RUN_DOCKER_BUILD="${RUN_DOCKER_BUILD:-false}"
+MAVEN_TEST_LOG="${BACKEND_DIR}/target/backend-local-verification-maven.log"
 
 cd "${BACKEND_DIR}"
 
@@ -25,12 +26,21 @@ print_surefire_reports() {
       done
 }
 
+print_maven_tail() {
+  if [[ -f "${MAVEN_TEST_LOG}" ]]; then
+    echo "[backend] Maven output tail" >&2
+    tail -n 160 "${MAVEN_TEST_LOG}" >&2
+  fi
+}
+
 run_maven_tests() {
-  mvn -e clean test
+  mkdir -p "$(dirname "${MAVEN_TEST_LOG}")"
+  mvn -q -e clean test >"${MAVEN_TEST_LOG}" 2>&1
 }
 
 echo "[backend] running Maven clean tests"
 if ! run_maven_tests; then
+  print_maven_tail
   print_surefire_reports
   exit 1
 fi
