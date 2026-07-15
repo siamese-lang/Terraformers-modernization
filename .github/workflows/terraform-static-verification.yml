@@ -20,8 +20,13 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Quiet checkout
+        run: |
+          git config --global advice.detachedHead false
+          git init -q .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch -q --depth=1 origin "${GITHUB_REF}"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -29,4 +34,9 @@ jobs:
           terraform_version: 1.8.5
 
       - name: Verify Terraform configurations
-        run: bash scripts/checks/terraform-static-verification.sh
+        run: |
+          bash scripts/checks/terraform-static-verification.sh > terraform-static.log 2>&1 || {
+            tail -n 160 terraform-static.log
+            exit 1
+          }
+          cat terraform-static.log
