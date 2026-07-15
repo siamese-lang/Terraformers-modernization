@@ -1,0 +1,29 @@
+name: AWS Runtime Manifest Render Verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aws-runtime-manifest-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Verify AWS runtime manifest render
+        run: bash scripts/checks/aws-runtime-manifest-render-verification.sh
+
+      - name: Upload rendered manifest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-runtime-manifest-render-evidence
+          path: artifacts/aws-runtime-manifest-render
