@@ -1,0 +1,33 @@
+name: Kind Local Stub Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind-local-stub-smoke:
+    name: Kind local stub smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kind
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: terraformers-local-smoke
+          wait: 120s
+
+      - name: Verify local Kubernetes smoke
+        run: bash scripts/checks/kind-local-stub-smoke.sh
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind-local-stub-smoke
+          path: artifacts/kind-local-stub-smoke

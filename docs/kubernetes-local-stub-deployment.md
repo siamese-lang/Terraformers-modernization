@@ -32,7 +32,43 @@ No Bedrock/OpenSearch production validation
 No Terraform run/apply/destroy feature
 ```
 
-## 3. Overlay path
+## 3. Automated kind smoke workflow
+
+The repository includes a manual workflow for proving that the local-stub overlay can run the backend container inside Kubernetes:
+
+```text
+Kind Local Stub Smoke
+```
+
+The workflow performs this sequence:
+
+```text
+1. create a kind cluster
+2. build backend Docker image as terraformers-backend:local-stub
+3. load the image into kind
+4. kubectl apply -k infra/kubernetes/overlays/local-stub
+5. wait for deployment rollout
+6. port-forward service/terraformers-backend
+7. call /actuator/health
+8. upload an architecture image through /api/upload
+9. read /api/project-tree/{projectId}
+10. read /api/projects/{projectId}/terraform/main.tf
+11. upload smoke evidence artifact
+```
+
+The same sequence is available as a script:
+
+```bash
+bash scripts/checks/kind-local-stub-smoke.sh
+```
+
+The evidence artifact path is:
+
+```text
+artifacts/kind-local-stub-smoke
+```
+
+## 4. Overlay path
 
 ```text
 infra/kubernetes/overlays/local-stub
@@ -50,15 +86,12 @@ It expects this image to already exist in the target cluster node runtime:
 terraformers-backend:local-stub
 ```
 
-## 4. Build the backend image
+## 5. Manual build and load
 
 From the repository root:
 
 ```bash
-cd backend
-mvn -q -DskipTests package
-docker build -t terraformers-backend:local-stub .
-cd ..
+docker build -t terraformers-backend:local-stub backend
 ```
 
 For kind:
@@ -69,7 +102,7 @@ kind load docker-image terraformers-backend:local-stub
 
 For minikube, either build inside the minikube Docker daemon or load the image according to the local cluster runtime.
 
-## 5. Render and apply
+## 6. Render and apply
 
 ```bash
 kubectl create namespace terraformers-local --dry-run=client -o yaml | kubectl apply -f -
@@ -77,7 +110,7 @@ kubectl apply -k infra/kubernetes/overlays/local-stub
 kubectl -n terraformers-local rollout status deployment/terraformers-backend
 ```
 
-## 6. Health check
+## 7. Health check
 
 ```bash
 kubectl -n terraformers-local port-forward svc/terraformers-backend 8080:80
@@ -95,7 +128,7 @@ Expected result:
 status: UP
 ```
 
-## 7. API smoke path
+## 8. API smoke path
 
 The local profile uses H2 and disabled adapters, so the core API contract can be checked without AWS credentials.
 
@@ -115,7 +148,7 @@ curl -fsS http://127.0.0.1:8080/api/project-tree/terraformers-architecture
 curl -fsS http://127.0.0.1:8080/api/projects/terraformers-architecture/terraform/main.tf
 ```
 
-## 8. Production transition boundary
+## 9. Production transition boundary
 
 After the local-stub path works, production-like deployment should be handled separately:
 
