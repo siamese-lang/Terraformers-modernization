@@ -11,10 +11,10 @@ AWS-Terraformers/Terraformers:
 
 AWS-Terraformers/Infra-code:
 - Original infrastructure separated network, EKS, backend-app, IAM, Secrets Manager, and application runtime resources.
-- The original RDS path was not the canonical product path, but the network/EKS composition still supplies the target VPC/private-subnet/security-group boundaries.
+- The original network/EKS composition supplies the target VPC/private-subnet/security-group boundaries.
 
 siamese-lang/rdb-refactor:
-- `modules/rds-mariadb` defines the RDS MariaDB contract with a DB subnet group, security-group-based ingress rules, RDS-managed master password, and JDBC URL output.
+- `modules/rds-mariadb` defines the RDS MariaDB contract with a DB subnet group, security-group-based ingress, RDS-managed master password, and JDBC URL output.
 - `application-prod.properties` expects `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`, with Hibernate `ddl-auto=validate` and Flyway enabled.
 - `docs/operations/schema/README.md` identifies Flyway migrations as the canonical schema source and manual SQL only as an emergency fallback.
 ```
@@ -23,17 +23,17 @@ siamese-lang/rdb-refactor:
 
 ```text
 Reuse:
-- rdb-refactor RDS MariaDB module contract
-- RDS-managed master password secret ARN output pattern
-- JDBC URL output with explicit SSL params
-- security-group-based MariaDB ingress rule pattern
+- existing modernization `backend-stateful-dependencies` env
+- existing security-group-based MariaDB ingress boundary
+- rdb-refactor RDS-managed password secret ARN pattern
+- rdb-refactor JDBC URL output pattern
 - production datasource contract from application-prod.properties
 
 Modify:
-- Keep the existing modernization `backend-stateful-dependencies` env rather than copying the whole rdb-refactor module tree.
-- Replace inline dynamic SG ingress blocks with explicit `aws_vpc_security_group_ingress_rule` resources.
-- Default to `manage_master_user_password=true` so Terraform does not require committing or passing a DB password by default.
-- Add RDS lifecycle and sizing knobs already present in the rdb-refactor module.
+- Keep the current modernization env instead of copying the whole rdb-refactor module tree.
+- Preserve the existing SG ingress style while parameterizing the database port.
+- Default the RDS instance to `manage_master_user_password=true` so Terraform does not require a committed database password.
+- Add RDS lifecycle, storage, port, and JDBC SSL parameters already present in the rdb-refactor contract.
 
 Add:
 - `database_master_user_secret_arn` output for operator/runtime secret wiring.
