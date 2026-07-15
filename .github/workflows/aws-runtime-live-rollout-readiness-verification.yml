@@ -1,0 +1,41 @@
+name: AWS Runtime Live Rollout Readiness Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aws-runtime-live-rollout-readiness-verification.yml"
+      - "scripts/checks/aws-runtime-live-rollout-readiness-verification.sh"
+      - "scripts/deploy/check-aws-runtime-live-rollout-readiness.sh"
+      - "scripts/deploy/build-aws-runtime-deployment-package.sh"
+      - "scripts/deploy/aws-runtime-deploy-preflight.sh"
+      - "scripts/deploy/aws-runtime-rollout-smoke.sh"
+      - "scripts/deploy/collect-aws-runtime-evidence.sh"
+      - "docs/aws-runtime-live-rollout-readiness.md"
+      - "docs/aws-runtime-deployment-package.md"
+      - "docs/aws-runtime-evidence-collection.md"
+
+permissions:
+  contents: read
+
+jobs:
+  aws-runtime-live-rollout-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify AWS runtime live rollout readiness path
+        run: bash scripts/checks/aws-runtime-live-rollout-readiness-verification.sh
+
+      - name: Upload live rollout readiness artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-runtime-live-rollout-readiness-verification
+          path: artifacts/aws-runtime-live-rollout-readiness-verification
+          if-no-files-found: ignore
