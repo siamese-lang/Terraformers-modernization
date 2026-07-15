@@ -4,17 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import java.io.IOException;
-import java.net.URI;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 
 class OpenSearchReferenceRetrieverTest {
@@ -23,8 +20,7 @@ class OpenSearchReferenceRetrieverTest {
 
     @Test
     void sendsReferenceQueryToConfiguredOpenSearchIndexAndParsesHits() throws Exception {
-        AnalysisRuntimeProperties properties = properties();
-        CapturingHttpClient httpClient = new CapturingHttpClient("""
+        try (MockOpenSearchServer server = MockOpenSearchServer.start("""
                 {
                   "hits": {
                     "hits": [
@@ -39,45 +35,52 @@ class OpenSearchReferenceRetrieverTest {
                     ]
                   }
                 }
-                """, 200);
+                """, 200)) {
+            AnalysisRuntimeProperties properties = properties(server.endpoint());
+            OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(
+                    HttpClient.newHttpClient(),
+                    objectMapper,
+                    properties
+            );
 
-        OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(httpClient, objectMapper, properties);
+            List<ReferenceDocument> documents = retriever.retrieve(new ReferenceQuery(
+                    "project-1",
+                    "source-bucket",
+                    "uploads/architecture.png",
+                    "image/png",
+                    List.of("vpc", "rds", "s3"),
+                    2
+            ));
 
-        List<ReferenceDocument> documents = retriever.retrieve(new ReferenceQuery(
-                "project-1",
-                "source-bucket",
-                "uploads/architecture.png",
-                "image/png",
-                List.of("vpc", "rds", "s3"),
-                2
-        ));
+            assertThat(server.requestPath).isEqualTo("/terraform-reference/_search");
+            assertThat(server.requestMethod).isEqualTo("POST");
+            assertThat(server.requestContentType).contains("application/json");
+            assertThat(server.requestBody)
+                    .contains("project-1")
+                    .contains("image/png")
+                    .contains("uploads/architecture.png")
+                    .contains("vpc")
+                    .contains("title^2")
+                    .contains("content")
+                    .contains("\"size\":2");
 
-        assertThat(httpClient.capturedRequest.uri().toString())
-                .isEqualTo("https://search.example.com/terraform-reference/_search");
-        assertThat(httpClient.capturedRequest.headers().firstValue("Content-Type"))
-                .contains("application/json");
-        assertThat(httpClient.capturedBody)
-                .contains("project-1")
-                .contains("image/png")
-                .contains("uploads/architecture.png")
-                .contains("vpc")
-                .contains("title^2")
-                .contains("content")
-                .contains("\"size\":2");
-
-        assertThat(documents).hasSize(1);
-        assertThat(documents.get(0).id()).isEqualTo("doc-1");
-        assertThat(documents.get(0).title()).isEqualTo("VPC RDS S3 reference");
-        assertThat(documents.get(0).content()).contains("object storage separation");
-        assertThat(documents.get(0).score()).isEqualTo(7.5);
+            assertThat(documents).hasSize(1);
+            assertThat(documents.get(0).id()).isEqualTo("doc-1");
+            assertThat(documents.get(0).title()).isEqualTo("VPC RDS S3 reference");
+            assertThat(documents.get(0).content()).contains("object storage separation");
+            assertThat(documents.get(0).score()).isEqualTo(7.5);
+        }
     }
 
     @Test
     void missingEndpointFailsBeforeHttpCall() {
-        AnalysisRuntimeProperties properties = properties();
+        AnalysisRuntimeProperties properties = properties("https://search.example.com/");
         properties.setOpensearchEndpoint(null);
-        CapturingHttpClient httpClient = new CapturingHttpClient("{}", 200);
-        OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(httpClient, objectMapper, properties);
+        OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(
+                HttpClient.newHttpClient(),
+                objectMapper,
+                properties
+        );
 
         assertThatThrownBy(() -> retriever.retrieve(ReferenceQuery.fromObject(
                 "project-1",
@@ -87,178 +90,77 @@ class OpenSearchReferenceRetrieverTest {
         )))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("terraformers.analysis.opensearch-endpoint");
-        assertThat(httpClient.sendCount).isZero();
     }
 
     @Test
-    void nonSuccessStatusFailsRetrieval() {
-        CapturingHttpClient httpClient = new CapturingHttpClient("{\"error\":\"boom\"}", 500);
-        OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(httpClient, objectMapper, properties());
+    void nonSuccessStatusFailsRetrieval() throws Exception {
+        try (MockOpenSearchServer server = MockOpenSearchServer.start("{\"error\":\"boom\"}", 500)) {
+            OpenSearchReferenceRetriever retriever = new OpenSearchReferenceRetriever(
+                    HttpClient.newHttpClient(),
+                    objectMapper,
+                    properties(server.endpoint())
+            );
 
-        assertThatThrownBy(() -> retriever.retrieve(ReferenceQuery.fromObject(
-                "project-1",
-                "bucket",
-                "source.png",
-                "image/png"
-        )))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("status 500");
+            assertThatThrownBy(() -> retriever.retrieve(ReferenceQuery.fromObject(
+                    "project-1",
+                    "bucket",
+                    "source.png",
+                    "image/png"
+            )))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("status 500");
+        }
     }
 
-    private AnalysisRuntimeProperties properties() {
+    private AnalysisRuntimeProperties properties(String endpoint) {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
-        properties.setOpensearchEndpoint("https://search.example.com/");
+        properties.setOpensearchEndpoint(endpoint);
         properties.setIndexName("terraform-reference");
         properties.setContentFieldName("content");
         properties.setOpensearchTopK(3);
         return properties;
     }
 
-    private static class CapturingHttpClient extends HttpClient {
+    private static class MockOpenSearchServer implements AutoCloseable {
+        private final HttpServer server;
         private final String responseBody;
         private final int statusCode;
-        private HttpRequest capturedRequest;
-        private String capturedBody;
-        private int sendCount;
+        private String requestMethod;
+        private String requestPath;
+        private String requestContentType;
+        private String requestBody;
 
-        private CapturingHttpClient(String responseBody, int statusCode) {
+        private MockOpenSearchServer(String responseBody, int statusCode) throws IOException {
             this.responseBody = responseBody;
             this.statusCode = statusCode;
+            this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            this.server.createContext("/", exchange -> {
+                requestMethod = exchange.getRequestMethod();
+                requestPath = exchange.getRequestURI().getPath();
+                requestContentType = exchange.getRequestHeaders().getFirst("Content-Type");
+                requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+                byte[] responseBytes = this.responseBody.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(this.statusCode, responseBytes.length);
+                try (OutputStream output = exchange.getResponseBody()) {
+                    output.write(responseBytes);
+                }
+            });
+            this.server.start();
+        }
+
+        private static MockOpenSearchServer start(String responseBody, int statusCode) throws IOException {
+            return new MockOpenSearchServer(responseBody, statusCode);
+        }
+
+        private String endpoint() {
+            return "http://127.0.0.1:" + server.getAddress().getPort();
         }
 
         @Override
-        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
-                throws IOException, InterruptedException {
-            sendCount++;
-            capturedRequest = request;
-            capturedBody = readBody(request);
-            @SuppressWarnings("unchecked")
-            T body = (T) responseBody;
-            return new TestHttpResponse<>(request, statusCode, body);
-        }
-
-        @Override
-        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
-                HttpRequest request,
-                HttpResponse.BodyHandler<T> responseBodyHandler
-        ) {
-            throw new UnsupportedOperationException("sendAsync is not used by this contract test");
-        }
-
-        @Override
-        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
-                HttpRequest request,
-                HttpResponse.BodyHandler<T> responseBodyHandler,
-                HttpResponse.PushPromiseHandler<T> pushPromiseHandler
-        ) {
-            throw new UnsupportedOperationException("sendAsync is not used by this contract test");
-        }
-
-        @Override
-        public Optional<java.net.CookieHandler> cookieHandler() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<java.time.Duration> connectTimeout() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Redirect followRedirects() {
-            return Redirect.NEVER;
-        }
-
-        @Override
-        public Optional<java.net.ProxySelector> proxy() {
-            return Optional.empty();
-        }
-
-        @Override
-        public javax.net.ssl.SSLContext sslContext() {
-            return null;
-        }
-
-        @Override
-        public javax.net.ssl.SSLParameters sslParameters() {
-            return null;
-        }
-
-        @Override
-        public Optional<java.net.Authenticator> authenticator() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Version version() {
-            return Version.HTTP_1_1;
-        }
-
-        @Override
-        public Optional<Executor> executor() {
-            return Optional.empty();
-        }
-
-        private String readBody(HttpRequest request) throws IOException {
-            CapturingSubscriber subscriber = new CapturingSubscriber();
-            request.bodyPublisher().orElseThrow().subscribe(subscriber);
-            return subscriber.body();
-        }
-    }
-
-    private record TestHttpResponse<T>(HttpRequest request, int statusCode, T body) implements HttpResponse<T> {
-        @Override
-        public Optional<HttpResponse<T>> previousResponse() {
-            return Optional.empty();
-        }
-
-        @Override
-        public HttpHeaders headers() {
-            return HttpHeaders.of(java.util.Map.of(), (left, right) -> true);
-        }
-
-        @Override
-        public Optional<javax.net.ssl.SSLSession> sslSession() {
-            return Optional.empty();
-        }
-
-        @Override
-        public URI uri() {
-            return request.uri();
-        }
-
-        @Override
-        public Version version() {
-            return Version.HTTP_1_1;
-        }
-    }
-
-    private static class CapturingSubscriber implements java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer> {
-        private final java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-
-        @Override
-        public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
-            subscription.request(Long.MAX_VALUE);
-        }
-
-        @Override
-        public void onNext(java.nio.ByteBuffer item) {
-            byte[] bytes = new byte[item.remaining()];
-            item.get(bytes);
-            output.writeBytes(bytes);
-        }
-
-        @Override
-        public void onError(Throwable throwable) {
-            throw new IllegalStateException("failed to capture request body", throwable);
-        }
-
-        @Override
-        public void onComplete() {
-        }
-
-        private String body() {
-            return output.toString(java.nio.charset.StandardCharsets.UTF_8);
+        public void close() {
+            server.stop(0);
         }
     }
 }
