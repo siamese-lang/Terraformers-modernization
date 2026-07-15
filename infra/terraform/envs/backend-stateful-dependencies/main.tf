@@ -16,28 +16,6 @@ resource "aws_security_group" "backend_database" {
   description = "Allow backend runtime to connect to the Terraformers MariaDB database."
   vpc_id      = var.vpc_id
 
-  dynamic "ingress" {
-    for_each = toset(var.allowed_app_security_group_ids)
-    content {
-      description     = "MariaDB from backend security group"
-      from_port       = 3306
-      to_port         = 3306
-      protocol        = "tcp"
-      security_groups = [ingress.value]
-    }
-  }
-
-  dynamic "ingress" {
-    for_each = toset(var.allowed_database_cidr_blocks)
-    content {
-      description = "MariaDB from approved CIDR"
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      cidr_blocks = [ingress.value]
-    }
-  }
-
   egress {
     description = "Allow outbound responses"
     from_port   = 0
@@ -46,14 +24,40 @@ resource "aws_security_group" "backend_database" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = local.tags
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-rds-sg"
+  })
+}
+
+resource "aws_vpc_security_group_ingress_rule" "database_from_security_groups" {
+  for_each = toset(var.allowed_app_security_group_ids)
+
+  security_group_id            = aws_security_group.backend_database.id
+  referenced_security_group_id = each.value
+  from_port                    = var.database_port
+  to_port                      = var.database_port
+  ip_protocol                  = "tcp"
+  description                  = "Allow MariaDB from approved backend security group"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "database_from_cidr_blocks" {
+  for_each = toset(var.allowed_database_cidr_blocks)
+
+  security_group_id = aws_security_group.backend_database.id
+  cidr_ipv4         = each.value
+  from_port         = var.database_port
+  to_port           = var.database_port
+  ip_protocol       = "tcp"
+  description       = "Allow MariaDB from approved CIDR block"
 }
 
 resource "aws_db_subnet_group" "backend" {
   name       = "${local.name_prefix}-db"
   subnet_ids = var.private_subnet_ids
 
-  tags = local.tags
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-db-subnet-group"
+  })
 }
 
 resource "aws_db_instance" "backend" {
@@ -63,22 +67,27 @@ resource "aws_db_instance" "backend" {
   engine_version = var.database_engine_version
   instance_class = var.database_instance_class
 
-  allocated_storage     = var.database_allocated_storage_gb
-  max_allocated_storage = max(var.database_allocated_storage_gb, 100)
-  storage_encrypted     = true
-
-  db_name  = var.database_name
+  db_name = var.database_name
+  port    = var.database_port
   username = var.database_username
-  password = var.database_password
+  password = var.database_manage_master_user_password ? null : var.database_password
+
+  allocated_storage     = var.database_allocated_storage_gb
+  max_allocated_storage = var.database_max_allocated_storage_gb
+  storage_type          = var.database_storage_type
+  storage_encrypted     = var.database_storage_encrypted
+
+  multi_az                    = var.database_multi_az
+  manage_master_user_password = var.database_manage_master_user_password
+  publicly_accessible         = var.database_publicly_accessible
 
   db_subnet_group_name   = aws_db_subnet_group.backend.name
   vpc_security_group_ids = [aws_security_group.backend_database.id]
-  publicly_accessible    = false
 
   backup_retention_period = var.database_backup_retention_days
   deletion_protection     = var.database_deletion_protection
   skip_final_snapshot     = var.database_skip_final_snapshot
-  apply_immediately       = true
+  apply_immediately       = var.database_apply_immediately
 
   tags = local.tags
 }
