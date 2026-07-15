@@ -56,6 +56,8 @@ class ProjectMetadataControllerTest {
                 .andExpect(jsonPath("$.latestResultObjectKey").isNotEmpty())
                 .andExpect(jsonPath("$.sourceBucket").value("example-bucket"))
                 .andExpect(jsonPath("$.sourceKey").value(startsWith("browser-uploads/project-tree-diagram/")))
+                .andExpect(jsonPath("$.sourceStorageProvider").value("metadata-only"))
+                .andExpect(jsonPath("$.sourceBinaryPersisted").value(false))
                 .andExpect(jsonPath("$.originalFilename").value("Project Tree Diagram.png"))
                 .andExpect(jsonPath("$.contentType").value("image/png"))
                 .andExpect(jsonPath("$.uploadSizeBytes").value(16));
@@ -125,6 +127,8 @@ class ProjectMetadataControllerTest {
                 .andExpect(jsonPath("$[0].isPrivate").value(false))
                 .andExpect(jsonPath("$[0].sourceBucket").value("example-bucket"))
                 .andExpect(jsonPath("$[0].sourceKey").value(startsWith("browser-uploads/shared-architecture/")))
+                .andExpect(jsonPath("$[0].sourceStorageProvider").value("metadata-only"))
+                .andExpect(jsonPath("$[0].sourceBinaryPersisted").value(false))
                 .andExpect(jsonPath("$[0].projectTreeApiPath").value("/api/project-tree/shared-architecture"))
                 .andExpect(jsonPath("$[0].terraformDraftApiPath").value("/api/projects/shared-architecture/terraform/main.tf"));
     }
