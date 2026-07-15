@@ -20,8 +20,8 @@ resource "aws_security_group" "backend_database" {
     for_each = toset(var.allowed_app_security_group_ids)
     content {
       description     = "MariaDB from backend security group"
-      from_port       = 3306
-      to_port         = 3306
+      from_port       = var.database_port
+      to_port         = var.database_port
       protocol        = "tcp"
       security_groups = [ingress.value]
     }
@@ -31,8 +31,8 @@ resource "aws_security_group" "backend_database" {
     for_each = toset(var.allowed_database_cidr_blocks)
     content {
       description = "MariaDB from approved CIDR"
-      from_port   = 3306
-      to_port     = 3306
+      from_port   = var.database_port
+      to_port     = var.database_port
       protocol    = "tcp"
       cidr_blocks = [ingress.value]
     }
@@ -46,14 +46,18 @@ resource "aws_security_group" "backend_database" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = local.tags
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-rds-sg"
+  })
 }
 
 resource "aws_db_subnet_group" "backend" {
   name       = "${local.name_prefix}-db"
   subnet_ids = var.private_subnet_ids
 
-  tags = local.tags
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-db-subnet-group"
+  })
 }
 
 resource "aws_db_instance" "backend" {
@@ -64,21 +68,25 @@ resource "aws_db_instance" "backend" {
   instance_class = var.database_instance_class
 
   allocated_storage     = var.database_allocated_storage_gb
-  max_allocated_storage = max(var.database_allocated_storage_gb, 100)
-  storage_encrypted     = true
+  max_allocated_storage = var.database_max_allocated_storage_gb
+  storage_type          = var.database_storage_type
+  storage_encrypted     = var.database_storage_encrypted
 
   db_name  = var.database_name
+  port     = var.database_port
   username = var.database_username
-  password = var.database_password
+
+  multi_az                    = var.database_multi_az
+  manage_master_user_password = true
+  publicly_accessible         = var.database_publicly_accessible
 
   db_subnet_group_name   = aws_db_subnet_group.backend.name
   vpc_security_group_ids = [aws_security_group.backend_database.id]
-  publicly_accessible    = false
 
   backup_retention_period = var.database_backup_retention_days
   deletion_protection     = var.database_deletion_protection
   skip_final_snapshot     = var.database_skip_final_snapshot
-  apply_immediately       = true
+  apply_immediately       = var.database_apply_immediately
 
   tags = local.tags
 }
