@@ -78,7 +78,7 @@ JSON
 cat > "${FIXTURE_DIR}/eks.json" <<'JSON'
 {
   "backend_namespace": {"value": "terraformers-runtime"},
-  "backend_irsa_role_arn": {"value": "arn:aws:iam:::role/terraformers-dev-backend-irsa"}
+  "backend_irsa_role_arn": {"value": "arn:aws:iam::123456789012:role/terraformers-dev-backend-irsa"}
 }
 JSON
 
@@ -109,8 +109,8 @@ assert_contains '^type: Opaque$' "${PACKAGE_DIR}/backend-runtime-secret.yaml" "R
 assert_contains 'name: terraformers-backend-runtime-secrets' "${PACKAGE_DIR}/backend-runtime-secret.yaml" "Rendered Secret must use backend Secret name."
 assert_contains '^kind: Deployment$' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must include a Deployment."
 assert_contains 'image: registry.example.internal/terraformers-backend:package-smoke' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must include package image."
-assert_contains 'eks.amazonaws.com/role-arn: arn:aws:iam:::role/terraformers-dev-backend-irsa' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must include IRSA annotation."
-assert_contains 'cluster checks skipped' "${PACKAGE_DIR}/preflight-report.txt" "Static package preflight must skip cluster checks."
+assert_contains 'eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/terraformers-dev-backend-irsa' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must include IRSA annotation."
+assert_contains 'cluster checks and kubectl dry-runs skipped' "${PACKAGE_DIR}/preflight-report.txt" "Static package preflight must skip cluster checks."
 assert_contains 'aws-runtime-rollout-smoke.sh' "${PACKAGE_DIR}/apply-order.txt" "Apply order must include rollout smoke command."
 
 assert_not_contains 'registry\.example\.com/terraformers-backend:immutable-tag' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must not keep template image placeholder."
