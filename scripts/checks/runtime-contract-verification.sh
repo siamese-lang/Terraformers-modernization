@@ -5,13 +5,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
 K8S_BASE_DIR="${REPO_ROOT}/infra/kubernetes/base"
 K8S_LOCAL_STUB_OVERLAY_DIR="${REPO_ROOT}/infra/kubernetes/overlays/local-stub"
+K8S_AWS_RUNTIME_TEMPLATE_DIR="${REPO_ROOT}/infra/kubernetes/overlays/aws-runtime-template"
 TERRAFORM_CONTRACT_DIR="${REPO_ROOT}/infra/terraform/runtime-contract"
 RENDERED_MANIFEST="$(mktemp)"
 RENDERED_LOCAL_STUB_MANIFEST="$(mktemp)"
+RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST="$(mktemp)"
 PLAN_FILE="$(mktemp)"
 
 cleanup() {
-  rm -f "${RENDERED_MANIFEST}" "${RENDERED_LOCAL_STUB_MANIFEST}" "${PLAN_FILE}"
+  rm -f "${RENDERED_MANIFEST}" "${RENDERED_LOCAL_STUB_MANIFEST}" "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "${PLAN_FILE}"
 }
 trap cleanup EXIT
 
@@ -90,6 +92,18 @@ assert_contains 'image: terraformers-backend:local-stub' "${RENDERED_LOCAL_STUB_
 assert_contains 'imagePullPolicy: Never' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must use a preloaded local image."
 assert_not_contains 'terraformers-backend-runtime-secrets' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must not require runtime Secret injection."
 assert_not_contains '^kind: Secret$' "${RENDERED_LOCAL_STUB_MANIFEST}" "Local-stub overlay must not render placeholder Secret resources."
+
+echo "[runtime-contract] rendering Kubernetes AWS runtime template overlay"
+kubectl kustomize "${K8S_AWS_RUNTIME_TEMPLATE_DIR}" > "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}"
+
+assert_contains 'namespace: terraformers-runtime' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must render into terraformers-runtime namespace."
+assert_contains 'SPRING_PROFILES_ACTIVE: prod' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must run the backend with prod profile."
+assert_contains 'AWS_REGION: ap-northeast-2' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must include an explicit AWS region."
+assert_contains 'image: registry.example.com/terraformers-backend:immutable-tag' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must expose where an immutable registry image URI is supplied."
+assert_contains 'terraformers-backend-runtime-secrets' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must keep runtime Secret injection enabled."
+assert_not_contains '^kind: Secret$' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must not render placeholder Secret resources."
+assert_not_contains 'arn:aws:iam::[0-9]{12}:' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must not contain account-specific IAM ARNs."
+assert_not_contains '[0-9]{12}' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must not contain 12-digit account-like identifiers."
 
 
 echo "[runtime-contract] checking committed example files for public-safe placeholders"
