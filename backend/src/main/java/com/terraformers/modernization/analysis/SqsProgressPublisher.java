@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -21,6 +22,7 @@ public class SqsProgressPublisher implements ProgressPublisher {
     private final ObjectMapper objectMapper;
     private final AnalysisRuntimeProperties properties;
 
+    @Autowired
     public SqsProgressPublisher(
             ObjectProvider<SqsClient> sqsClientProvider,
             ObjectMapper objectMapper,
