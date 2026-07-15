@@ -1,0 +1,28 @@
+# Public-safe sample values for a disposable AWS runtime validation network.
+# Copy this file outside the repository or to a local ignored tfvars file before editing.
+
+project_name = "terraformers"
+environment  = "dev"
+aws_region   = "ap-northeast-2"
+
+vpc_cidr = "10.40.0.0/16"
+az_count = 2
+
+public_subnet_cidrs = [
+  "10.40.0.0/24",
+  "10.40.1.0/24"
+]
+
+private_subnet_cidrs = [
+  "10.40.10.0/24",
+  "10.40.11.0/24"
+]
+
+# Keep NAT disabled unless broader internet egress is intentionally required.
+# Private EKS image pull and AWS API access should use VPC endpoints first.
+enable_nat_gateway   = false
+enable_vpc_endpoints = true
+
+common_tags = {
+  Purpose = "terraformers-aws-runtime-validation"
+}
