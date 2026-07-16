@@ -1,0 +1,168 @@
+name: Frontend Build and Delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_frontend:
+        description: Sync the verified build to S3 and invalidate CloudFront.
+        required: true
+        type: boolean
+        default: false
+      frontend_bucket:
+        description: Optional frontend bucket override. Defaults to variable FRONTEND_BUCKET_NAME.
+        required: false
+        default: ''
+      cloudfront_distribution_id:
+        description: Optional distribution override. Defaults to variable CLOUDFRONT_DISTRIBUTION_ID.
+        required: false
+        default: ''
+      aws_region:
+        description: Optional AWS region override. Defaults to variable AWS_REGION, then ap-northeast-2.
+        required: false
+        default: ''
+      aws_role_to_assume:
+        description: Optional OIDC role override. Defaults to secret AWS_ROLE_TO_ASSUME.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'ap-northeast-2' }}
+  AWS_ROLE_TO_ASSUME: ${{ inputs.aws_role_to_assume || secrets.AWS_ROLE_TO_ASSUME }}
+  FRONTEND_BUCKET_NAME: ${{ inputs.frontend_bucket || vars.FRONTEND_BUCKET_NAME }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id || vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  REACT_APP_API_BASE_URL: ''
+  REACT_APP_AWS_REGION: ${{ vars.REACT_APP_AWS_REGION || vars.AWS_REGION || 'ap-northeast-2' }}
+  REACT_APP_COGNITO_USER_POOL_ID: ${{ vars.REACT_APP_COGNITO_USER_POOL_ID }}
+  REACT_APP_COGNITO_USER_POOL_CLIENT_ID: ${{ vars.REACT_APP_COGNITO_USER_POOL_CLIENT_ID }}
+
+jobs:
+  frontend-delivery:
+    name: Build and optionally deliver frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Validate public frontend build inputs
+        run: |
+          set -euo pipefail
+          test -z "${REACT_APP_API_BASE_URL}"
+          for variable_name in \
+            REACT_APP_AWS_REGION \
+            REACT_APP_COGNITO_USER_POOL_ID \
+            REACT_APP_COGNITO_USER_POOL_CLIENT_ID; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "${variable_name} repository/environment variable is required." >&2
+              exit 1
+            fi
+          done
+
+      - name: Build reproducible React bundle
+        run: |
+          set -euo pipefail
+          npm --prefix frontend ci --legacy-peer-deps --no-audit --no-fund
+          npm --prefix frontend run build
+          test -s frontend/build/index.html
+          find frontend/build -type f -printf '%P\n' | sort > frontend-build-files.txt
+          find frontend/build -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > frontend-build-sha256.txt
+
+      - name: Validate guarded AWS delivery inputs
+        if: ${{ inputs.deploy_frontend }}
+        run: |
+          set -euo pipefail
+          for variable_name in AWS_ROLE_TO_ASSUME FRONTEND_BUCKET_NAME CLOUDFRONT_DISTRIBUTION_ID; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "${variable_name} is required when deploy_frontend=true." >&2
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials through OIDC
+        if: ${{ inputs.deploy_frontend }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersFrontendDelivery
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS caller identity
+        if: ${{ inputs.deploy_frontend }}
+        run: aws sts get-caller-identity --region "${AWS_REGION}"
+
+      - name: Sync frontend with explicit cache policy
+        if: ${{ inputs.deploy_frontend }}
+        run: |
+          set -euo pipefail
+          aws s3 sync frontend/build "s3://${FRONTEND_BUCKET_NAME}" \
+            --delete \
+            --exclude 'static/*' \
+            --cache-control 'no-cache,no-store,must-revalidate' \
+            --only-show-errors
+          aws s3 sync frontend/build/static "s3://${FRONTEND_BUCKET_NAME}/static" \
+            --delete \
+            --cache-control 'public,max-age=31536000,immutable' \
+            --only-show-errors
+
+      - name: Invalidate mutable frontend entrypoints
+        if: ${{ inputs.deploy_frontend }}
+        run: |
+          set -euo pipefail
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths '/' '/index.html' '/asset-manifest.json' '/manifest.json' \
+            > frontend-invalidation.json
+          INVALIDATION_ID="$(python3 -c 'import json; print(json.load(open("frontend-invalidation.json"))["Invalidation"]["Id"])')"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --id "${INVALIDATION_ID}"
+          printf '%s\n' "${INVALIDATION_ID}" > frontend-invalidation-id.txt
+
+      - name: Record delivery evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/frontend-delivery
+          cp frontend-build-files.txt artifacts/frontend-delivery/ 2>/dev/null || true
+          cp frontend-build-sha256.txt artifacts/frontend-delivery/ 2>/dev/null || true
+          cp frontend-invalidation.json artifacts/frontend-delivery/ 2>/dev/null || true
+          cp frontend-invalidation-id.txt artifacts/frontend-delivery/ 2>/dev/null || true
+          {
+            echo "source_commit=${GITHUB_SHA}"
+            echo "frontend_api_base_mode=same-origin-relative"
+            echo "build_completed=$([[ -s frontend/build/index.html ]] && echo true || echo false)"
+            echo "deployment_requested=${{ inputs.deploy_frontend }}"
+            if [[ "${{ inputs.deploy_frontend }}" == 'true' ]]; then
+              echo "credential_mode=github-oidc"
+              echo "frontend_bucket=${FRONTEND_BUCKET_NAME}"
+              echo "cloudfront_distribution_id=${CLOUDFRONT_DISTRIBUTION_ID}"
+              echo "mutable_cache_control=no-cache,no-store,must-revalidate"
+              echo "static_cache_control=public,max-age=31536000,immutable"
+              echo "invalidation_wait=completed"
+            else
+              echo "credential_mode=not-configured"
+              echo "aws_mutation=none"
+            fi
+          } > artifacts/frontend-delivery/delivery-summary.txt
+
+      - name: Upload frontend delivery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-delivery-evidence
+          path: artifacts/frontend-delivery
+          if-no-files-found: warn
