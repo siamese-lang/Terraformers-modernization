@@ -19,12 +19,12 @@ output "analysis_result_key_prefix" {
 }
 
 output "ai_log_queue_url" {
-  description = "SQS queue URL for AI analysis progress logs."
+  description = "SQS queue URL available when the optional analysis publisher adapter is enabled."
   value       = aws_sqs_queue.ai_log.url
 }
 
 output "terraform_log_queue_url" {
-  description = "SQS queue URL for Terraform progress/result log compatibility."
+  description = "SQS queue URL available when the optional Terraform compatibility publisher is enabled."
   value       = aws_sqs_queue.terraform_log.url
 }
 
@@ -39,7 +39,7 @@ output "kubernetes_runtime_secret_name" {
 }
 
 output "next_required_runtime_values" {
-  description = "Runtime values still required before the prod Kubernetes overlay can start the backend."
+  description = "Base production values that must be supplied by the stateful dependency and private secret-delivery layers. Optional adapter settings are intentionally excluded."
   value = [
     "SPRING_DATASOURCE_URL",
     "SPRING_DATASOURCE_USERNAME",
@@ -47,12 +47,6 @@ output "next_required_runtime_values" {
     "COGNITO_REGION",
     "COGNITO_USER_POOL_ID",
     "COGNITO_USER_POOL_CLIENT_ID",
-    "COGNITO_JWKS_URL",
-    "BEDROCK_MODEL_ID",
-    "BEDROCK_EMBEDDING_MODEL_ID",
-    "OPENSEARCH_ENDPOINT",
-    "INDEX_NAME",
-    "VECTOR_FIELD_NAME",
-    "CONTENT_FIELD_NAME"
+    "COGNITO_JWKS_URL"
   ]
 }
