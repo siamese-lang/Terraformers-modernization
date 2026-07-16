@@ -45,3 +45,36 @@ jobs:
           path: |
             backend/target/surefire-reports
             backend/target/*.log
+
+  predeployment-package-verification:
+    name: Build images and dry-run deployment packages
+    needs: runtime-contract-verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.5
+
+      - name: Verify frontend, backend image, and Kubernetes packages
+        run: bash scripts/checks/predeployment-package-verification.sh
+
+      - name: Upload pre-deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: predeployment-package-evidence
+          if-no-files-found: warn
+          path: artifacts/predeployment
