@@ -1,0 +1,40 @@
+name: Frontend Delivery Contract Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/frontend-delivery.yml"
+      - ".github/workflows/frontend-delivery-contract-verification.yml"
+      - "frontend/.env.example"
+      - "frontend/src/utils/api.js"
+      - "infra/terraform/envs/frontend-delivery/**"
+      - "scripts/deploy/build-frontend-delivery-input-bundle.py"
+      - "scripts/checks/frontend-delivery-contract-verification.sh"
+      - "docs/frontend-delivery.md"
+      - "docs/deployment.md"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-delivery-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify frontend delivery contract
+        run: bash scripts/checks/frontend-delivery-contract-verification.sh
+
+      - name: Upload frontend delivery contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-delivery-contract-evidence
+          path: artifacts/frontend-delivery-contract
+          if-no-files-found: warn
