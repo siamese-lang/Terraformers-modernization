@@ -4,6 +4,16 @@ variable "aws_region" {
   default     = "ap-northeast-2"
 }
 
+variable "expected_aws_account_id" {
+  description = "Exact 12-digit AWS account ID allowed for the live foundation bootstrap."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.expected_aws_account_id))
+    error_message = "expected_aws_account_id must be exactly 12 digits."
+  }
+}
+
 variable "state_bucket_name" {
   description = "Globally unique S3 bucket name for Terraform state and native lock files."
   type        = string
