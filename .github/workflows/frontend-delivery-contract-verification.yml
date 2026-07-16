@@ -11,9 +11,12 @@ on:
       - "frontend/.env.example"
       - "frontend/src/utils/api.js"
       - "infra/terraform/envs/frontend-delivery/**"
+      - "infra/terraform/envs/eks-runtime/load_balancer_controller.tf"
+      - "infra/kubernetes/aws-runtime-origin/**"
       - "scripts/deploy/build-frontend-delivery-input-bundle.py"
       - "scripts/checks/frontend-delivery-contract-verification.sh"
       - "docs/frontend-delivery.md"
+      - "docs/backend-origin-delivery.md"
       - "docs/deployment.md"
 
 permissions:
