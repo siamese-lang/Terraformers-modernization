@@ -1,5 +1,7 @@
 package com.terraformers.modernization.analysis;
 
+import com.terraformers.modernization.projectcore.ProjectArtifactService;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import com.terraformers.modernization.storage.ObjectWriteResult;
 import org.springframework.stereotype.Service;
 
@@ -9,15 +11,18 @@ public class AnalysisJobOrchestrator {
     private final AnalysisProvider analysisProvider;
     private final ProgressPublisher progressPublisher;
     private final AnalysisResultStorage resultStorage;
+    private final ProjectArtifactService projectArtifactService;
 
     public AnalysisJobOrchestrator(
             AnalysisProvider analysisProvider,
             ProgressPublisher progressPublisher,
-            AnalysisResultStorage resultStorage
+            AnalysisResultStorage resultStorage,
+            ProjectArtifactService projectArtifactService
     ) {
         this.analysisProvider = analysisProvider;
         this.progressPublisher = progressPublisher;
         this.resultStorage = resultStorage;
+        this.projectArtifactService = projectArtifactService;
     }
 
     public void run(AnalysisJobEntity entity) {
@@ -25,7 +30,12 @@ public class AnalysisJobOrchestrator {
             markRunning(entity);
             AnalysisResult result = analysisProvider.analyze(toContext(entity));
             ObjectWriteResult writeResult = resultStorage.storeTerraformDraft(entity, result);
-            markSucceeded(entity, result, writeResult);
+            ProjectFileEntity resultFile = projectArtifactService.registerGeneratedTerraform(
+                    entity.getProjectId(),
+                    result.terraformCode(),
+                    writeResult
+            );
+            markSucceeded(entity, result, writeResult, resultFile);
         } catch (RuntimeException exception) {
             markFailed(entity, exception);
         }
@@ -36,9 +46,15 @@ public class AnalysisJobOrchestrator {
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.RUNNING, "analysis job started"));
     }
 
-    private void markSucceeded(AnalysisJobEntity entity, AnalysisResult result, ObjectWriteResult writeResult) {
+    private void markSucceeded(
+            AnalysisJobEntity entity,
+            AnalysisResult result,
+            ObjectWriteResult writeResult,
+            ProjectFileEntity resultFile
+    ) {
         entity.setStatus(AnalysisJobStatus.SUCCEEDED);
         entity.setProvider(result.provider());
+        entity.setResultFileId(resultFile.getFileId());
         entity.setResultObjectKey(writeResult.key());
         entity.setResultPreview(result.preview());
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.SUCCEEDED, "analysis job completed"));
