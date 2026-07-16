@@ -7,11 +7,13 @@ on:
       - main
     paths:
       - ".github/workflows/aws-live-terraform-plan.yml"
+      - ".github/workflows/runtime-contract-verification.yml"
       - ".github/workflows/live-deployment-plan-contract-verification.yml"
       - "config/live-deployment-stages.json"
       - "scripts/deploy/build-live-deployment-execution-plan.py"
       - "scripts/deploy/summarize-terraform-plan.py"
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
+      - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
       - "docs/live-aws-deployment-execution-plan.md"
 
 permissions:
@@ -28,6 +30,9 @@ jobs:
 
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh
+
+      - name: Verify pre-merge dispatch entry
+        run: bash scripts/checks/premerge-live-plan-dispatch-verification.sh
 
       - name: Upload live deployment plan contract evidence
         if: always()
