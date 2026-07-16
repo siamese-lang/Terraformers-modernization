@@ -9,6 +9,7 @@ on:
       - ".github/workflows/live-aws-prerequisite-contract-verification.yml"
       - "config/live-aws-prerequisites.json"
       - "scripts/deploy/live-aws-prerequisite-inventory.py"
+      - "scripts/checks/live-aws-prerequisite-inventory-portability-verification.py"
       - "infra/terraform/envs/aws-runtime-network/variables.tf"
       - "infra/terraform/envs/aws-runtime-network/outputs.tf"
       - "infra/terraform/envs/backend-runtime-dependencies/variables.tf"
@@ -38,6 +39,9 @@ jobs:
           python3 scripts/deploy/live-aws-prerequisite-inventory.py \
             --static-only \
             --fail-on-missing
+
+      - name: Verify Windows output portability
+        run: python3 scripts/checks/live-aws-prerequisite-inventory-portability-verification.py
 
       - name: Upload prerequisite contract evidence
         if: always()
