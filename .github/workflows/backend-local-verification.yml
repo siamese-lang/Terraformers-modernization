@@ -34,3 +34,64 @@ jobs:
           path: |
             backend/target/backend-local-verification-maven.log
             backend/target/surefire-reports
+
+  mariadb-schema-validation:
+    name: MariaDB Flyway and Hibernate validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: terraformers
+          MARIADB_USER: terraformers
+          MARIADB_PASSWORD: terraformers
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      SPRING_DATASOURCE_URL: jdbc:mariadb://127.0.0.1:3306/terraformers
+      SPRING_DATASOURCE_USERNAME: terraformers
+      SPRING_DATASOURCE_PASSWORD: terraformers
+      COGNITO_REGION: ap-northeast-2
+      COGNITO_USER_POOL_ID: validation-pool
+      COGNITO_USER_POOL_CLIENT_ID: validation-client
+      COGNITO_JWKS_URL: http://127.0.0.1:65535/.well-known/jwks.json
+      S3_BUCKET_NAME: validation-bucket
+      AI_LOG_QUEUE_URL: https://sqs.ap-northeast-2.amazonaws.com/000000000000/validation-ai
+      TERRAFORM_LOG_QUEUE_URL: https://sqs.ap-northeast-2.amazonaws.com/000000000000/validation-terraform
+      BEDROCK_MODEL_ID: validation-model
+      BEDROCK_EMBEDDING_MODEL_ID: validation-embedding-model
+      OPENSEARCH_ENDPOINT: https://validation.example.com
+      INDEX_NAME: validation-index
+      VECTOR_FIELD_NAME: vector
+      CONTENT_FIELD_NAME: content
+      SERVER_PORT: '18080'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Validate Flyway and production Hibernate mappings
+        run: bash scripts/checks/mariadb-schema-validation.sh
+
+      - name: Upload MariaDB validation diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mariadb-schema-validation-diagnostics
+          path: backend/target/mariadb-schema-validation.log
