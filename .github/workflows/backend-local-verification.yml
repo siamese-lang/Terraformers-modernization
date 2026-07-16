@@ -36,7 +36,7 @@ jobs:
             backend/target/surefire-reports
 
   mariadb-schema-validation:
-    name: MariaDB Flyway and Hibernate validation
+    name: MariaDB schema and repository validation
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -86,7 +86,7 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Validate Flyway and production Hibernate mappings
+      - name: Validate schema and canonical repository queries
         run: bash scripts/checks/mariadb-schema-validation.sh
 
       - name: Upload MariaDB validation diagnostics
@@ -94,4 +94,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mariadb-schema-validation-diagnostics
-          path: backend/target/mariadb-schema-validation.log
+          path: |
+            backend/target/mariadb-schema-validation.log
+            backend/target/mariadb-repository-smoke.log
+            backend/target/surefire-reports
