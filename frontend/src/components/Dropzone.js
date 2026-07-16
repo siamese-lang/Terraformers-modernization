@@ -68,6 +68,7 @@ function normalizeUploadResponse(uploadResponse) {
   return {
     id: resolveJobId(uploadResponse),
     projectId: uploadResponse.projectId,
+    sourceFileId: uploadResponse.sourceFileId,
     sourceBucket: uploadResponse.sourceBucket,
     sourceKey: uploadResponse.sourceKey,
     status: uploadResponse.status,
@@ -119,8 +120,8 @@ function Dropzone({ closeModal, setDataMain }) {
     eventBus.emit('bedrock:start');
     eventBus.emit('bedrock:logs', [
       `Selected image: ${file.name}`,
-      'Uploading through compatibility endpoint: POST /api/upload',
-      'The backend creates an analysis job from the upload metadata and current analysis contract.',
+      'Uploading as the signed-in Cognito user: POST /api/upload',
+      'The backend creates an owned numeric project, persists source file metadata, and starts an analysis job.',
     ]);
 
     setDataMain((previous) => [
@@ -142,6 +143,7 @@ function Dropzone({ closeModal, setDataMain }) {
 
     try {
       const response = await api.post('/api/upload', formData, {
+        tokenType: 'id',
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -149,6 +151,8 @@ function Dropzone({ closeModal, setDataMain }) {
 
       const created = normalizeUploadResponse(response.data);
       eventBus.emit('bedrock:logs', [
+        `Project created or selected: ${created.projectId}`,
+        `Source file registered: ${created.sourceFileId}`,
         `Analysis job created: ${created.id}`,
         `Source reference: s3://${created.sourceBucket}/${created.sourceKey}`,
       ]);
@@ -179,8 +183,7 @@ function Dropzone({ closeModal, setDataMain }) {
     <section className="dropzone-panel">
       <h2>Upload architecture image</h2>
       <p className="muted-copy">
-        원본 Terraformers의 이미지 업로드 흐름을 보존하기 위해 <code>POST /api/upload</code> 호환 endpoint를 사용합니다.
-        이 endpoint는 현재 단계에서 업로드 메타데이터를 analysis job 계약으로 연결합니다.
+        로그인한 사용자 소유의 프로젝트와 파일 메타데이터를 생성한 뒤 <code>POST /api/upload</code>로 분석 작업을 시작합니다.
       </p>
       <div {...getRootProps({ style })}>
         <input {...getInputProps()} />
