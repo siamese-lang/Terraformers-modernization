@@ -21,7 +21,7 @@ The workflow does not perform any of the following:
 - External Secrets installation
 - Bedrock, OpenSearch, SQS, or S3 production-adapter enablement
 
-Kubernetes resources are rendered and passed only through client-side dry-run parsing.
+Kubernetes resources are rendered and structurally checked without contacting a Kubernetes API server.
 
 ## Runtime contract
 
@@ -48,9 +48,13 @@ Until the current lockfile is committed, the package job performs this bootstrap
 
 ```text
 npm install --package-lock-only
+AJV root compatibility checks
 npm ci
+AJV runtime module-resolution checks
 npm run build
 ```
+
+CRA 5 includes loaders from multiple AJV generations. The root build dependency is therefore pinned to `ajv@8.20.0` with `ajv-keywords@5.1.0`, while older AJV 6 copies remain nested for legacy loaders. The gate records the lockfile resolution, runtime module path, and full AJV dependency tree.
 
 The generated lockfile, Node version, and npm version are uploaded as evidence. After a successful full package run, the generated lockfile must be reviewed and committed. At that point the workflow can enable npm cache and require the committed lockfile without generating one in CI.
 
@@ -84,29 +88,36 @@ infra/kubernetes/overlays/local-stub
 infra/kubernetes/overlays/aws-runtime-template
 ```
 
-Each rendered package must:
+`kubectl create --dry-run=client` is not used as the offline gate. Even with validation disabled, the command can invoke API discovery and contact the current kubeconfig server. Run `29478670742` demonstrated this by attempting to reach `localhost:8080` after all three Kustomize renders had already succeeded.
 
-- parse through `kubectl create --dry-run=client`
-- contain no committed Secret resource
-- enforce non-root execution
-- block privilege escalation
-- include a startup probe
+The cluster-free gate now uses `kubectl kustomize` and verifies that each rendered package:
+
+- is non-empty
+- contains only complete YAML documents with `apiVersion`, `kind`, `metadata`, and `metadata.name`
+- contains ConfigMap, ServiceAccount, Service, and Deployment resources
+- contains no committed Secret resource
+- enforces non-root execution
+- blocks privilege escalation
+- includes a startup probe
 
 The local overlay must reference `terraformers-backend:local-stub` with `imagePullPolicy: Never`.
 
 The AWS template must keep an explicit immutable image replacement contract and must never use `latest`.
+
+Server-side schema admission remains a live-cluster deployment gate and is intentionally not claimed by this offline verification.
 
 ## Evidence
 
 The workflow uploads `artifacts/predeployment` containing:
 
 - generated or committed frontend lockfile copy and lockfile status
-- frontend Node/npm versions and build file list
+- frontend Node/npm versions, AJV resolution, and build file list
 - backend image inspect and layer history
 - image healthcheck metadata
 - runtime UID and Terraform version
 - backend health response and container log
-- rendered Kubernetes packages
+- kubectl client version
+- rendered Kubernetes packages and document-count summary
 - verification summary
 
 These files are validation evidence, not proof that an AWS deployment occurred.
