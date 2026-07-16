@@ -1,6 +1,7 @@
-aws_region       = "ap-northeast-2"
-state_bucket_name = "replace-with-globally-unique-terraformers-state-bucket"
-state_prefix      = "terraformers-modernization/dev"
+aws_region              = "ap-northeast-2"
+expected_aws_account_id = "000000000000" # Replace with the intended 12-digit AWS account ID.
+state_bucket_name       = "replace-with-globally-unique-terraformers-state-bucket"
+state_prefix            = "terraformers-modernization/dev"
 
 # Use the existing provider ARN instead of creating another provider when the
 # AWS account already has token.actions.githubusercontent.com configured.
