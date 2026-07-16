@@ -177,14 +177,15 @@ Rules:
 ### Backend local verification
 
 - Flyway migration-version uniqueness
-- Maven clean test
+- Maven clean test against the local/H2 profile
 - Spring Security/JPA context creation
 - authenticated upload and polling
 - numeric project/source/result file contracts
 - canonical project metadata/tree/draft/source-object adapters
 - authenticated board/comment compatibility adapters
+- MariaDB-only smoke test skipped unless `SPRING_DATASOURCE_URL` starts with `jdbc:`
 
-### MariaDB Flyway and Hibernate validation
+### MariaDB schema and repository validation
 
 - MariaDB 11.4 service
 - package backend
@@ -192,17 +193,28 @@ Rules:
 - apply Flyway migrations to an empty database
 - start Hibernate with `ddl-auto=validate`
 - require actuator health success
-- upload startup logs on failure
+- run canonical repository queries against the same MariaDB instance
+- validate owner/public project queries, active-file filtering, latest analysis lookup, and board/comment traversal
+- upload startup and repository-smoke logs on failure
+
+## Current validation status
+
+Completed successfully:
+
+- backend tests for the canonical JWT/numeric-ID/result-artifact model
+- MariaDB Flyway migration
+- production Hibernate schema validation
+- MariaDB canonical repository smoke queries
+
+Run `29475486399` confirmed the MariaDB job passed. The local job failed only because the MariaDB-only smoke test was included without a JDBC datasource; the test is now conditionally enabled only when a real JDBC URL is supplied.
 
 ## Remaining pre-deployment sequence
 
-1. pass both Backend Local Verification jobs
-2. fix any actual MariaDB/Flyway/JPA mismatch
-3. add focused repository-query smoke assertions if needed
-4. run runtime contract verification
-5. render and dry-run deployment packages
-6. build application images
-7. only then reconsider AWS live validation
+1. rerun Backend Local Verification after the MariaDB-test isolation fix
+2. run Runtime Contract Verification
+3. run deployment package render/dry-run checks
+4. build application images
+5. only then reconsider AWS live validation
 
 ## Completion condition
 
@@ -211,6 +223,7 @@ The RDB realignment is complete when:
 - backend tests pass against the canonical model
 - Flyway creates an empty MariaDB schema successfully
 - the production profile starts with `ddl-auto=validate`
+- canonical repository queries pass against MariaDB
 - no JPA entity references removed compatibility tables
 - project ownership and file relationships are enforced
 - compatibility endpoints do not redefine primary keys or author identity
