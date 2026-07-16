@@ -56,12 +56,18 @@ public class ProjectDomainService {
     @Transactional(readOnly = true)
     public OwnedProjectEntity requireAccessibleProject(Long projectId, UserEntity currentUser) {
         requirePersistedUser(currentUser);
-        OwnedProjectEntity project = projectRepository.findByProjectIdAndDeletedAtIsNull(projectId)
-                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
-
+        OwnedProjectEntity project = requireActiveProject(projectId);
         if (!isAccessible(project, currentUser)) {
             throw new SecurityException("project access denied: " + projectId);
         }
+        return project;
+    }
+
+    @Transactional(readOnly = true)
+    public OwnedProjectEntity requireModifiableProject(Long projectId, UserEntity currentUser) {
+        requirePersistedUser(currentUser);
+        OwnedProjectEntity project = requireActiveProject(projectId);
+        requireOwnerOrAdmin(project, currentUser);
         return project;
     }
 
@@ -71,16 +77,14 @@ public class ProjectDomainService {
             UserEntity currentUser,
             ProjectVisibility visibility
     ) {
-        OwnedProjectEntity project = requireAccessibleProject(projectId, currentUser);
-        requireOwnerOrAdmin(project, currentUser);
+        OwnedProjectEntity project = requireModifiableProject(projectId, currentUser);
         project.setVisibility(visibility == null ? ProjectVisibility.PRIVATE : visibility);
         return projectRepository.save(project);
     }
 
     @Transactional
     public void softDelete(Long projectId, UserEntity currentUser) {
-        OwnedProjectEntity project = requireAccessibleProject(projectId, currentUser);
-        requireOwnerOrAdmin(project, currentUser);
+        OwnedProjectEntity project = requireModifiableProject(projectId, currentUser);
         project.setStatus(ProjectStatus.DELETED);
         project.setDeletedAt(Instant.now());
         projectRepository.save(project);
@@ -133,6 +137,14 @@ public class ProjectDomainService {
         file.setChecksum(checksum);
         file.setSortOrder(sortOrder == null ? 0 : sortOrder);
         return fileRepository.save(file);
+    }
+
+    private OwnedProjectEntity requireActiveProject(Long projectId) {
+        if (projectId == null) {
+            throw new IllegalArgumentException("project id is required");
+        }
+        return projectRepository.findByProjectIdAndDeletedAtIsNull(projectId)
+                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
     }
 
     private boolean isAccessible(OwnedProjectEntity project, UserEntity currentUser) {
