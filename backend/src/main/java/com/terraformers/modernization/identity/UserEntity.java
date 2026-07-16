@@ -31,7 +31,7 @@ public class UserEntity {
     @Column(name = "cognito_sub", nullable = false, length = 128)
     private String cognitoSub;
 
-    @Column(nullable = false, length = 320)
+    @Column(length = 320)
     private String email;
 
     @Column(name = "display_name", length = 100)
