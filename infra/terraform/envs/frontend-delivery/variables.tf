@@ -5,7 +5,7 @@ variable "environment" {
 }
 
 variable "aws_region" {
-  description = "AWS region for the frontend S3 bucket. CloudFront remains global."
+  description = "AWS region for the frontend S3 bucket and private backend ALB. CloudFront remains global."
   type        = string
   default     = "ap-northeast-2"
 }
@@ -53,28 +53,13 @@ variable "noncurrent_version_expiration_days" {
   }
 }
 
-variable "api_origin_domain_name" {
-  description = "DNS name of the approved HTTPS backend origin. Supply only a hostname, without scheme or path."
+variable "api_origin_load_balancer_arn" {
+  description = "ARN of the controller-created internal Application Load Balancer used as the CloudFront VPC origin."
   type        = string
 
   validation {
-    condition = (
-      length(trimspace(var.api_origin_domain_name)) > 0 &&
-      !can(regex("://", var.api_origin_domain_name)) &&
-      !can(regex("/", var.api_origin_domain_name))
-    )
-    error_message = "api_origin_domain_name must be a hostname without scheme or path."
-  }
-}
-
-variable "api_origin_protocol_policy" {
-  description = "CloudFront protocol policy for the backend origin."
-  type        = string
-  default     = "https-only"
-
-  validation {
-    condition     = contains(["https-only", "match-viewer"], var.api_origin_protocol_policy)
-    error_message = "api_origin_protocol_policy must be https-only or match-viewer."
+    condition     = can(regex("^arn:aws[a-zA-Z-]*:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:loadbalancer/app/", var.api_origin_load_balancer_arn))
+    error_message = "api_origin_load_balancer_arn must be an Application Load Balancer ARN."
   }
 }
 
