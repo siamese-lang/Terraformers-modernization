@@ -128,3 +128,26 @@ jobs:
           name: predeployment-package-evidence
           if-no-files-found: warn
           path: artifacts/predeployment
+
+  live-deployment-execution-plan:
+    name: Generate live deployment execution plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate execution plan contract
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/build-live-deployment-execution-plan.py \
+            --manifest config/live-deployment-stages.json \
+            --output-dir artifacts/live-deployment-execution-plan
+
+      - name: Upload execution plan evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-deployment-execution-plan-evidence
+          path: artifacts/live-deployment-execution-plan
+          if-no-files-found: error
