@@ -25,7 +25,7 @@ class AnalysisUploadControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void uploadCreatesOwnedProjectFileAndAnalysisJob() throws Exception {
+    void uploadCreatesOwnedProjectSourceAndTerraformArtifacts() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "AWS아키텍처.png",
@@ -44,6 +44,7 @@ class AnalysisUploadControllerTest {
                 .andExpect(jsonPath("$.analysisJobId").isNotEmpty())
                 .andExpect(jsonPath("$.projectId").isNumber())
                 .andExpect(jsonPath("$.sourceFileId").isNumber())
+                .andExpect(jsonPath("$.resultFileId").isNumber())
                 .andExpect(jsonPath("$.sourceBucket").value("example-bucket"))
                 .andExpect(jsonPath("$.sourceKey").value(startsWith("browser-uploads/")))
                 .andExpect(jsonPath("$.originalFilename").value("AWS아키텍처.png"))
