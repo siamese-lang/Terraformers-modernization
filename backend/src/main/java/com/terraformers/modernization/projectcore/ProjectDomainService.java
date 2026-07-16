@@ -55,7 +55,6 @@ public class ProjectDomainService {
 
     @Transactional(readOnly = true)
     public OwnedProjectEntity requireAccessibleProject(Long projectId, UserEntity currentUser) {
-        requirePersistedUser(currentUser);
         OwnedProjectEntity project = requireActiveProject(projectId);
         if (!isAccessible(project, currentUser)) {
             throw new SecurityException("project access denied: " + projectId);
@@ -148,9 +147,11 @@ public class ProjectDomainService {
     }
 
     private boolean isAccessible(OwnedProjectEntity project, UserEntity currentUser) {
-        return isOwner(project, currentUser)
-                || currentUser.getRole() == UserRole.ADMIN
-                || project.getVisibility() == ProjectVisibility.PUBLIC;
+        if (project.getVisibility() == ProjectVisibility.PUBLIC) {
+            return true;
+        }
+        return currentUser != null
+                && (isOwner(project, currentUser) || currentUser.getRole() == UserRole.ADMIN);
     }
 
     private void requireOwnerOrAdmin(OwnedProjectEntity project, UserEntity currentUser) {
@@ -160,7 +161,9 @@ public class ProjectDomainService {
     }
 
     private boolean isOwner(OwnedProjectEntity project, UserEntity currentUser) {
-        return project.getOwner() != null
+        return currentUser != null
+                && currentUser.getUserId() != null
+                && project.getOwner() != null
                 && project.getOwner().getUserId() != null
                 && project.getOwner().getUserId().equals(currentUser.getUserId());
     }
