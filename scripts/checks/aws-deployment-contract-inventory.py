@@ -33,9 +33,14 @@ CANONICAL_FRONTEND = [
 ]
 
 OUTPUT_GROUPS: dict[str, tuple[str, ...]] = {
-    "aws_region": ("aws_region", "region"),
+    "aws_region": ("aws_region", "region", "cognito_region"),
     "eks_cluster": ("eks_cluster_name", "cluster_name", "eks_name"),
-    "backend_ecr": ("backend_ecr_repository_url", "backend_ecr_url", "ecr_repository_url"),
+    "backend_ecr": (
+        "backend_image_repository_url",
+        "backend_ecr_repository_url",
+        "backend_ecr_url",
+        "ecr_repository_url",
+    ),
     "rds_endpoint": ("rds_endpoint", "database_endpoint", "db_endpoint"),
     "rds_port": ("rds_port", "database_port", "db_port"),
     "rds_database": ("rds_database_name", "database_name", "db_name"),
@@ -89,15 +94,23 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def records(path: Path, text: str, pattern: str, *, name_group: int = 1, **extra: object) -> list[dict[str, object]]:
+def records(
+    path: Path,
+    text: str,
+    pattern: str,
+    *,
+    name_group: int = 1,
+    offset_base: int = 0,
+    **extra: object,
+) -> list[dict[str, object]]:
     return [
         {
             "name": match.group(name_group),
             "file": relative(path),
-            "line": line_number(text, match.start()),
+            "line": line_number(text, offset_base + match.start()),
             **extra,
         }
-        for match in re.finditer(pattern, text)
+        for match in re.finditer(pattern, text[offset_base:])
     ]
 
 
@@ -167,6 +180,29 @@ def collect_spring_placeholders() -> list[dict[str, object]]:
     return references
 
 
+def collect_spring_required_env() -> list[dict[str, object]]:
+    path = REPO_ROOT / "backend" / "src" / "main" / "resources" / "application-prod.yml"
+    if not path.exists():
+        return []
+    text = read(path)
+    block_match = re.search(
+        r'(?m)^ {4}required-env:[ \t]*\n((?: {6}- [A-Z0-9_]+[ \t]*(?:\n|$))+)',
+        text,
+    )
+    if not block_match:
+        return []
+    block_start = block_match.start(1)
+    block = block_match.group(1)
+    return [
+        {
+            "name": match.group(1),
+            "file": relative(path),
+            "line": line_number(text, block_start + match.start()),
+        }
+        for match in re.finditer(r'(?m)^ {6}- ([A-Z0-9_]+)[ \t]*$', block)
+    ]
+
+
 def collect_kubernetes_keys() -> list[dict[str, object]]:
     keys: list[dict[str, object]] = []
     for path in iter_files(REPO_ROOT / "infra" / "kubernetes", {".yml", ".yaml"}):
@@ -212,6 +248,7 @@ def main() -> int:
     workflow_references = collect_workflow_references()
     deploy_environment = collect_deploy_script_environment()
     spring_placeholders = collect_spring_placeholders()
+    spring_required_env = collect_spring_required_env()
     kubernetes_keys = collect_kubernetes_keys()
     frontend_environment = collect_frontend_environment()
 
@@ -221,10 +258,11 @@ def main() -> int:
         str(item["name"]) for item in workflow_references if item["scope"] == "secrets"
     }
     runtime_names = {
-        str(item["name"]) for item in spring_placeholders + kubernetes_keys
+        str(item["name"])
+        for item in spring_placeholders + spring_required_env + kubernetes_keys
     }
     frontend_names = [str(item["name"]) for item in frontend_environment]
-    spring_names = {str(item["name"]) for item in spring_placeholders}
+    required_env_names = [str(item["name"]) for item in spring_required_env]
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -250,15 +288,17 @@ def main() -> int:
             + ", ".join(deploy_legacy)
         )
 
+    if required_env_names != CANONICAL_BACKEND_BASE:
+        errors.append(
+            "application-prod.yml required-env differs from the canonical backend base contract: "
+            f"expected={CANONICAL_BACKEND_BASE}, actual={required_env_names}"
+        )
+
     if frontend_names != CANONICAL_FRONTEND:
         errors.append(
             "Frontend build-variable contract differs from the canonical order: "
             f"expected={CANONICAL_FRONTEND}, actual={frontend_names}"
         )
-
-    missing_spring_base = sorted(set(CANONICAL_BACKEND_BASE) - spring_names)
-    if missing_spring_base:
-        errors.append("Spring configuration is missing canonical base placeholders: " + ", ".join(missing_spring_base))
 
     unresolved_groups = sorted(group for group, item in output_groups.items() if item["status"] == "unresolved")
     if unresolved_groups:
@@ -274,7 +314,10 @@ def main() -> int:
         },
         "github_actions": {"references": workflow_references},
         "deploy_scripts": {"environment_references": deploy_environment},
-        "spring": {"environment_placeholders": spring_placeholders},
+        "spring": {
+            "required_env": spring_required_env,
+            "environment_placeholders": spring_placeholders,
+        },
         "kubernetes": {"environment_keys": kubernetes_keys},
         "frontend": {"build_variables": frontend_environment},
         "errors": errors,
@@ -302,6 +345,13 @@ def main() -> int:
                 [group, item["status"], ", ".join(item["matched_outputs"]) or "-"]
                 for group, item in sorted(output_groups.items())
             ],
+        ),
+        "",
+        "## Production required environment",
+        "",
+        *markdown_table(
+            ["Key", "File", "Line"],
+            [[item["name"], item["file"], item["line"]] for item in spring_required_env],
         ),
         "",
         "## GitHub Actions repository/environment references",
@@ -334,6 +384,7 @@ def main() -> int:
         f"github_variable_reference_count={sum(1 for item in workflow_references if item['scope'] == 'vars')}",
         f"github_secret_reference_count={sum(1 for item in workflow_references if item['scope'] == 'secrets')}",
         f"deploy_environment_reference_count={len(deploy_environment)}",
+        f"canonical_required_env_count={len(spring_required_env)}",
         f"unresolved_output_group_count={len(unresolved_groups)}",
         "unresolved_output_groups=" + ",".join(unresolved_groups),
     ]
