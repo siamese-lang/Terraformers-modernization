@@ -129,20 +129,13 @@ mkdir -p "${EVIDENCE_DIR}"
 
 cd "${FRONTEND_DIR}"
 if [[ ! -f package-lock.json ]]; then
-  echo "[predeployment] frontend lockfile is absent; generating current dependency resolution"
-  npm install \
-    --package-lock-only \
-    --ignore-scripts \
-    --legacy-peer-deps \
-    --no-audit \
-    --no-fund
-  cp package-lock.json "${EVIDENCE_DIR}/frontend-package-lock.generated.json"
-  printf '%s\n' 'generated-from-current-package-json' >"${EVIDENCE_DIR}/frontend-lockfile-status.txt"
-else
-  echo "[predeployment] using committed frontend lockfile"
-  cp package-lock.json "${EVIDENCE_DIR}/frontend-package-lock.committed.json"
-  printf '%s\n' 'committed-lockfile' >"${EVIDENCE_DIR}/frontend-lockfile-status.txt"
+  echo "[predeployment] committed frontend/package-lock.json is required" >&2
+  exit 1
 fi
+
+echo "[predeployment] using committed frontend lockfile"
+cp package-lock.json "${EVIDENCE_DIR}/frontend-package-lock.committed.json"
+printf '%s\n' 'committed-lockfile' >"${EVIDENCE_DIR}/frontend-lockfile-status.txt"
 
 node --version >"${EVIDENCE_DIR}/frontend-node-version.txt"
 npm --version >"${EVIDENCE_DIR}/frontend-npm-version.txt"
@@ -292,6 +285,7 @@ assert_contains \
   "AWS runtime template must use the production profile."
 
 printf '%s\n' \
+  'frontend_lockfile=committed' \
   'frontend_lock_resolution=passed' \
   'frontend_ajv_compatibility=passed' \
   'frontend_bundle=passed' \
