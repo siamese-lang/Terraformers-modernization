@@ -19,8 +19,11 @@ public class AnalysisJobEntity {
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "project_id", nullable = false, length = 64)
-    private String projectId;
+    @Column(name = "project_id", nullable = false)
+    private Long projectId;
+
+    @Column(name = "source_file_id", nullable = false)
+    private Long sourceFileId;
 
     @Column(name = "source_bucket", nullable = false, length = 255)
     private String sourceBucket;
@@ -76,12 +79,20 @@ public class AnalysisJobEntity {
         return id;
     }
 
-    public String getProjectId() {
+    public Long getProjectId() {
         return projectId;
     }
 
-    public void setProjectId(String projectId) {
+    public void setProjectId(Long projectId) {
         this.projectId = projectId;
+    }
+
+    public Long getSourceFileId() {
+        return sourceFileId;
+    }
+
+    public void setSourceFileId(Long sourceFileId) {
+        this.sourceFileId = sourceFileId;
     }
 
     public String getSourceBucket() {
@@ -110,6 +121,9 @@ public class AnalysisJobEntity {
 
     public AnalysisJobStatus getStatus() {
         return status;
+    }
+
+    status;
     }
 
     public void setStatus(AnalysisJobStatus status) {
