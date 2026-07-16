@@ -25,6 +25,9 @@ public class AnalysisJobEntity {
     @Column(name = "source_file_id", nullable = false)
     private Long sourceFileId;
 
+    @Column(name = "result_file_id")
+    private Long resultFileId;
+
     @Column(name = "source_bucket", nullable = false, length = 255)
     private String sourceBucket;
 
@@ -93,6 +96,14 @@ public class AnalysisJobEntity {
 
     public void setSourceFileId(Long sourceFileId) {
         this.sourceFileId = sourceFileId;
+    }
+
+    public Long getResultFileId() {
+        return resultFileId;
+    }
+
+    public void setResultFileId(Long resultFileId) {
+        this.resultFileId = resultFileId;
     }
 
     public String getSourceBucket() {
