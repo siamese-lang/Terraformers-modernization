@@ -16,6 +16,11 @@ resource "aws_s3_bucket" "terraform_state" {
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = data.aws_caller_identity.current.account_id == var.expected_aws_account_id
+      error_message = "The authenticated AWS account does not match expected_aws_account_id."
+    }
   }
 }
 
@@ -127,6 +132,16 @@ resource "aws_iam_role" "terraform_plan" {
   assume_role_policy   = data.aws_iam_policy_document.github_actions_assume_role.json
   max_session_duration = 3600
   tags                 = var.common_tags
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.existing_github_oidc_provider_arn == null ||
+        try(split(":", var.existing_github_oidc_provider_arn)[4], "") == var.expected_aws_account_id
+      )
+      error_message = "existing_github_oidc_provider_arn must belong to expected_aws_account_id."
+    }
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "terraform_plan_read_only" {
