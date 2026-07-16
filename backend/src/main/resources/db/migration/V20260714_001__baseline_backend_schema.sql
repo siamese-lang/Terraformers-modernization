@@ -41,9 +41,13 @@ CREATE TABLE project_files (
     original_filename VARCHAR(255) NULL,
     s3_bucket VARCHAR(255) NULL,
     s3_key VARCHAR(1024) NULL,
+    storage_provider VARCHAR(64) NULL,
+    binary_persisted BOOLEAN NOT NULL DEFAULT FALSE,
+    storage_etag VARCHAR(255) NULL,
     content_type VARCHAR(255) NULL,
     size_bytes BIGINT NULL,
     checksum VARCHAR(128) NULL,
+    inline_content LONGTEXT NULL,
     created_at TIMESTAMP(6) NOT NULL,
     updated_at TIMESTAMP(6) NOT NULL,
     deleted_at TIMESTAMP(6) NULL,
@@ -58,6 +62,8 @@ CREATE TABLE project_files (
         (project_id, deleted_at, sort_order, created_at),
     KEY idx_project_files_project_parent_deleted_sort_created
         (project_id, parent_file_id, deleted_at, sort_order, created_at),
+    KEY idx_project_files_project_type_deleted_created
+        (project_id, file_type, deleted_at, created_at),
     KEY idx_project_files_project_path_prefix_deleted
         (project_id, path(255), deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -143,28 +149,4 @@ CREATE TABLE board_reactions (
     CONSTRAINT uk_board_reactions_user_board_type
         UNIQUE (user_id, board_id, reaction_type),
     KEY idx_board_reactions_board_reaction_type (board_id, reaction_type)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Temporary compatibility table for the simplified modernization API adapters.
--- It is intentionally separate from the canonical owner-based projects table.
-CREATE TABLE project_metadata_compat (
-    project_id VARCHAR(64) NOT NULL,
-    display_name VARCHAR(160) NOT NULL,
-    visibility VARCHAR(32) NOT NULL,
-    latest_analysis_job_id VARCHAR(36) NULL,
-    latest_result_object_key VARCHAR(1024) NULL,
-    terraform_draft LONGTEXT NULL,
-    terraform_draft_updated_at TIMESTAMP(6) NULL,
-    source_bucket VARCHAR(255) NULL,
-    source_key VARCHAR(1024) NULL,
-    source_storage_provider VARCHAR(64) NULL,
-    source_binary_persisted BOOLEAN NOT NULL DEFAULT FALSE,
-    source_etag VARCHAR(255) NULL,
-    original_filename VARCHAR(255) NULL,
-    content_type VARCHAR(128) NULL,
-    upload_size_bytes BIGINT NULL,
-    created_at TIMESTAMP(6) NOT NULL,
-    updated_at TIMESTAMP(6) NOT NULL,
-    PRIMARY KEY (project_id),
-    KEY idx_project_metadata_compat_visibility_updated (visibility, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
