@@ -29,7 +29,7 @@ The base production contract requires:
 
 - MariaDB datasource URL, username, and password
 - Cognito region, user pool, app client, and JWK URL
-- upload/result bucket naming
+- `S3_BUCKET_NAME`
 
 Optional adapter settings are required only when their switches are enabled:
 
@@ -42,21 +42,21 @@ The production startup validator rejects an enabled adapter whose own settings a
 
 ## Frontend dependency gate
 
-The current modernization frontend did not include a committed `package-lock.json`. The prior repository contains an older lockfile, but its own deployment workflow records that the file is out of sync with `package.json`, so it is not reused blindly.
+`frontend/package-lock.json` is a committed delivery input. The package job does not generate or repair dependency resolution in CI. A missing lockfile is a verification failure.
 
-Until the current lockfile is committed, the package job performs this bootstrap sequence:
+The gate runs this deterministic sequence:
 
 ```text
-npm install --package-lock-only
+committed package-lock.json presence check
 AJV root compatibility checks
 npm ci
 AJV runtime module-resolution checks
 npm run build
 ```
 
-CRA 5 includes loaders from multiple AJV generations. The root build dependency is therefore pinned to `ajv@8.20.0` with `ajv-keywords@5.1.0`, while older AJV 6 copies remain nested for legacy loaders. The gate records the lockfile resolution, runtime module path, and full AJV dependency tree.
+`actions/setup-node` uses `frontend/package-lock.json` as the npm cache dependency path. Cache restoration can improve execution time, but dependency installation remains `npm ci` against the committed lockfile.
 
-The generated lockfile, Node version, and npm version are uploaded as evidence. After a successful full package run, the generated lockfile must be reviewed and committed. At that point the workflow can enable npm cache and require the committed lockfile without generating one in CI.
+CRA 5 includes loaders from multiple AJV generations. The root build dependency is pinned to `ajv@8.20.0` with `ajv-keywords@5.1.0`, while older AJV 6 copies remain nested for legacy loaders. The gate records the committed lockfile, root resolution, runtime module path, and full AJV dependency tree.
 
 ## Image verification
 
@@ -90,7 +90,7 @@ infra/kubernetes/overlays/aws-runtime-template
 
 `kubectl create --dry-run=client` is not used as the offline gate. Even with validation disabled, the command can invoke API discovery and contact the current kubeconfig server. Run `29478670742` demonstrated this by attempting to reach `localhost:8080` after all three Kustomize renders had already succeeded.
 
-The cluster-free gate now uses `kubectl kustomize` and verifies that each rendered package:
+The cluster-free gate uses `kubectl kustomize` and verifies that each rendered package:
 
 - is non-empty
 - contains only complete YAML documents with `apiVersion`, `kind`, `metadata`, and `metadata.name`
@@ -110,7 +110,7 @@ Server-side schema admission remains a live-cluster deployment gate and is inten
 
 The workflow uploads `artifacts/predeployment` containing:
 
-- generated or committed frontend lockfile copy and lockfile status
+- committed frontend lockfile copy and `committed-lockfile` status
 - frontend Node/npm versions, AJV resolution, and build file list
 - backend image inspect and layer history
 - image healthcheck metadata
@@ -118,6 +118,6 @@ The workflow uploads `artifacts/predeployment` containing:
 - backend health response and container log
 - kubectl client version
 - rendered Kubernetes packages and document-count summary
-- verification summary
+- verification summary including `frontend_lockfile=committed`
 
 These files are validation evidence, not proof that an AWS deployment occurred.
