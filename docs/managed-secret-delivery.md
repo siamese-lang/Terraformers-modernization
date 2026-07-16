@@ -20,6 +20,35 @@ AWS Secrets Manager
 
 External Secrets Operator is selected because the original Terraformers infrastructure and `rdb-refactor` already established this operating model. The synchronization concept and RDS `password` property mapping are reused. The legacy manifests are not copied unchanged.
 
+## Pinned provider installation
+
+```text
+External Secrets Operator chart: 2.7.0
+Helm repository: https://charts.external-secrets.io
+namespace: external-secrets
+controller ServiceAccount: external-secrets
+provider-auth ServiceAccount: terraformers-runtime/terraformers-external-secrets
+```
+
+The two ServiceAccounts have different responsibilities.
+
+- `external-secrets/external-secrets` runs the controller and receives no Terraformers AWS IRSA role.
+- `terraformers-runtime/terraformers-external-secrets` is referenced by the namespaced `SecretStore` JWT auth and receives the narrowly scoped Secrets Manager IRSA role.
+
+The CRD bundle is pinned to the same `v2.7.0` source and must be installed with server-side apply before Helm. Helm uses `installCRDs=false`, preventing an unpinned or duplicate CRD installation path.
+
+```text
+https://raw.githubusercontent.com/external-secrets/external-secrets/v2.7.0/deploy/crds/bundle.yaml
+```
+
+Version and installation metadata are defined in:
+
+```text
+config/live-kubernetes-addons.json
+```
+
+No Helm or Kubernetes mutation has been performed.
+
 ## Reuse and correction
 
 Reused:
@@ -105,10 +134,26 @@ apply-order.txt
 
 These files are private deployment artifacts and must not be committed or uploaded as public CI artifacts when they contain real output values.
 
+## Approved future installation order
+
+The following commands are documentation only until explicit approval.
+
+```text
+1. Download the pinned v2.7.0 CRD bundle.
+2. kubectl apply --server-side the pinned CRD bundle.
+3. Verify Established=True for SecretStore and ExternalSecret CRDs.
+4. helm upgrade --install external-secrets with chart version 2.7.0 and installCRDs=false.
+5. Verify controller, webhook, and cert-controller rollouts.
+6. Apply terraformers-external-secrets ServiceAccount, SecretStore, and ExternalSecret package.
+7. Verify SecretStore and ExternalSecret Ready conditions without printing Secret values.
+```
+
 ## Current status
 
 Implemented and statically verifiable:
 
+- pinned External Secrets chart and CRD installation contract
+- controller/provider-auth ServiceAccount separation
 - Terraform IRSA source contract
 - runtime payload field mapping
 - RDS-managed password property mapping
