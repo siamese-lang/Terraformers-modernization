@@ -16,6 +16,10 @@ data "aws_cloudfront_origin_request_policy" "api_all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
 
+data "aws_lb" "backend_origin" {
+  arn = var.api_origin_load_balancer_arn
+}
+
 resource "aws_s3_bucket" "frontend" {
   bucket        = var.frontend_bucket_name
   force_destroy = var.frontend_bucket_force_destroy
@@ -85,6 +89,35 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_vpc_origin" "backend" {
+  vpc_origin_endpoint_config {
+    name                   = "${local.resource_prefix}-backend-vpc-origin"
+    arn                    = data.aws_lb.backend_origin.arn
+    http_port              = 80
+    https_port             = 443
+    origin_protocol_policy = "http-only"
+
+    origin_ssl_protocols {
+      items    = ["TLSv1.2"]
+      quantity = 1
+    }
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    precondition {
+      condition     = data.aws_lb.backend_origin.internal
+      error_message = "CloudFront VPC origin requires an internal load balancer."
+    }
+
+    precondition {
+      condition     = data.aws_lb.backend_origin.load_balancer_type == "application"
+      error_message = "CloudFront backend origin must be an Application Load Balancer."
+    }
+  }
+}
+
 resource "aws_cloudfront_function" "spa_rewrite" {
   name    = "${local.resource_prefix}-spa-rewrite"
   runtime = "cloudfront-js-2.0"
@@ -122,21 +155,14 @@ resource "aws_cloudfront_distribution" "frontend" {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = local.s3_origin_id
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
-
-    s3_origin_config {
-      origin_access_identity = ""
-    }
   }
 
   origin {
-    domain_name = var.api_origin_domain_name
+    domain_name = data.aws_lb.backend_origin.dns_name
     origin_id   = local.api_origin_id
 
-    custom_origin_config {
-      http_port                = 80
-      https_port               = 443
-      origin_protocol_policy   = var.api_origin_protocol_policy
-      origin_ssl_protocols     = ["TLSv1.2"]
+    vpc_origin_config {
+      vpc_origin_id           = aws_cloudfront_vpc_origin.backend.id
       origin_keepalive_timeout = 60
       origin_read_timeout      = 60
     }
