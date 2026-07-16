@@ -21,8 +21,13 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "vpc_cidr_block" {
+  description = "Runtime VPC CIDR used to restrict private ALB egress to backend Pod IPs."
+  type        = string
+}
+
 variable "private_subnet_ids" {
-  description = "Existing private subnet IDs for EKS control plane networking and node groups."
+  description = "Existing private subnet IDs for EKS control plane networking, node groups, and internal load balancers."
   type        = list(string)
 
   validation {
@@ -103,6 +108,18 @@ variable "backend_service_account_name" {
   description = "Kubernetes ServiceAccount name used by the backend Deployment."
   type        = string
   default     = "terraformers-backend"
+}
+
+variable "load_balancer_controller_namespace" {
+  description = "Kubernetes namespace for the AWS Load Balancer Controller ServiceAccount."
+  type        = string
+  default     = "kube-system"
+}
+
+variable "load_balancer_controller_service_account_name" {
+  description = "Kubernetes ServiceAccount name used by AWS Load Balancer Controller."
+  type        = string
+  default     = "aws-load-balancer-controller"
 }
 
 variable "upload_bucket_arn" {
