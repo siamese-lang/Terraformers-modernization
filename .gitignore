@@ -69,7 +69,8 @@ logs/
 evidence/raw/
 docs/evidence/raw/
 
-# Local runtime artifacts
+# Local runtime artifacts and downloaded CI evidence
+artifacts/
 .tmp/
 tmp/
 .cache/
