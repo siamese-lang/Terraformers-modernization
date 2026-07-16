@@ -36,9 +36,11 @@ def main() -> int:
     bootstrap_main = read("infra/terraform/bootstrap/aws-live-foundation/main.tf")
     bootstrap_variables = read("infra/terraform/bootstrap/aws-live-foundation/variables.tf")
     bootstrap_versions = read("infra/terraform/bootstrap/aws-live-foundation/versions.tf")
+    bootstrap_tfvars_example = read("infra/terraform/bootstrap/aws-live-foundation/terraform.tfvars.example")
     backend_origin_doc = read("docs/backend-origin-delivery.md")
     managed_secret_doc = read("docs/managed-secret-delivery.md")
     tfvars_builder = read("scripts/deploy/build-live-stage-tfvars.py")
+    prerequisite_inventory = read("scripts/deploy/live-aws-prerequisite-inventory.py")
 
     examples = {
         "network": read("infra/terraform/envs/aws-runtime-network/live.tfvars.example"),
@@ -64,6 +66,11 @@ def main() -> int:
     require(errors, 'cidr != "::/0"' in eks_variables, "eks-ipv6-world-open-guard-missing")
 
     require(errors, 'required_version = ">= 1.15.0, < 2.0.0"' in bootstrap_versions, "bootstrap-terraform-version-drift")
+    require(errors, "allowed_account_ids = [var.expected_aws_account_id]" in bootstrap_versions, "bootstrap-provider-account-allowlist-missing")
+    require(errors, re.search(r'variable "expected_aws_account_id"[\s\S]*?\^\[0-9\]\{12\}\$', bootstrap_variables) is not None, "bootstrap-expected-account-validation-missing")
+    require(errors, 'expected_aws_account_id = "000000000000"' in bootstrap_tfvars_example, "bootstrap-expected-account-placeholder-missing")
+    require(errors, "data.aws_caller_identity.current.account_id == var.expected_aws_account_id" in bootstrap_main, "bootstrap-caller-account-precondition-missing")
+    require(errors, "existing_github_oidc_provider_arn must belong to expected_aws_account_id" in bootstrap_main, "bootstrap-existing-oidc-account-guard-missing")
     require(errors, "prevent_destroy = true" in bootstrap_main, "state-bucket-prevent-destroy-missing")
     require(errors, "block_public_acls       = true" in bootstrap_main, "state-bucket-public-block-missing")
     require(errors, 'status = "Enabled"' in bootstrap_main, "state-bucket-versioning-missing")
@@ -73,6 +80,9 @@ def main() -> int:
     require(errors, 'variable = "token.actions.githubusercontent.com:sub"' in bootstrap_main, "oidc-subject-condition-missing")
     require(errors, '!strcontains(subject, "*")' in bootstrap_variables, "oidc-wildcard-subject-guard-missing")
     require(errors, contract.get("github_oidc_subject") in bootstrap_variables, "oidc-subject-contract-drift")
+    require(errors, "expected-account-id-required" in prerequisite_inventory, "prerequisite-expected-account-required-guard-missing")
+    require(errors, "expected = args.expected_account_id" in prerequisite_inventory, "prerequisite-expected-account-explicit-use-missing")
+    require(errors, "args.expected_account_id or account" not in prerequisite_inventory, "prerequisite-implicit-account-acceptance-present")
 
     require(errors, "enable_nat_gateway = true" in examples["network"], "live-network-nat-not-explicit")
     require(errors, "single_nat_gateway = true" in examples["network"], "live-network-single-nat-not-explicit")
@@ -129,6 +139,7 @@ def main() -> int:
         "tfvars_example_count": len(examples),
         "generated_handoff_stage_count": 3,
         "github_oidc_subject": contract.get("github_oidc_subject"),
+        "bootstrap_expected_account_required": True,
         "deprecated_dynamodb_locking": False,
         "optional_adapters_enabled": False,
         "aws_authentication": "none",
@@ -148,6 +159,7 @@ def main() -> int:
         f"external_secrets_version={report['external_secrets_version']}",
         f"tfvars_example_count={report['tfvars_example_count']}",
         f"generated_handoff_stage_count={report['generated_handoff_stage_count']}",
+        "bootstrap_expected_account_required=true",
         "deprecated_dynamodb_locking=false",
         "optional_adapters_enabled=false",
         "aws_authentication=none",
