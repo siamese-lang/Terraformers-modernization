@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "github_environment": "aws-live-plan",
+  "required_github_variables": [
+    "AWS_REGION",
+    "AWS_TERRAFORM_STATE_BUCKET",
+    "AWS_TERRAFORM_LOCK_TABLE",
+    "AWS_TERRAFORM_STATE_PREFIX"
+  ],
+  "required_github_secrets": [
+    "AWS_ROLE_TO_ASSUME",
+    "AWS_LIVE_NETWORK_TFVARS_B64",
+    "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64",
+    "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64",
+    "AWS_LIVE_EKS_TFVARS_B64",
+    "AWS_LIVE_FRONTEND_TFVARS_B64"
+  ],
+  "terraform_stages": [
+    {
+      "id": "network",
+      "directory": "infra/terraform/envs/aws-runtime-network",
+      "required_variables": [],
+      "input_sources": {},
+      "operator_inputs": [],
+      "live_prerequisite": "AWS account and remote state only"
+    },
+    {
+      "id": "runtime-dependencies",
+      "directory": "infra/terraform/envs/backend-runtime-dependencies",
+      "required_variables": [
+        "upload_bucket_name",
+        "result_bucket_name"
+      ],
+      "input_sources": {},
+      "operator_inputs": [
+        "upload_bucket_name",
+        "result_bucket_name"
+      ],
+      "live_prerequisite": "globally unique, account-scoped S3 bucket names"
+    },
+    {
+      "id": "stateful-dependencies",
+      "directory": "infra/terraform/envs/backend-stateful-dependencies",
+      "required_variables": [
+        "vpc_id",
+        "private_subnet_ids"
+      ],
+      "input_sources": {
+        "vpc_id": "network.vpc_id",
+        "private_subnet_ids": "network.private_subnet_ids"
+      },
+      "operator_inputs": [],
+      "recommended_inputs": {
+        "allowed_database_cidr_blocks": "network.private_subnet_cidr_blocks"
+      },
+      "live_prerequisite": "network outputs from an applied and reviewed network state"
+    },
+    {
+      "id": "eks-runtime",
+      "directory": "infra/terraform/envs/eks-runtime",
+      "required_variables": [
+        "vpc_id",
+        "vpc_cidr_block",
+        "private_subnet_ids",
+        "upload_bucket_arn",
+        "result_bucket_arn",
+        "ai_log_queue_arn",
+        "terraform_log_queue_arn",
+        "backend_runtime_secret_arn"
+      ],
+      "input_sources": {
+        "vpc_id": "network.vpc_id",
+        "vpc_cidr_block": "network.vpc_cidr_block",
+        "private_subnet_ids": "network.private_subnet_ids",
+        "upload_bucket_arn": "runtime-dependencies.upload_bucket_arn",
+        "result_bucket_arn": "runtime-dependencies.result_bucket_arn",
+        "ai_log_queue_arn": "runtime-dependencies.ai_log_queue_arn",
+        "terraform_log_queue_arn": "runtime-dependencies.terraform_log_queue_arn",
+        "backend_runtime_secret_arn": "runtime-dependencies.backend_runtime_secret_arn"
+      },
+      "operator_inputs": [
+        "cluster_endpoint_public_access_cidrs"
+      ],
+      "live_prerequisite": "reviewed network/runtime outputs and a narrow operator CIDR"
+    },
+    {
+      "id": "frontend-delivery",
+      "directory": "infra/terraform/envs/frontend-delivery",
+      "required_variables": [
+        "frontend_bucket_name",
+        "api_origin_load_balancer_arn"
+      ],
+      "input_sources": {
+        "api_origin_load_balancer_arn": "live-private-origin.api_origin_load_balancer_arn"
+      },
+      "operator_inputs": [
+        "frontend_bucket_name"
+      ],
+      "live_prerequisite": "controller-created internal ALB is healthy and its ARN is recorded"
+    }
+  ]
+}
