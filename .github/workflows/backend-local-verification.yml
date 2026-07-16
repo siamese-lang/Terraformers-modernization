@@ -65,14 +65,6 @@ jobs:
       COGNITO_USER_POOL_CLIENT_ID: validation-client
       COGNITO_JWKS_URL: http://127.0.0.1:65535/.well-known/jwks.json
       S3_BUCKET_NAME: validation-bucket
-      AI_LOG_QUEUE_URL: https://sqs.ap-northeast-2.amazonaws.com/000000000000/validation-ai
-      TERRAFORM_LOG_QUEUE_URL: https://sqs.ap-northeast-2.amazonaws.com/000000000000/validation-terraform
-      BEDROCK_MODEL_ID: validation-model
-      BEDROCK_EMBEDDING_MODEL_ID: validation-embedding-model
-      OPENSEARCH_ENDPOINT: https://validation.example.com
-      INDEX_NAME: validation-index
-      VECTOR_FIELD_NAME: vector
-      CONTENT_FIELD_NAME: content
       SERVER_PORT: '18080'
 
     steps:
