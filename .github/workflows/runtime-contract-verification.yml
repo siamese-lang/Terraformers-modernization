@@ -80,6 +80,11 @@ jobs:
     needs: runtime-contract-verification
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      REACT_APP_API_BASE_URL: ''
+      REACT_APP_AWS_REGION: ap-northeast-2
+      REACT_APP_COGNITO_USER_POOL_ID: ap-northeast-2_predeployment
+      REACT_APP_COGNITO_USER_POOL_CLIENT_ID: predeployment-client-id
 
     steps:
       - name: Checkout
@@ -99,6 +104,18 @@ jobs:
 
       - name: Verify frontend, backend image, and Kubernetes packages
         run: bash scripts/checks/predeployment-package-verification.sh
+
+      - name: Record frontend production build input evidence
+        run: |
+          set -euo pipefail
+          test -z "${REACT_APP_API_BASE_URL}"
+          grep -R -q 'ap-northeast-2_predeployment' frontend/build/static/js
+          grep -R -q 'predeployment-client-id' frontend/build/static/js
+          {
+            echo 'frontend_api_base_mode=same-origin-relative'
+            echo 'frontend_cognito_build_values=embedded'
+            echo 'frontend_build_secret_count=0'
+          } > artifacts/predeployment/frontend-production-build-input-summary.txt
 
       - name: Upload pre-deployment evidence
         if: always()
