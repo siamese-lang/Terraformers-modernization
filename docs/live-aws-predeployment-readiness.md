@@ -5,16 +5,32 @@
 실제 AWS 생성 전 저장소 기준을 다음으로 고정한다.
 
 ```text
-Terraform CLI            1.15.8
-Terraform state          private versioned S3
-Terraform state locking  S3 native .tflock
-GitHub authentication    protected environment + OIDC
-EKS Kubernetes           1.35
-EKS endpoint default     private
-Initial operator access  temporary public endpoint + exact operator /32 only
-Private subnet egress    one NAT gateway for short-lived validation
-Public service entry     CloudFront only
-Optional adapters        disabled
+Terraform CLI                       1.15.8
+Terraform state                     private versioned S3
+Terraform state locking             S3 native .tflock
+GitHub authentication               protected environment + OIDC
+EKS Kubernetes                      1.35
+EKS endpoint default                private
+Initial operator access             temporary public endpoint + exact operator /32 only
+Private subnet egress               one NAT gateway for short-lived validation
+AWS Load Balancer Controller        3.4.2
+External Secrets Operator chart     2.7.0
+Public service entry                CloudFront only
+Optional adapters                   disabled
+```
+
+Source contracts:
+
+```text
+config/live-aws-prerequisites.json
+config/live-kubernetes-addons.json
+```
+
+Detailed procedures:
+
+```text
+docs/live-kubernetes-addons.md
+docs/live-stage-tfvars-handoff.md
 ```
 
 이 기준을 바꾸려면 live plan 전에 PR에서 계약과 evidence를 함께 수정한다.
@@ -47,6 +63,7 @@ CloudTrail/CloudWatch  agent action audit 활성화
 
 ```powershell
 python scripts/checks/pre-live-aws-readiness-verification.py
+python scripts/checks/live-stage-tfvars-builder-verification.py
 
 python scripts/deploy/live-aws-prerequisite-inventory.py `
   --static-only `
@@ -62,7 +79,10 @@ state_locking=s3-native-lockfile
 eks_default_version=1.35
 eks_endpoint_default=private
 live_egress_baseline=single-nat-gateway
+load_balancer_controller_version=3.4.2
+external_secrets_version=2.7.0
 tfvars_example_count=5
+generated_handoff_stage_count=3
 deprecated_dynamodb_locking=false
 optional_adapters_enabled=false
 aws_authentication=none
@@ -145,14 +165,21 @@ infra/terraform/envs/eks-runtime/live.tfvars.example
 infra/terraform/envs/frontend-delivery/live.tfvars.example
 ```
 
-실제 파일은 `.tfvars`로 복사하며 Git에서 제외한다.
+실제 파일은 `.tfvars`로 복사하며 Git에서 제외한다. Network와 runtime-dependencies는 operator input으로 작성한다. Applied output이 필요한 나머지 stage는 다음 generator를 사용한다.
 
-```powershell
-Copy-Item infra\terraform\envs\aws-runtime-network\live.tfvars.example `
-  infra\terraform\envs\aws-runtime-network\live.tfvars
+```text
+scripts/deploy/build-live-stage-tfvars.py
 ```
 
-각 파일의 `replace-` 값, documentation account ID, documentation CIDR을 실제 output으로 교체한다. 예시 파일 자체를 수정하지 않는다.
+Generator handoff:
+
+```text
+network -> stateful-dependencies
+network + runtime-dependencies + operator /32 -> eks-runtime
+verified internal ALB ARN -> frontend-delivery
+```
+
+각 파일의 placeholder를 실제 output으로 교체한 뒤 plan을 검토한다. 예시 파일 자체를 수정하지 않는다.
 
 Secret용 base64 생성 예:
 
@@ -189,7 +216,25 @@ GitHub-hosted runner 전체 IP 대역 허용
 
 초기 private node egress는 single NAT gateway를 사용한다. 이유는 EKS bootstrap 과정에서 ECR, STS, EKS, CloudWatch 등 여러 AWS endpoint와 외부 package source가 필요하기 때문이다. endpoint-only 최적화는 첫 성공 evidence 이후 별도 계획으로 수행한다.
 
-## 6. 실제 실행 순서
+## 6. Kubernetes add-on 설치 경계
+
+Pinned versions:
+
+```text
+AWS Load Balancer Controller  3.4.2
+External Secrets Operator     2.7.0
+```
+
+External Secrets identity는 분리한다.
+
+```text
+controller ServiceAccount     external-secrets/external-secrets
+provider-auth ServiceAccount  terraformers-runtime/terraformers-external-secrets
+```
+
+External Secrets CRD는 pinned v2.7.0 bundle을 server-side apply하고 Helm에는 `installCRDs=false`를 설정한다. 모든 kubectl/Helm 작업은 별도 승인 후 수행한다.
+
+## 7. 실제 실행 순서
 
 다음 대화에서는 한꺼번에 생성하지 않는다.
 
@@ -205,7 +250,7 @@ H. runtime-dependencies plan/apply
 I. stateful-dependencies plan/apply
 J. eks-runtime plan/apply
 K. image publish
-L. controller/External Secrets 설치
+L. pinned controller/External Secrets 설치
 M. backend rollout 및 internal ALB 확인
 N. frontend-delivery plan/apply
 O. frontend publish
@@ -215,7 +260,7 @@ Q. cleanup 또는 유지 결정
 
 각 단계는 이전 단계 output과 evidence를 확인한 뒤 진행한다.
 
-## 7. 비용·중단·정리 기준
+## 8. 비용·중단·정리 기준
 
 비용 발생 핵심 자원:
 
@@ -250,6 +295,8 @@ RDS snapshot decision
 - world-open ingress
 - EKS 1.35 이외의 미검토 버전
 - NAT gateway가 두 개 이상 생성됨
+- unpinned Helm chart
+- External Secrets controller/provider identity 공유
 - optional Bedrock/OpenSearch adapter 활성화
 - 실제 tfvars 또는 raw plan이 artifact에 포함됨
 
