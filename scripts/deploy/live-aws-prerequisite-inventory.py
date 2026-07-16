@@ -24,7 +24,7 @@ def decode_process_output(value: bytes | str | None) -> str:
     if isinstance(value, str):
         return value
 
-    encodings = ["utf-8-sig", locale.getpreferredencoding(False)]
+    encodings = ["utf-8-sig", locale.getpreferredencoding(False), "cp949"]
     for encoding in dict.fromkeys(encodings):
         try:
             return value.decode(encoding)
