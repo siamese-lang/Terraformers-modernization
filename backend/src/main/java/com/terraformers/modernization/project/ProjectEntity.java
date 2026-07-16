@@ -11,8 +11,16 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
+/**
+ * Temporary compatibility projection for the simplified modernization APIs.
+ *
+ * <p>This is deliberately isolated from the canonical owner-based {@code projects}
+ * aggregate. New domain logic must use the entities in the {@code projectcore}
+ * package. This compatibility entity will be removed after the API adapters are
+ * migrated.</p>
+ */
 @Entity
-@Table(name = "projects")
+@Table(name = "project_metadata_compat")
 public class ProjectEntity {
 
     @Id
@@ -33,7 +41,7 @@ public class ProjectEntity {
     private String latestResultObjectKey;
 
     @Lob
-    @Column(name = "terraform_draft")
+    @Column(name = "terraform_draft", columnDefinition = "LONGTEXT")
     private String terraformDraft;
 
     @Column(name = "terraform_draft_updated_at")
