@@ -36,3 +36,12 @@ jobs:
 
       - name: Verify runtime contract
         run: bash scripts/checks/runtime-contract-verification.sh
+
+      - name: Upload runtime contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-contract-verification-diagnostics
+          path: |
+            backend/target/surefire-reports
+            backend/target/*.log
