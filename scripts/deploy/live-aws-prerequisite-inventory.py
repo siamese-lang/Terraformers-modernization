@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import locale
 import re
 import shutil
 import subprocess
@@ -11,9 +12,40 @@ from pathlib import Path
 from typing import Any
 
 
+REPORT_FILENAMES = (
+    "prerequisite-inventory.json",
+    "prerequisite-summary.txt",
+)
+
+
+def decode_process_output(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+
+    encodings = ["utf-8-sig", locale.getpreferredencoding(False)]
+    for encoding in dict.fromkeys(encodings):
+        try:
+            return value.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return value.decode("utf-8", errors="replace")
+
+
 def run(*args: str) -> tuple[int, str, str]:
-    result = subprocess.run(args, text=True, capture_output=True, check=False)
-    return result.returncode, result.stdout.strip(), result.stderr.strip()
+    result = subprocess.run(args, text=False, capture_output=True, check=False)
+    stdout = decode_process_output(result.stdout).strip()
+    stderr = decode_process_output(result.stderr).strip()
+    return result.returncode, stdout, stderr
+
+
+def clear_generated_reports(output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for filename in REPORT_FILENAMES:
+        path = output_dir / filename
+        if path.exists():
+            path.unlink()
 
 
 def json_command(*args: str) -> tuple[int, Any]:
@@ -104,7 +136,7 @@ def main() -> int:
     root = Path(args.repo_root).resolve()
     contract = json.loads((root / args.contract).read_text(encoding="utf-8"))
     output_dir = root / args.output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    clear_generated_reports(output_dir)
     errors: list[str] = []
     stages = {stage["id"]: stage for stage in contract["terraform_stages"]}
     stage_report: list[dict[str, Any]] = []
@@ -268,8 +300,9 @@ def main() -> int:
     ]
     (output_dir / "prerequisite-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
     print("\n".join(summary))
+    findings_stream = sys.stderr if args.fail_on_missing and not overall_ready else sys.stdout
     for error in errors:
-        print(f"[live-aws-prerequisite] {error}", file=sys.stderr)
+        print(f"[live-aws-prerequisite] {error}", file=findings_stream)
     return 1 if args.fail_on_missing and not overall_ready else 0
 
 
