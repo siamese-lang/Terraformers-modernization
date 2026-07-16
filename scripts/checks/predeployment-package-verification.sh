@@ -84,8 +84,50 @@ fi
 node --version >"${EVIDENCE_DIR}/frontend-node-version.txt"
 npm --version >"${EVIDENCE_DIR}/frontend-npm-version.txt"
 
+node <<'NODE' >"${EVIDENCE_DIR}/frontend-ajv-lock-resolution.txt"
+const fs = require('fs');
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+const packages = lock.packages || {};
+const ajvVersion = packages['node_modules/ajv']?.version;
+const keywordsVersion = packages['node_modules/ajv-keywords']?.version;
+const declaredAjv = packageJson.devDependencies?.ajv;
+const declaredKeywords = packageJson.devDependencies?.['ajv-keywords'];
+
+console.log(`declared_ajv=${declaredAjv || ''}`);
+console.log(`declared_ajv_keywords=${declaredKeywords || ''}`);
+console.log(`resolved_root_ajv=${ajvVersion || ''}`);
+console.log(`resolved_root_ajv_keywords=${keywordsVersion || ''}`);
+
+if (!ajvVersion?.startsWith('8.')) {
+  throw new Error(`Root AJV must resolve to major version 8 for ajv-keywords 5, found: ${ajvVersion || 'missing'}`);
+}
+if (!keywordsVersion?.startsWith('5.')) {
+  throw new Error(`Root ajv-keywords must resolve to major version 5, found: ${keywordsVersion || 'missing'}`);
+}
+NODE
+
 echo "[predeployment] installing frontend dependencies from lockfile"
 npm ci --legacy-peer-deps --no-audit --no-fund
+
+node <<'NODE' >"${EVIDENCE_DIR}/frontend-ajv-runtime-resolution.txt"
+const ajvPackage = require('ajv/package.json');
+const keywordsPackage = require('ajv-keywords/package.json');
+const codegenPath = require.resolve('ajv/dist/compile/codegen');
+
+console.log(`runtime_ajv=${ajvPackage.version}`);
+console.log(`runtime_ajv_keywords=${keywordsPackage.version}`);
+console.log(`codegen_module=${codegenPath}`);
+
+if (!ajvPackage.version.startsWith('8.')) {
+  throw new Error(`Runtime root AJV must be major version 8, found: ${ajvPackage.version}`);
+}
+if (!keywordsPackage.version.startsWith('5.')) {
+  throw new Error(`Runtime root ajv-keywords must be major version 5, found: ${keywordsPackage.version}`);
+}
+NODE
+
+npm ls ajv ajv-keywords --all >"${EVIDENCE_DIR}/frontend-ajv-dependency-tree.txt" 2>&1 || true
 
 echo "[predeployment] building frontend production bundle"
 npm run build
@@ -194,6 +236,7 @@ assert_contains \
 
 printf '%s\n' \
   'frontend_lock_resolution=passed' \
+  'frontend_ajv_compatibility=passed' \
   'frontend_bundle=passed' \
   'backend_image_build=passed' \
   'backend_container_health=passed' \
