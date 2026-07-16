@@ -53,7 +53,7 @@ public class AnalysisJobOrchestrator {
     private AnalysisRequestContext toContext(AnalysisJobEntity entity) {
         return new AnalysisRequestContext(
                 entity.getId(),
-                entity.getProjectId(),
+                String.valueOf(entity.getProjectId()),
                 entity.getSourceBucket(),
                 entity.getSourceKey(),
                 entity.getCorrelationId(),
