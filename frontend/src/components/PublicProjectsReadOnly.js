@@ -30,7 +30,6 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [projects, setProjects] = useState([]);
   const [comments, setComments] = useState([]);
   const [commentContent, setCommentContent] = useState('');
-  const [commentUserEmail, setCommentUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -98,14 +97,17 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       await api.post('/api/addProjectComment', {
         projectId: selectedProjectId,
         content: commentContent,
-        userEmail: commentUserEmail || undefined,
       });
       setCommentContent('');
       await loadComments(selectedProjectId);
     } catch (submitError) {
-      setCommentError(submitError?.response?.status === 403
-        ? 'PUBLIC 프로젝트에만 댓글을 남길 수 있습니다.'
-        : submitError?.message || '댓글 저장에 실패했습니다.');
+      if (submitError?.response?.status === 401) {
+        setCommentError('댓글을 작성하려면 로그인해야 합니다.');
+      } else if (submitError?.response?.status === 403) {
+        setCommentError('PUBLIC 프로젝트에만 댓글을 남길 수 있습니다.');
+      } else {
+        setCommentError(submitError?.message || '댓글 저장에 실패했습니다.');
+      }
     } finally {
       setIsSubmittingComment(false);
     }
@@ -124,7 +126,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       </div>
 
       <p className="muted-copy">
-        기존 Terraformers의 `/api/public-projects`와 댓글 흐름을 현재 프로젝트 메타데이터 계약에 맞춘 PUBLIC 전용 화면입니다.
+        공개 프로젝트는 누구나 조회할 수 있으며, 댓글 작성자는 Cognito 로그인 사용자로 확인됩니다.
         좋아요, 공유 편집, 삭제는 아직 연결하지 않았습니다.
       </p>
 
@@ -175,7 +177,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                 {comments.map((comment) => (
                   <li key={comment.id || `${comment.projectId}-${comment.createdAt}`} className="public-comment-item">
                     <div className="public-comment-meta">
-                      <span>{comment.userEmail || 'anonymous'}</span>
+                      <span>{comment.userEmail || 'authenticated user'}</span>
                       <span>{comment.createdAt ? new Date(comment.createdAt).toLocaleString() : ''}</span>
                     </div>
                     <p>{comment.content}</p>
@@ -185,16 +187,10 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
             )}
 
             <form className="public-comment-form" onSubmit={handleSubmitComment}>
-              <input
-                type="email"
-                value={commentUserEmail}
-                onChange={(event) => setCommentUserEmail(event.target.value)}
-                placeholder="email optional"
-              />
               <textarea
                 value={commentContent}
                 onChange={(event) => setCommentContent(event.target.value)}
-                placeholder="PUBLIC 프로젝트에 남길 댓글"
+                placeholder="로그인 사용자로 PUBLIC 프로젝트에 남길 댓글"
               />
               <button
                 type="submit"
