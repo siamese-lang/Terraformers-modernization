@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "eks_kubernetes_version": "1.35",
+  "addons": {
+    "aws-load-balancer-controller": {
+      "helm_repository_name": "eks",
+      "helm_repository_url": "https://aws.github.io/eks-charts",
+      "chart": "eks/aws-load-balancer-controller",
+      "chart_version": "3.4.2",
+      "controller_image": "public.ecr.aws/eks/aws-load-balancer-controller:v3.4.2",
+      "namespace": "kube-system",
+      "service_account": "aws-load-balancer-controller",
+      "service_account_create": false,
+      "iam_policy_file": "infra/terraform/envs/eks-runtime/policies/aws-load-balancer-controller-v3.4.2.json",
+      "crd_installation": "helm-install-managed",
+      "minimum_kubernetes_version": "1.22"
+    },
+    "external-secrets": {
+      "helm_repository_name": "external-secrets",
+      "helm_repository_url": "https://charts.external-secrets.io",
+      "chart": "external-secrets/external-secrets",
+      "chart_version": "2.7.0",
+      "namespace": "external-secrets",
+      "service_account": "terraformers-external-secrets",
+      "service_account_create": false,
+      "crd_bundle_url": "https://raw.githubusercontent.com/external-secrets/external-secrets/v2.7.0/deploy/crds/bundle.yaml",
+      "crd_installation": "pinned-server-side-apply-before-helm",
+      "helm_install_crds": false,
+      "minimum_kubernetes_version": "1.16"
+    }
+  },
+  "mutation_performed": false
+}
