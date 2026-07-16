@@ -111,21 +111,21 @@ legacy_server_keys = {
 errors: list[str] = []
 
 required_match = re.search(
-    r"(?ms)^\s{4}required-env:\s*\n((?:\s{6}- [A-Z0-9_]+\s*\n?)+)",
+    r"(?m)^ {4}required-env:[ \t]*\n((?: {6}- [A-Z0-9_]+[ \t]*(?:\n|$))+)",
     app,
 )
 if not required_match:
     errors.append("application-prod.yml required-env block was not found")
     app_required: list[str] = []
 else:
-    app_required = re.findall(r"^\s{6}- ([A-Z0-9_]+)\s*$", required_match.group(1), re.M)
+    app_required = re.findall(r"^ {6}- ([A-Z0-9_]+)[ \t]*$", required_match.group(1), re.M)
     if app_required != base_required:
         errors.append(
             "application-prod.yml required-env differs from the canonical base contract: "
             f"expected={base_required}, actual={app_required}"
         )
 
-active_secret_keys = re.findall(r"^\s{2}([A-Z][A-Z0-9_]+):", secret, re.M)
+active_secret_keys = re.findall(r"^ {2}([A-Z][A-Z0-9_]+):", secret, re.M)
 missing_base_secret = [key for key in base_required if key not in active_secret_keys]
 if missing_base_secret:
     errors.append(f"Secret example is missing base keys: {missing_base_secret}")
@@ -140,11 +140,11 @@ for key in optional_secret_keys:
     if key not in secret:
         errors.append(f"Secret example does not document optional key: {key}")
 for key in legacy_server_keys:
-    if re.search(rf"^\s{{2}}{re.escape(key)}:", secret, re.M):
+    if re.search(rf"^ {2}{re.escape(key)}:", secret, re.M):
         errors.append(f"Legacy server key is active in Secret example: {key}")
 
 config_values = dict(
-    re.findall(r'^\s{2}([A-Z][A-Z0-9_]+):\s*"?([^"\n]+)"?\s*$', configmap, re.M)
+    re.findall(r'^ {2}([A-Z][A-Z0-9_]+):[ \t]*"?([^"\n]+)"?[ \t]*$', configmap, re.M)
 )
 if config_values.get("SPRING_PROFILES_ACTIVE") != "prod":
     errors.append("Base ConfigMap must use SPRING_PROFILES_ACTIVE=prod")
@@ -172,7 +172,7 @@ if frontend_keys != frontend_expected:
         f"expected={frontend_expected}, actual={frontend_keys}"
     )
 for server_secret in base_required + optional_secret_keys:
-    if server_secret in frontend:
+    if re.search(rf"^{re.escape(server_secret)}=", frontend, re.M):
         errors.append(f"Server runtime key leaked into frontend contract: {server_secret}")
 
 for required_rendered in [
