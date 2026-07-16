@@ -2,197 +2,72 @@
 
 ## 1. 목적
 
-이 문서는 Terraformers 운영환경 고도화 프로젝트의 배포 흐름을 정리한다.
+이 문서는 Terraformers 운영환경 고도화 프로젝트의 현재 배포 가능 범위와 아직 구현되지 않은 목표 구성을 구분한다.
 
-목표는 다음이다.
+현재 검증된 범위는 Spring Boot backend, React client build, AWS runtime Terraform outputs, Kubernetes backend package, OIDC 기반 AWS workflow 경계다. Frontend S3/CloudFront hosting, 별도 Python analysis service, ArgoCD 자동 동기화는 목표 또는 선행 저장소 참고 범위이며 현재 저장소에서 완료된 운영 구성으로 간주하지 않는다.
 
-- Docker image build와 ECR publish 흐름을 명확히 한다.
-- Terraform 기반 AWS infrastructure 변경과 애플리케이션 배포를 분리한다.
-- GitHub Actions 검증 단계와 승인 기반 운영 단계를 구분한다.
-- runtime config와 Secret 주입 방식을 문서화한다.
-- 배포 후 검증해야 할 상태를 명확히 한다.
+## 2. 현재 구현 상태
 
-## 2. 배포 대상 구성요소
-
-배포 대상은 다음으로 나눈다.
-
-| 영역 | 대상 | 배포 방식 |
+| 영역 | 현재 저장소 상태 | 배포 전 남은 작업 |
 |---|---|---|
-| Frontend | React SPA | build 후 S3 sync, CloudFront invalidation |
-| Backend | Spring Boot API | Docker build, ECR push, Kubernetes Deployment rollout |
-| Analysis Service | Python Bedrock service | Docker build, ECR push, Kubernetes Deployment rollout |
-| Infrastructure | VPC, EKS, RDS, S3, SQS, IAM, CloudFront 등 | Terraform plan/apply |
-| Runtime Config | DB, Cognito, S3, SQS, Bedrock/OpenSearch 설정 | 환경별 Secret provider / Kubernetes Secret |
+| Frontend | React production build 검증 | hosting bucket, CloudFront, API origin routing 계약 추가 |
+| Backend | Spring Boot image build, local health, Kubernetes package 검증 | ECR publish 결과와 runtime manifest 연결, live rollout 검증 |
+| Analysis | backend 내부 adapter boundary와 비활성 기본값 | Bedrock/OpenSearch/SQS resource·IAM·network·runtime key를 함께 검증한 뒤 선택적으로 활성화 |
+| Infrastructure | VPC/EKS/RDS/S3/SQS/ECR/Cognito/IAM/Secrets Manager Terraform source contract | 실제 state, plan, apply, output 값 검증 |
+| Runtime Secret | base key와 private input bundle 검증 | RDS-managed credential와 Secrets Manager/Kubernetes Secret 동기화 방식 확정 |
 
-## 3. 전체 배포 흐름
+## 3. 안전 경계
 
-```text
-Developer branch
-  -> Pull Request
-  -> GitHub Actions validation
-  -> Merge to main
-  -> Terraform plan/apply with approval
-  -> ECR repository and AWS resources available
-  -> Backend image build/publish
-  -> Bedrock image build/publish
-  -> Kubernetes manifest image tag update
-  -> ArgoCD sync
-  -> Kubernetes rollout status check
-  -> Runtime Secret check
-  -> API smoke and E2E validation
-```
+PR 및 정적 preflight에서는 다음을 실행하지 않는다.
 
-## 4. GitHub Actions 단계 구분
+- Terraform apply/destroy
+- Kubernetes apply
+- Docker image push
+- External Secrets 설치
+- public ALB/Ingress 노출
+- Bedrock, OpenSearch, SQS, S3 production adapter 활성화
 
-### 4.1 PR 검증 단계
+이 작업들은 영구 금지 대상이 아니라, source contract·권한·network·Secret 전달 경로가 일치한 뒤 승인된 별도 단계에서 수행해야 하는 작업이다.
 
-PR 단계에서는 실제 인프라 변경이나 운영 배포를 바로 수행하지 않는다.
-
-검증 항목은 다음이다.
-
-- backend Maven compile/test
-- backend Docker image build 가능 여부
-- frontend build 가능 여부
-- Terraform fmt/validate
-- DynamoDB 등 legacy dependency 재도입 방지 guard
-- production code에 secret value가 하드코딩되지 않았는지 점검
-- Spring/Kubernetes/frontend 환경 계약 정합성
-
-### 4.2 승인 기반 운영 단계
-
-운영 반영 단계는 수동 실행과 명시적 승인을 기준으로 한다.
-
-- Terraform apply는 `workflow_dispatch`로 실행한다.
-- GitHub Environment approval을 사용한다.
-- `confirm_apply=APPLY` 같은 명시적 입력을 요구한다.
-- plan 상세 내용과 secret value를 CI log에 직접 노출하지 않는다.
-- image publish는 ECR push 후 manifest image tag update commit으로 추적한다.
-
-## 5. Terraform Infrastructure
-
-Terraform은 다음 AWS 리소스를 관리하는 기준으로 둔다.
-
-- VPC / subnet / security group
-- EKS cluster / node group
-- ECR repositories
-- RDS MariaDB
-- S3 buckets
-- SQS queues
-- Cognito
-- IAM roles and policies
-- Secrets Manager
-- CloudFront / frontend hosting
-- ArgoCD / Kubernetes bootstrap integration
-
-운영 원칙은 다음이다.
-
-- `terraform fmt`와 `terraform validate`를 먼저 통과해야 한다.
-- plan과 apply는 분리한다.
-- apply는 수동 승인 기반으로만 수행한다.
-- remote state backend를 사용한다.
-- DB, token, secret, account-specific 민감값은 repository에 기록하지 않는다.
-- destroy는 일반 smoke 대상이 아니며, 비용 정리나 환경 종료 시 별도 승인 절차로만 수행한다.
-
-## 6. Backend Image Build / Publish
-
-Backend image는 Spring Boot 애플리케이션을 container runtime에서 실행하기 위한 산출물이다.
-
-권장 흐름은 다음이다.
+## 4. 현재 검증 흐름
 
 ```text
-backend source change
-  -> Maven compile/test
-  -> Docker build
-  -> ECR login
-  -> ECR push
-  -> Kubernetes backend deployment manifest image tag update
-  -> manifest update commit
-  -> ArgoCD sync
-  -> rollout status check
+feature branch
+  -> Backend Local Verification
+  -> Runtime Contract Verification
+       - Spring runtime contract
+       - AWS application/Kubernetes/frontend contract
+       - Terraform output and GitHub reference inventory
+       - AWS runtime input bundle fixture verification
+  -> Pre-deployment Package Verification
+       - committed frontend lockfile / npm ci / production build
+       - backend image build / local health
+       - offline Kubernetes package render
+  -> Draft PR review
 ```
 
-검증 기준은 다음이다.
+workflow 성공은 실제 AWS 배포 성공을 의미하지 않는다.
 
-- Maven compile/test가 통과해야 한다.
-- Docker build가 성공해야 한다.
-- image tag에 whitespace나 잘못된 값이 없어야 한다.
-- ECR repository가 실제로 존재해야 한다.
-- Kubernetes manifest의 image URI가 새 ECR image URI로 갱신되어야 한다.
-- runtime deployment image와 Git manifest image가 일치해야 한다.
-- `/actuator/health`가 200을 반환해야 한다.
+## 5. Backend image contract
 
-## 7. Python Analysis Service Image Build / Publish
+Backend image는 다음 조건을 만족해야 한다.
 
-Python analysis service는 Bedrock/OpenSearch/SQS 연동을 수행하는 별도 runtime이다.
+- `backend/Dockerfile`에서 빌드 가능
+- non-root UID `10001`
+- application JAR과 고정된 Terraform CLI 포함
+- container healthcheck 존재
+- local profile로 기동해 `/actuator/health` 정상 응답
+- ECR publish 시 Terraform output `backend_image_repository_url`과 동일한 repository 사용
+- `latest`가 아닌 immutable tag 또는 digest 사용
 
-권장 흐름은 다음이다.
+AWS credential은 장기 access key가 아니라 GitHub OIDC를 사용한다.
 
-```text
-python analysis source change
-  -> Docker build
-  -> ECR login
-  -> ECR push
-  -> Kubernetes bedrock deployment manifest image tag update
-  -> manifest update commit
-  -> ArgoCD sync
-  -> rollout status check
-  -> /health and log check
-```
+- variable: `AWS_REGION`
+- secret: `AWS_ROLE_TO_ASSUME`
 
-검증 기준은 다음이다.
+## 6. Backend production runtime contract
 
-- Docker build가 성공해야 한다.
-- requirements dependency 설치가 실패하지 않아야 한다.
-- ECR repository가 실제로 존재해야 한다.
-- manifest image tag가 최신 image와 일치해야 한다.
-- pod가 `Running` 상태여야 한다.
-- `/health` endpoint가 정상 응답해야 한다.
-- Bedrock model ID, OpenSearch endpoint, vector field, content field runtime config가 누락되지 않아야 한다.
-- SQS publish 오류가 없어야 한다.
-
-## 8. Frontend Build / Deploy
-
-Frontend는 React SPA build 결과를 S3에 배포하고 CloudFront로 제공한다.
-
-권장 흐름은 다음이다.
-
-```text
-frontend source change
-  -> npm ci/build
-  -> S3 sync
-  -> CloudFront invalidation
-  -> browser smoke test
-```
-
-Frontend production build에는 공개 가능한 다음 값만 전달한다.
-
-- `REACT_APP_API_BASE_URL`
-- `REACT_APP_AWS_REGION`
-- `REACT_APP_COGNITO_USER_POOL_ID`
-- `REACT_APP_COGNITO_USER_POOL_CLIENT_ID`
-
-DB credential, queue URL, model ID, OpenSearch 설정, S3 object identifier 같은 server-side 값은 frontend build contract에 포함하지 않는다.
-
-주의할 점은 frontend 개발 자체를 본인 핵심 기여로 설명하지 않는다는 것이다. 이 프로젝트에서는 frontend를 사용자의 E2E 흐름을 검증하기 위한 client surface로 설명한다.
-
-## 9. Runtime Config / Secret Injection
-
-정확한 key와 미확정 AWS 연결 상태는 [`aws-environment-contract.md`](aws-environment-contract.md)를 canonical 기준으로 사용한다.
-
-환경별 권장 흐름은 다음과 같다.
-
-```text
-Terraform outputs / AWS managed configuration
-  -> approved GitHub Environment or Secret provider
-  -> terraformers-backend-runtime-secrets
-  -> backend container env
-```
-
-특정 Secret provider는 아직 고정하지 않는다. External Secrets, Sealed Secrets, 승인된 CI/CD injection 등 환경별 방식을 선택할 수 있지만, repository에는 실제 Secret resource나 값이 포함되면 안 된다.
-
-### 9.1 Backend base production contract
-
-다음 8개 key는 `application-prod.yml`의 필수 계약이다.
+필수 Secret key는 정확히 다음 8개다.
 
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
@@ -203,92 +78,102 @@ Terraform outputs / AWS managed configuration
 - `COGNITO_JWKS_URL`
 - `S3_BUCKET_NAME`
 
-`ANALYSIS_RESULT_BUCKET_NAME`은 선택적 override다. 누락되면 `S3_BUCKET_NAME`을 결과 bucket으로 사용한다.
+`ANALYSIS_RESULT_BUCKET_NAME`은 선택적 override다.
 
-다음 과거 문서 alias는 canonical backend contract가 아니다.
+기본 bundle은 disabled adapter용 queue/model/OpenSearch placeholder를 만들지 않는다. Optional adapter key는 해당 adapter를 실제로 활성화하는 별도 변경에서만 추가한다.
 
-- `AWS_S3_BUCKET_NAME`
-- `FRONTEND_URL`
-- `DOMAIN`
+## 7. Terraform output 전달 경로
 
-### 9.2 Optional adapter contract
+`build-aws-runtime-input-bundle.py`는 다음 Terraform output을 입력으로 사용한다.
 
-Adapter는 base와 AWS public template에서 기본적으로 비활성화한다.
+| 목적 | Output |
+|---|---|
+| image repository | `backend_image_repository_url` |
+| upload/result bucket | `upload_bucket_name`, `result_bucket_name` |
+| runtime Secret container | `backend_runtime_secret_arn` |
+| Kubernetes Secret name | `kubernetes_runtime_secret_name` |
+| datasource | `spring_datasource_url`, `database_username` |
+| managed DB credential pointer | `database_master_user_secret_arn` |
+| Cognito | `cognito_region`, `cognito_user_pool_id`, `cognito_user_pool_client_id`, `cognito_jwks_url` |
+| EKS/IRSA | `cluster_name`, `backend_namespace`, `backend_service_account_name`, `backend_irsa_role_arn` |
 
-- `BEDROCK_PROVIDER_ENABLED=true` → `BEDROCK_MODEL_ID`
-- `BEDROCK_EMBEDDING_ENABLED=true` → `BEDROCK_EMBEDDING_MODEL_ID`
-- `OPENSEARCH_RETRIEVER_ENABLED=true` → `OPENSEARCH_ENDPOINT`, `INDEX_NAME`, `VECTOR_FIELD_NAME`, `CONTENT_FIELD_NAME`
-- `ANALYSIS_SQS_PUBLISHER_ENABLED=true` → `AI_LOG_QUEUE_URL`, `TERRAFORM_LOG_QUEUE_URL`
-- `S3_READER_ENABLED=true` / `S3_WRITER_ENABLED=true` → bucket 설정과 workload IAM 권한 확인
+생성 파일은 private artifact다.
 
-Adapter switch는 AWS resource, network path, IAM policy, runtime key를 함께 검증한 뒤 하나씩 활성화한다.
+```text
+artifacts/aws-runtime-input-bundle/
+  backend-runtime-secret.env
+  aws-runtime-manifest.env
+  deployment-source-map.json
+  bundle-summary.txt
+  apply-order.txt
+```
 
-### 9.3 Non-secret ConfigMap contract
+`artifacts/`는 Git에서 제외한다. Secret env와 rendered Secret manifest를 커밋하거나 CI public artifact로 업로드해서는 안 된다.
 
-`terraformers-backend-runtime-config`는 다음과 같은 비밀이 아닌 runtime state를 전달한다.
+## 8. Kubernetes package contract
 
-- `SPRING_PROFILES_ACTIVE=prod`
-- adapter enable/disable switch
-- Bedrock token limit
-- OpenSearch service name/top-k
-- result object key prefix
-- 환경별 AWS region
+현재 backend package의 canonical identity는 다음과 같다.
 
-운영 점검 원칙은 다음이다.
+- namespace: `terraformers-runtime`
+- ServiceAccount: `terraformers-backend`
+- ConfigMap: `terraformers-backend-runtime-config`
+- Secret: `terraformers-backend-runtime-secrets`
+- Deployment/Service: `terraformers-backend`
+- profile: `prod`
 
-- secret value를 출력하지 않는다.
-- key 존재 여부만 확인한다.
-- target Secret 생성 여부와 Deployment의 `secretRef` 이름을 비교한다.
-- pod startup error가 있으면 누락된 base key 또는 활성 adapter key와 연결해 진단한다.
-- ServiceAccount IRSA annotation과 workload IAM policy를 별도로 검증한다.
+public-safe template에는 실제 ECR URI, IRSA ARN, Secret 값, Ingress가 없다. private render 단계에서 immutable image와 IRSA role을 주입하고, preflight까지만 자동화한다.
 
-## 10. 배포 순서
+## 9. Frontend contract와 미구현 hosting
 
-최소 권장 배포 순서는 다음이다.
+Frontend production build에는 다음 공개 값만 전달한다.
 
-1. static AWS environment contract 검증
-2. Terraform output과 GitHub repository/environment variable·secret mapping 확정
-3. GitHub Environment approval rule 설정
-4. Terraform backend/bootstrap 준비
-5. Terraform fmt/validate/plan 확인
-6. Terraform apply 실행
-7. ECR repository, RDS, S3, SQS, Cognito output 확인
-8. runtime Secret provider와 ServiceAccount IRSA 확인
-9. backend image build/publish
-10. Python analysis service image build/publish
-11. frontend build/deploy
-12. ArgoCD sync 확인
-13. Kubernetes rollout status 확인
-14. runtime Secret 상태 확인
-15. backend health check
-16. analysis service health check
-17. API smoke test
-18. browser E2E test
-19. log inspection
+- `REACT_APP_API_BASE_URL`
+- `REACT_APP_AWS_REGION`
+- `REACT_APP_COGNITO_USER_POOL_ID`
+- `REACT_APP_COGNITO_USER_POOL_CLIENT_ID`
 
-## 11. 배포 완료 판단 기준
+현재 Terraform inventory에는 frontend hosting bucket과 CloudFront distribution output이 없다. 따라서 S3 sync와 CloudFront invalidation은 현재 완료된 배포 흐름으로 설명하지 않는다. 다음 인프라 단계에서 실제 필요성, 비용, origin routing, backend 접근 방식과 함께 설계한다.
 
-배포 완료는 단순히 workflow가 성공했다는 의미가 아니다.
+## 10. Optional adapter activation
 
-다음이 함께 확인되어야 한다.
+Bedrock/OpenSearch/SQS/S3 adapter는 base ConfigMap에서 비활성화한다. 활성화 전 다음을 함께 검증한다.
 
-- Terraform apply가 성공했고 필요한 output이 확인된다.
-- Terraform output, GitHub configuration, Kubernetes env, application property mapping이 일치한다.
-- ECR에 backend/analysis service image가 push되었다.
-- Kubernetes manifest image tag가 해당 image URI로 갱신되었다.
-- ArgoCD sync 결과가 정상이다.
-- deployment rollout이 성공했다.
-- service endpoint가 존재한다.
-- runtime Secret contract와 ServiceAccount IAM contract가 충족된다.
-- backend `/actuator/health`가 정상이다.
-- analysis service `/health`가 정상이다.
-- 업로드 → 분석 → SQS log/result → 결과 조회 흐름이 동작한다.
+1. Terraform resource와 output
+2. EKS workload network path
+3. IRSA IAM permission
+4. runtime key 전달 방식
+5. failure/timeout/retry behavior
+6. smoke evidence와 cleanup 기준
 
-## 12. 운영상 주의사항
+리소스가 존재한다는 이유만으로 adapter를 활성화하지 않는다.
 
-- 실제 token, password, account id, secret value는 문서·로그·커밋에 남기지 않는다.
-- Terraform plan 상세와 secret이 CI log에 노출되지 않도록 한다.
-- source merge, image publish, manifest update, runtime rollout은 서로 다른 단계임을 구분한다.
-- 배포 후에는 반드시 image tag consistency를 확인한다.
-- RDS schema 변경은 임의 DDL이 아니라 Flyway migration으로 관리한다.
-- destroy는 비용 정리 목적 외에는 기본 운영 절차로 다루지 않는다.
+## 11. 실제 AWS 배포 전 gate
+
+다음 항목이 모두 명시되어야 한다.
+
+1. GitHub OIDC trust와 role permission
+2. Terraform state/backend와 실제 output
+3. RDS security group 및 TLS path
+4. RDS-managed password를 runtime Secret으로 전달하는 방식
+5. ECR image tag/digest와 manifest image 일치
+6. IRSA trust subject와 ServiceAccount annotation 일치
+7. S3 bucket IAM permission
+8. frontend hosting/CloudFront/API origin 계약
+9. live cluster server-side dry-run
+10. rollout, health, authenticated API smoke 및 evidence 수집
+
+이 조건이 충족되기 전에는 실제 apply나 rollout을 시작하지 않는다.
+
+## 12. 완료 판단 기준
+
+프로젝트의 배포 완료는 workflow 성공이나 리소스 생성만으로 판단하지 않는다.
+
+- source contract와 실제 AWS output이 일치함
+- Secret key와 application property가 일치함
+- workload identity와 IAM permission이 일치함
+- immutable image가 실제 Deployment에 반영됨
+- rollout과 health가 정상임
+- 인증된 업로드·분석·결과 조회 흐름이 검증됨
+- 장애 시 원인 구간과 복구 상태를 evidence로 설명할 수 있음
+
+현재 PR은 이 중 source/runtime/package contract를 정리하는 단계이며, live AWS 검증은 별도 승인 단계다.
