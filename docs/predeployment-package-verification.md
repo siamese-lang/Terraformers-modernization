@@ -40,6 +40,20 @@ Optional adapter settings are required only when their switches are enabled:
 
 The production startup validator rejects an enabled adapter whose own settings are missing. Disabled adapters do not require placeholder secrets.
 
+## Frontend dependency gate
+
+The current modernization frontend did not include a committed `package-lock.json`. The prior repository contains an older lockfile, but its own deployment workflow records that the file is out of sync with `package.json`, so it is not reused blindly.
+
+Until the current lockfile is committed, the package job performs this bootstrap sequence:
+
+```text
+npm install --package-lock-only
+npm ci
+npm run build
+```
+
+The generated lockfile, Node version, and npm version are uploaded as evidence. After a successful full package run, the generated lockfile must be reviewed and committed. At that point the workflow can enable npm cache and require the committed lockfile without generating one in CI.
+
 ## Image verification
 
 The workflow builds `backend/Dockerfile` with two local tags:
@@ -86,7 +100,8 @@ The AWS template must keep an explicit immutable image replacement contract and 
 
 The workflow uploads `artifacts/predeployment` containing:
 
-- frontend build file list
+- generated or committed frontend lockfile copy and lockfile status
+- frontend Node/npm versions and build file list
 - backend image inspect and layer history
 - image healthcheck metadata
 - runtime UID and Terraform version
