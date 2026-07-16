@@ -29,12 +29,16 @@ def main() -> int:
     errors: list[str] = []
 
     contract = json.loads(read("config/live-aws-prerequisites.json"))
+    addons = json.loads(read("config/live-kubernetes-addons.json"))
     live_workflow = read(".github/workflows/aws-live-terraform-plan.yml")
     static_workflow = read(".github/workflows/terraform-static-verification.yml")
     eks_variables = read("infra/terraform/envs/eks-runtime/variables.tf")
     bootstrap_main = read("infra/terraform/bootstrap/aws-live-foundation/main.tf")
     bootstrap_variables = read("infra/terraform/bootstrap/aws-live-foundation/variables.tf")
     bootstrap_versions = read("infra/terraform/bootstrap/aws-live-foundation/versions.tf")
+    backend_origin_doc = read("docs/backend-origin-delivery.md")
+    managed_secret_doc = read("docs/managed-secret-delivery.md")
+    tfvars_builder = read("scripts/deploy/build-live-stage-tfvars.py")
 
     examples = {
         "network": read("infra/terraform/envs/aws-runtime-network/live.tfvars.example"),
@@ -81,8 +85,31 @@ def main() -> int:
     require(errors, "database_storage_encrypted            = true" in examples["stateful-dependencies"], "database-encryption-disabled")
     require(errors, "frontend_bucket_force_destroy = false" in examples["frontend-delivery"], "frontend-force-destroy-enabled")
 
-    expected_examples = set(contract.get("terraform_stages", []).__len__() and [stage["id"] for stage in contract["terraform_stages"]])
+    expected_examples = {stage["id"] for stage in contract.get("terraform_stages", [])}
     require(errors, expected_examples == set(examples), "live-tfvars-example-stage-drift")
+
+    addon_items = addons.get("addons", {})
+    lbc = addon_items.get("aws-load-balancer-controller", {})
+    eso = addon_items.get("external-secrets", {})
+    require(errors, addons.get("eks_kubernetes_version") == "1.35", "addon-eks-version-drift")
+    require(errors, lbc.get("chart_version") == "3.4.2", "load-balancer-controller-version-drift")
+    require(errors, lbc.get("controller_image") == "public.ecr.aws/eks/aws-load-balancer-controller:v3.4.2", "load-balancer-controller-image-drift")
+    require(errors, lbc.get("service_account_create") is False, "load-balancer-controller-service-account-create-enabled")
+    require(errors, lbc.get("iam_policy_file") == "infra/terraform/envs/eks-runtime/policies/aws-load-balancer-controller-v3.4.2.json", "load-balancer-controller-policy-drift")
+    require(errors, "chart: eks/aws-load-balancer-controller 3.4.2" in backend_origin_doc, "load-balancer-controller-doc-drift")
+
+    require(errors, eso.get("chart_version") == "2.7.0", "external-secrets-version-drift")
+    require(errors, eso.get("service_account_create") is False, "external-secrets-service-account-create-enabled")
+    require(errors, eso.get("helm_install_crds") is False, "external-secrets-helm-crd-install-enabled")
+    require(errors, eso.get("crd_installation") == "pinned-server-side-apply-before-helm", "external-secrets-crd-strategy-drift")
+    require(errors, "/v2.7.0/deploy/crds/bundle.yaml" in str(eso.get("crd_bundle_url", "")), "external-secrets-crd-url-drift")
+    require(errors, "External Secrets Operator chart: 2.7.0" in managed_secret_doc, "external-secrets-doc-version-missing")
+
+    require(errors, 'choices=["stateful-dependencies", "eks-runtime", "frontend-delivery"]' in tfvars_builder, "tfvars-builder-stage-contract-drift")
+    require(errors, "Operator CIDR must be an exact public IPv4 /32." in tfvars_builder, "tfvars-builder-operator-cidr-guard-missing")
+    require(errors, "database_publicly_accessible      = false" in tfvars_builder, "tfvars-builder-public-database-guard-missing")
+    require(errors, "bedrock_model_resource_arns = []" in tfvars_builder, "tfvars-builder-optional-adapter-guard-missing")
+    require(errors, "frontend_bucket_force_destroy = false" in tfvars_builder, "tfvars-builder-force-destroy-guard-missing")
 
     report = {
         "pre_live_aws_readiness": "passed" if not errors else "failed",
@@ -91,7 +118,10 @@ def main() -> int:
         "eks_default_version": "1.35",
         "eks_endpoint_default": "private",
         "live_egress_baseline": "single-nat-gateway",
+        "load_balancer_controller_version": lbc.get("chart_version"),
+        "external_secrets_version": eso.get("chart_version"),
         "tfvars_example_count": len(examples),
+        "generated_handoff_stage_count": 3,
         "github_oidc_subject": contract.get("github_oidc_subject"),
         "deprecated_dynamodb_locking": False,
         "optional_adapters_enabled": False,
@@ -108,7 +138,10 @@ def main() -> int:
         f"eks_default_version={report['eks_default_version']}",
         f"eks_endpoint_default={report['eks_endpoint_default']}",
         f"live_egress_baseline={report['live_egress_baseline']}",
+        f"load_balancer_controller_version={report['load_balancer_controller_version']}",
+        f"external_secrets_version={report['external_secrets_version']}",
         f"tfvars_example_count={report['tfvars_example_count']}",
+        f"generated_handoff_stage_count={report['generated_handoff_stage_count']}",
         "deprecated_dynamodb_locking=false",
         "optional_adapters_enabled=false",
         "aws_authentication=none",
