@@ -120,6 +120,53 @@ def mask_account(value: str) -> str:
     return f"{value[:4]}****{value[-4:]}" if len(value) >= 8 else "***"
 
 
+def role_name_from_arn(role_arn: str) -> str:
+    match = re.fullmatch(r"arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/(.+)", role_arn)
+    if not match:
+        return ""
+    return match.group(1).split("/")[-1]
+
+
+def condition_values(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, list):
+        return {str(item) for item in value}
+    return set()
+
+
+def oidc_trust_matches(policy: Any, provider_arn: str, expected_subject: str) -> bool:
+    statements = policy.get("Statement", []) if isinstance(policy, dict) else []
+    if isinstance(statements, dict):
+        statements = [statements]
+
+    for statement in statements:
+        if not isinstance(statement, dict):
+            continue
+        if statement.get("Effect") != "Allow":
+            continue
+        actions = condition_values(statement.get("Action"))
+        if "sts:AssumeRoleWithWebIdentity" not in actions:
+            continue
+
+        principal = statement.get("Principal", {})
+        federated = condition_values(principal.get("Federated") if isinstance(principal, dict) else None)
+        if provider_arn not in federated:
+            continue
+
+        conditions = statement.get("Condition", {})
+        if not isinstance(conditions, dict):
+            continue
+        string_equals = conditions.get("StringEquals", {})
+        if not isinstance(string_equals, dict):
+            continue
+        audiences = condition_values(string_equals.get("token.actions.githubusercontent.com:aud"))
+        subjects = condition_values(string_equals.get("token.actions.githubusercontent.com:sub"))
+        if "sts.amazonaws.com" in audiences and expected_subject in subjects:
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only inventory of live AWS deployment prerequisites.")
     parser.add_argument("--repo-root", default=".")
@@ -149,7 +196,10 @@ def main() -> int:
             continue
         all_variables, required = variable_contract(variables_path)
         if required != stage["required_variables"]:
-            errors.append(f"required-variable-drift:{stage['id']}:expected={stage['required_variables']}:actual={required}")
+            errors.append(
+                f"required-variable-drift:{stage['id']}:"
+                f"expected={stage['required_variables']}:actual={required}"
+            )
         unknown_operator = sorted(set(stage.get("operator_inputs", [])) - set(all_variables))
         if unknown_operator:
             errors.append(f"unknown-operator-input:{stage['id']}:{','.join(unknown_operator)}")
@@ -177,8 +227,11 @@ def main() -> int:
         })
 
     static_errors = [error for error in errors if error.startswith((
-        "missing-variables-file:", "required-variable-drift:", "unknown-operator-input:",
-        "source-target-variable-missing:", "source-output-missing:",
+        "missing-variables-file:",
+        "required-variable-drift:",
+        "unknown-operator-input:",
+        "source-target-variable-missing:",
+        "source-output-missing:",
     ))]
     static_ok = not static_errors
     github_report: dict[str, Any] = {"status": "skipped-static-only"}
@@ -239,37 +292,66 @@ def main() -> int:
                     account_matches = account == expected
                     if not account_matches:
                         errors.append("aws-account-mismatch")
-                    region = merged_values.get("AWS_REGION", "ap-northeast-2")
+
                     bucket = merged_values.get("AWS_TERRAFORM_STATE_BUCKET", "")
-                    table = merged_values.get("AWS_TERRAFORM_LOCK_TABLE", "")
                     bucket_access = bool(bucket and run("aws", "s3api", "head-bucket", "--bucket", bucket)[0] == 0)
                     versioning = "unresolved"
                     if bucket_access:
-                        _, version_payload = json_command("aws", "s3api", "get-bucket-versioning", "--bucket", bucket, "--output", "json")
+                        _, version_payload = json_command(
+                            "aws", "s3api", "get-bucket-versioning", "--bucket", bucket, "--output", "json"
+                        )
                         versioning = str(version_payload.get("Status", "NotEnabled"))
                     if not bucket_access:
                         errors.append("state-bucket-inaccessible")
                     elif versioning != "Enabled":
                         errors.append("state-bucket-versioning-not-enabled")
-                    table_status = "unresolved"
-                    if table:
-                        table_code, table_payload = json_command("aws", "dynamodb", "describe-table", "--table-name", table, "--region", region, "--output", "json")
-                        if table_code == 0:
-                            table_status = str(table_payload.get("Table", {}).get("TableStatus", ""))
-                    if table_status != "ACTIVE":
-                        errors.append("state-lock-table-not-active")
+
+                    role_arn = merged_values.get("AWS_ROLE_TO_ASSUME", "")
+                    role_name = role_name_from_arn(role_arn)
+                    oidc_trust_status = "unresolved"
+                    if role_arn and not role_name:
+                        errors.append("oidc-role-arn-invalid")
+                        oidc_trust_status = "invalid-role-arn"
+                    elif role_name:
+                        role_code, role_payload = json_command(
+                            "aws", "iam", "get-role", "--role-name", role_name, "--output", "json"
+                        )
+                        if role_code != 0:
+                            errors.append("oidc-role-unavailable")
+                            oidc_trust_status = "role-unavailable"
+                        else:
+                            role = role_payload.get("Role", {}) if isinstance(role_payload, dict) else {}
+                            provider_arn = f"arn:aws:iam::{account}:oidc-provider/token.actions.githubusercontent.com"
+                            trust_ok = oidc_trust_matches(
+                                role.get("AssumeRolePolicyDocument", {}),
+                                provider_arn,
+                                contract["github_oidc_subject"],
+                            )
+                            oidc_trust_status = "ready" if trust_ok else "trust-mismatch"
+                            if not trust_ok:
+                                errors.append("oidc-role-trust-mismatch")
+                    else:
+                        oidc_trust_status = "role-not-configured"
+
+                    aws_ready = (
+                        account_matches
+                        and bucket_access
+                        and versioning == "Enabled"
+                        and oidc_trust_status == "ready"
+                    )
                     aws_report = {
-                        "status": "ready" if account_matches and bucket_access and versioning == "Enabled" and table_status == "ACTIVE" else "incomplete",
+                        "status": "ready" if aws_ready else "incomplete",
                         "caller_account": mask_account(account),
                         "expected_account": mask_account(expected),
                         "account_matches": account_matches,
-                        "region": region,
+                        "region": merged_values.get("AWS_REGION", "ap-northeast-2"),
                         "state_bucket_configured": bool(bucket),
                         "state_bucket_accessible": bucket_access,
                         "state_bucket_versioning": versioning,
-                        "lock_table_configured": bool(table),
-                        "lock_table_status": table_status,
-                        "oidc_role_trust_status": "deferred-to-dedicated-check",
+                        "state_locking": contract["state_locking"],
+                        "oidc_role_configured": bool(role_arn),
+                        "oidc_role_trust_status": oidc_trust_status,
+                        "expected_oidc_subject": contract["github_oidc_subject"],
                     }
 
     overall_ready = static_ok and not errors
@@ -277,6 +359,8 @@ def main() -> int:
     report = {
         "live_aws_prerequisite_inventory": status,
         "static_contract": "passed" if static_ok else "failed",
+        "terraform_cli_version": contract["terraform_cli_version"],
+        "state_locking": contract["state_locking"],
         "repo": args.repo,
         "branch": args.branch,
         "github": github_report,
@@ -286,15 +370,20 @@ def main() -> int:
         "secret_values_read": False,
         "aws_mutation": "none",
     }
-    (output_dir / "prerequisite-inventory.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "prerequisite-inventory.json").write_text(
+        json.dumps(report, indent=2) + "\n", encoding="utf-8"
+    )
     summary = [
         f"live_aws_prerequisite_inventory={status}",
         f"static_contract={report['static_contract']}",
+        f"terraform_cli_version={contract['terraform_cli_version']}",
+        f"state_locking={contract['state_locking']}",
         f"terraform_stage_count={len(stage_report)}",
         f"github_status={github_report.get('status', '')}",
         f"missing_github_variable_count={len(missing_variables)}",
         f"missing_github_secret_count={len(missing_secrets)}",
         f"aws_status={aws_report.get('status', '')}",
+        f"oidc_role_trust_status={aws_report.get('oidc_role_trust_status', '')}",
         "secret_values_read=false",
         "aws_mutation=none",
     ]
