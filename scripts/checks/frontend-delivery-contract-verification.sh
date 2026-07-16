@@ -8,6 +8,7 @@ OUTPUTS_TF="${TERRAFORM_DIR}/outputs.tf"
 VARIABLES_TF="${TERRAFORM_DIR}/variables.tf"
 FRONTEND_API="${REPO_ROOT}/frontend/src/utils/api.js"
 FRONTEND_ENV="${REPO_ROOT}/frontend/.env.example"
+FRONTEND_WORKFLOW="${REPO_ROOT}/.github/workflows/frontend-delivery.yml"
 EVIDENCE_DIR="${REPO_ROOT}/artifacts/frontend-delivery-contract"
 FIXTURE_DIR="${EVIDENCE_DIR}/fixtures"
 BUNDLE_DIR="${EVIDENCE_DIR}/input-bundle"
@@ -42,7 +43,13 @@ for command_name in grep python3; do
   fi
 done
 
-for required_file in "${MAIN_TF}" "${OUTPUTS_TF}" "${VARIABLES_TF}" "${FRONTEND_API}" "${FRONTEND_ENV}"; do
+for required_file in \
+  "${MAIN_TF}" \
+  "${OUTPUTS_TF}" \
+  "${VARIABLES_TF}" \
+  "${FRONTEND_API}" \
+  "${FRONTEND_ENV}" \
+  "${FRONTEND_WORKFLOW}"; do
   if [[ ! -s "${required_file}" ]]; then
     echo "Expected non-empty file: ${required_file}" >&2
     exit 1
@@ -84,6 +91,17 @@ done
 assert_contains "const API_BASE_URL = envApiBaseUrl \|\| '';" "${FRONTEND_API}" "React client must support relative same-origin API paths."
 assert_contains 'Production requests will use relative paths' "${FRONTEND_API}" "Production same-origin fallback must remain explicit."
 assert_not_contains 'Set the deployed backend origin when the frontend is served as a static production bundle' "${FRONTEND_ENV}" "Frontend environment guidance must not require a cross-origin backend URL."
+
+assert_contains 'deploy_frontend:' "${FRONTEND_WORKFLOW}" "Frontend workflow must expose an explicit deployment approval input."
+assert_contains 'default: false' "${FRONTEND_WORKFLOW}" "Frontend AWS delivery must default to build-only."
+assert_contains 'aws-actions/configure-aws-credentials@v4' "${FRONTEND_WORKFLOW}" "Frontend deployment must use the GitHub OIDC credential action."
+assert_contains 'role-to-assume:.*AWS_ROLE_TO_ASSUME' "${FRONTEND_WORKFLOW}" "Frontend deployment must require an OIDC role."
+assert_not_contains 'secrets\.AWS_ACCESS_KEY_ID|secrets\.AWS_SECRET_ACCESS_KEY' "${FRONTEND_WORKFLOW}" "Frontend workflow must not use long-lived AWS keys."
+assert_contains "--cache-control 'no-cache,no-store,must-revalidate'" "${FRONTEND_WORKFLOW}" "Mutable frontend entrypoints must disable caching."
+assert_contains "--cache-control 'public,max-age=31536000,immutable'" "${FRONTEND_WORKFLOW}" "Hashed static assets must use immutable caching."
+assert_contains 'aws cloudfront wait invalidation-completed' "${FRONTEND_WORKFLOW}" "Frontend deployment must wait for invalidation completion."
+assert_not_contains "--paths '/\*'" "${FRONTEND_WORKFLOW}" "Frontend deployment must not invalidate all immutable assets."
+assert_contains "--paths '/' '/index.html' '/asset-manifest.json' '/manifest.json'" "${FRONTEND_WORKFLOW}" "Frontend deployment must invalidate only mutable entrypoints."
 
 cat >"${FIXTURE_DIR}/stateful.json" <<'JSON'
 {
@@ -128,6 +146,7 @@ assert_contains 'aws cloudfront create-invalidation --distribution-id E123456789
 printf '%s\n' \
   'frontend_delivery_contract=passed' \
   'frontend_delivery_input_bundle=generated' \
+  'frontend_delivery_workflow=guarded-oidc' \
   'frontend_build_variable_count=4' \
   'frontend_bucket_access=private' \
   'frontend_bucket_versioning=enabled' \
@@ -137,6 +156,9 @@ printf '%s\n' \
   'spa_rewrite=cloudfront-function' \
   'api_error_substitution=disabled' \
   'actuator_public_route=absent' \
+  'mutable_cache_control=no-cache' \
+  'static_cache_control=immutable-one-year' \
+  'invalidation_scope=mutable-entrypoints-only' \
   'frontend_output_groups=resolved' \
   'cluster_contact=none' \
   'aws_mutation=none' \
