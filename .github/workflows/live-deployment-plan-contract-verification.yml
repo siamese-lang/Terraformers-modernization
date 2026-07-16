@@ -15,6 +15,7 @@ on:
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
       - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
       - "docs/live-aws-deployment-execution-plan.md"
+      - "docs/premerge-live-plan-dispatch.md"
 
 permissions:
   contents: read
