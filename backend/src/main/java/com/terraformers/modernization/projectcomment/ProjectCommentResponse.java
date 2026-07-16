@@ -1,21 +1,33 @@
 package com.terraformers.modernization.projectcomment;
 
+import com.terraformers.modernization.collaboration.CommentEntity;
+import com.terraformers.modernization.identity.UserEntity;
 import java.time.Instant;
 
 public record ProjectCommentResponse(
         Long id,
-        String projectId,
+        Long projectId,
         String content,
         String userEmail,
         Instant createdAt
 ) {
-    static ProjectCommentResponse from(ProjectCommentEntity entity) {
+    static ProjectCommentResponse from(CommentEntity entity) {
         return new ProjectCommentResponse(
-                entity.getId(),
-                entity.getProjectId(),
+                entity.getCommentId(),
+                entity.getBoard().getProject().getProjectId(),
                 entity.getContent(),
-                entity.getUserEmail(),
+                displayAuthor(entity.getAuthor()),
                 entity.getCreatedAt()
         );
+    }
+
+    private static String displayAuthor(UserEntity author) {
+        if (author.getEmail() != null && !author.getEmail().isBlank()) {
+            return author.getEmail();
+        }
+        if (author.getDisplayName() != null && !author.getDisplayName().isBlank()) {
+            return author.getDisplayName();
+        }
+        return author.getCognitoSub();
     }
 }
