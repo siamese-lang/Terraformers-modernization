@@ -7,21 +7,35 @@
 - 다섯 Terraform 환경의 필수 변수와 선행 output 연결
 - GitHub protected environment `aws-live-plan` 존재 여부
 - 필요한 GitHub variable·secret 이름의 등록 여부
-- 로컬 AWS caller identity
+- 로컬 AWS caller identity와 예상 계정 일치
 - Terraform state S3 bucket 접근 및 versioning
-- DynamoDB state lock table 상태
+- GitHub OIDC plan role의 provider, audience, environment subject
 
-이 검사는 AWS 리소스를 생성·수정·삭제하지 않는다. Secret 값은 읽거나 출력하지 않고 이름의 존재 여부만 확인한다.
+이 검사는 AWS 리소스를 생성·수정·삭제하지 않는다. private tfvars Secret 값은 읽거나 출력하지 않고 이름의 존재 여부만 확인한다.
 
-## 단계 입력 계약
-
-Canonical contract:
+## 기준 계약
 
 ```text
 config/live-aws-prerequisites.json
 ```
 
-정적 검사기는 각 `variables.tf`에서 default가 없는 변수를 추출하고 계약 파일과 비교한다. 또한 선행 Terraform 환경의 `outputs.tf`에 다음 단계가 요구하는 output이 실제로 존재하는지 확인한다.
+고정 기준:
+
+```text
+Terraform CLI: 1.15.8
+state locking: S3 native lockfile
+GitHub environment: aws-live-plan
+OIDC subject: repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan
+```
+
+DynamoDB locking은 사용하지 않는다. 각 stage state는 다음 경로와 같은 S3 object와 `.tflock` object를 사용한다.
+
+```text
+<state-prefix>/<stage>/terraform.tfstate
+<state-prefix>/<stage>/terraform.tfstate.tflock
+```
+
+## 단계 입력 계약
 
 주요 handoff:
 
@@ -43,7 +57,7 @@ live private origin
   -> api_origin_load_balancer_arn
 ```
 
-`frontend-delivery`는 controller가 internal ALB를 실제로 생성하고 ARN이 확인된 뒤에만 계획할 수 있다.
+`frontend-delivery`는 controller가 internal ALB를 실제로 생성하고 ARN과 target health가 확인된 뒤에만 계획한다.
 
 ## 검사 도구
 
@@ -58,11 +72,9 @@ artifacts/live-aws-prerequisite-inventory/prerequisite-summary.txt
 artifacts/live-aws-prerequisite-inventory/prerequisite-inventory.json
 ```
 
-`artifacts/`는 Git에서 제외된다.
+`artifacts/`는 Git에서 제외된다. 실행을 시작할 때 이전 summary와 JSON은 삭제되므로 중단된 실행의 오래된 결과를 새 결과로 오해하지 않는다.
 
 ## 1. 정적 계약만 검사
-
-AWS CLI와 GitHub 설정을 확인하지 않는다.
 
 ```powershell
 python scripts/deploy/live-aws-prerequisite-inventory.py `
@@ -75,6 +87,8 @@ python scripts/deploy/live-aws-prerequisite-inventory.py `
 ```text
 live_aws_prerequisite_inventory=passed
 static_contract=passed
+terraform_cli_version=1.15.8
+state_locking=s3-native-lockfile
 terraform_stage_count=5
 github_status=skipped-static-only
 aws_status=skipped-static-only
@@ -84,26 +98,26 @@ aws_mutation=none
 
 ## 2. GitHub 설정만 검사
 
-AWS state가 아직 준비되지 않았다면 `--skip-aws`를 사용한다.
+AWS foundation을 아직 생성하지 않았다면 다음처럼 실행한다.
 
 ```powershell
-python scripts/deploy/live-aws-prerequisite-inventory.py `
-  --skip-aws
+python scripts/deploy/live-aws-prerequisite-inventory.py --skip-aws
 ```
 
-확인 대상 variable:
+Environment 또는 repository variable:
 
 ```text
 AWS_REGION
+AWS_ROLE_TO_ASSUME
 AWS_TERRAFORM_STATE_BUCKET
-AWS_TERRAFORM_LOCK_TABLE
 AWS_TERRAFORM_STATE_PREFIX
 ```
 
-확인 대상 secret:
+`AWS_ROLE_TO_ASSUME`은 credential이 아니라 role ARN이므로 Secret이 아닌 protected environment variable로 관리한다.
+
+Environment Secret:
 
 ```text
-AWS_ROLE_TO_ASSUME
 AWS_LIVE_NETWORK_TFVARS_B64
 AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64
 AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64
@@ -113,15 +127,7 @@ AWS_LIVE_FRONTEND_TFVARS_B64
 
 검사기는 repository와 `aws-live-plan` environment에 등록된 이름을 합쳐 확인한다. Secret 값은 GitHub API로 읽지 않는다.
 
-## 3. GitHub와 AWS state를 함께 검사
-
-AWS CLI가 의도한 계정으로 인증된 상태에서 실행한다.
-
-```powershell
-python scripts/deploy/live-aws-prerequisite-inventory.py
-```
-
-의도한 계정 ID를 명시해 계정 혼동을 차단하려면 다음과 같이 실행한다.
+## 3. GitHub와 AWS foundation 함께 검사
 
 ```powershell
 $ExpectedAccountId = "<12-digit-account-id>"
@@ -130,13 +136,22 @@ python scripts/deploy/live-aws-prerequisite-inventory.py `
   --expected-account-id $ExpectedAccountId
 ```
 
-검사 항목:
+읽기 전용 검사:
 
 ```text
 aws sts get-caller-identity
 aws s3api head-bucket
 aws s3api get-bucket-versioning
-aws dynamodb describe-table
+aws iam get-role
+```
+
+OIDC role trust 정상 조건:
+
+```text
+provider: arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com
+audience: sts.amazonaws.com
+subject: repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan
+wildcard subject: 없음
 ```
 
 정상 기준:
@@ -146,13 +161,12 @@ github_status=ready
 missing_github_variable_count=0
 missing_github_secret_count=0
 aws_status=ready
+oidc_role_trust_status=ready
 secret_values_read=false
 aws_mutation=none
 ```
 
 ## 4. 구성 완료 후 엄격 검사
-
-모든 prerequisite를 설정한 뒤에는 누락 시 non-zero exit code를 반환하도록 한다.
 
 ```powershell
 python scripts/deploy/live-aws-prerequisite-inventory.py `
@@ -162,44 +176,14 @@ python scripts/deploy/live-aws-prerequisite-inventory.py `
 
 ## 결과 해석
 
-### `github-environment-missing:aws-live-plan`
+- `github-environment-missing:aws-live-plan`: protected environment가 없다.
+- `github-variable-missing:<NAME>`: 필요한 environment 또는 repository variable이 없다.
+- `github-secret-missing:<NAME>`: 필요한 private tfvars Secret 이름이 없다.
+- `state-bucket-inaccessible`: state bucket이 없거나 현재 identity가 접근할 수 없다.
+- `state-bucket-versioning-not-enabled`: versioning이 `Enabled`가 아니다.
+- `oidc-role-arn-invalid`: `AWS_ROLE_TO_ASSUME`이 IAM role ARN 형식이 아니다.
+- `oidc-role-unavailable`: 현재 AWS identity가 role을 조회할 수 없거나 role이 없다.
+- `oidc-role-trust-mismatch`: provider, audience 또는 exact environment subject가 계약과 다르다.
+- `source-output-missing:<stage>:<source>`: Terraform 단계 output/input 연결이 끊겼다.
 
-GitHub repository Settings에서 protected environment가 아직 생성되지 않았다. 이 inventory는 environment를 자동 생성하지 않는다.
-
-### `github-variable-missing:<NAME>`
-
-필요한 repository 또는 environment variable 이름이 없다.
-
-### `github-secret-missing:<NAME>`
-
-필요한 repository 또는 environment secret 이름이 없다. 검사 결과에는 Secret 값이 포함되지 않는다.
-
-### `state-bucket-inaccessible`
-
-설정된 state bucket이 없거나 현재 AWS identity에 읽기 권한이 없다.
-
-### `state-bucket-versioning-not-enabled`
-
-state bucket은 존재하지만 versioning이 `Enabled`가 아니다.
-
-### `state-lock-table-not-active`
-
-DynamoDB lock table이 없거나 `ACTIVE` 상태가 아니다.
-
-### `source-output-missing:<stage>:<source>`
-
-Terraform 단계 사이의 output/input 연결이 끊겼다. 실제 ARN이나 ID를 수동으로 조립하지 말고 선행 환경 output 계약을 수정해야 한다.
-
-## 아직 별도로 확인할 항목
-
-`AWS_ROLE_TO_ASSUME`의 값과 IAM trust policy는 Secret 목록 API로 확인할 수 없다. 따라서 이 inventory에서는 OIDC role trust를 `deferred-to-dedicated-check`로 기록한다.
-
-다음 단계에서 role ARN을 명시적으로 확인한 뒤 다음 조건을 별도 검증한다.
-
-```text
-OIDC provider: token.actions.githubusercontent.com
-audience: sts.amazonaws.com
-subject: repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan
-```
-
-이 trust 검증이 끝나기 전에는 live Terraform plan을 실행하지 않는다.
+AWS foundation 생성 전에는 `incomplete`가 정상이다. 이 결과를 우회해서 local credential로 live stage를 apply하지 않는다.
