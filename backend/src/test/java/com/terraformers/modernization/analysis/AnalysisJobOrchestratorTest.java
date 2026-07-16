@@ -57,7 +57,7 @@ class AnalysisJobOrchestratorTest {
         verify(artifactService).registerGeneratedTerraform(
                 101L,
                 "provider \"aws\" {}",
-                new ObjectWriteResult("result-bucket", job.getResultObjectKey(), null)
+                new ObjectWriteResult("result-bucket", job.getResultObjectKey(), "stub-etag")
         );
         assertThat(progressPublisher.statuses()).containsExactly(
                 AnalysisJobStatus.RUNNING,
