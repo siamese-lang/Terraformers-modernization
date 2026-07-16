@@ -51,6 +51,9 @@ jobs:
       - name: Verify managed Secret delivery contract
         run: bash scripts/checks/external-secrets-runtime-contract-verification.sh
 
+      - name: Verify frontend delivery contract
+        run: bash scripts/checks/frontend-delivery-contract-verification.sh
+
       - name: Upload AWS environment contract evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,6 +64,7 @@ jobs:
             artifacts/aws-environment-contract
             artifacts/aws-runtime-input-bundle-contract
             artifacts/external-secrets-runtime-contract
+            artifacts/frontend-delivery-contract
 
       - name: Upload runtime contract diagnostics
         if: failure()
