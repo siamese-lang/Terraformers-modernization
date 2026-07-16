@@ -46,8 +46,12 @@ public class AnalysisJobController {
     }
 
     @GetMapping("/{id}")
-    public AnalysisJobResponse get(@PathVariable String id) {
-        return service.get(id);
+    public AnalysisJobResponse get(
+            @PathVariable String id,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        UserEntity requester = authenticatedUserService.getOrCreate(jwt);
+        return service.get(id, requester);
     }
 
     @ExceptionHandler(NoSuchElementException.class)
