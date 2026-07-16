@@ -4,7 +4,8 @@ import java.time.Instant;
 
 public record AnalysisJobResponse(
         String id,
-        String projectId,
+        Long projectId,
+        Long sourceFileId,
         String sourceBucket,
         String sourceKey,
         String correlationId,
@@ -21,6 +22,7 @@ public record AnalysisJobResponse(
         return new AnalysisJobResponse(
                 entity.getId(),
                 entity.getProjectId(),
+                entity.getSourceFileId(),
                 entity.getSourceBucket(),
                 entity.getSourceKey(),
                 entity.getCorrelationId(),
