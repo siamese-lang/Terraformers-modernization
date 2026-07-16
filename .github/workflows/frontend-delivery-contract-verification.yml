@@ -33,7 +33,7 @@ jobs:
 
       - name: Upload frontend delivery contract evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-delivery-contract-evidence
           path: artifacts/frontend-delivery-contract
