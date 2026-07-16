@@ -3,7 +3,8 @@ environment  = "dev"
 aws_region   = "ap-northeast-2"
 
 # Existing network values. Do not commit real account-specific values here.
-vpc_id = "<vpc-id>"
+vpc_id         = "<vpc-id>"
+vpc_cidr_block = "10.40.0.0/16"
 private_subnet_ids = [
   "<private-subnet-id-a>",
   "<private-subnet-id-b>"
@@ -22,9 +23,11 @@ node_desired_size   = 1
 node_min_size       = 1
 node_max_size       = 2
 
-backend_namespace                    = "terraformers-runtime"
-backend_service_account_name         = "terraformers-backend"
-external_secrets_service_account_name = "terraformers-external-secrets"
+backend_namespace                         = "terraformers-runtime"
+backend_service_account_name              = "terraformers-backend"
+external_secrets_service_account_name     = "terraformers-external-secrets"
+load_balancer_controller_namespace        = "kube-system"
+load_balancer_controller_service_account_name = "aws-load-balancer-controller"
 
 # Outputs from backend-runtime-dependencies.
 upload_bucket_arn          = "arn:aws:s3:::<upload-bucket-name>"
