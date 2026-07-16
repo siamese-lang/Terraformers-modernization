@@ -162,7 +162,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_id   = local.api_origin_id
 
     vpc_origin_config {
-      vpc_origin_id           = aws_cloudfront_vpc_origin.backend.id
+      vpc_origin_id            = aws_cloudfront_vpc_origin.backend.id
       origin_keepalive_timeout = 60
       origin_read_timeout      = 60
     }
