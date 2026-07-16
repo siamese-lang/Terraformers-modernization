@@ -41,14 +41,6 @@ terraformers:
       - COGNITO_USER_POOL_CLIENT_ID
       - COGNITO_JWKS_URL
       - S3_BUCKET_NAME
-      - AI_LOG_QUEUE_URL
-      - TERRAFORM_LOG_QUEUE_URL
-      - BEDROCK_MODEL_ID
-      - BEDROCK_EMBEDDING_MODEL_ID
-      - OPENSEARCH_ENDPOINT
-      - INDEX_NAME
-      - VECTOR_FIELD_NAME
-      - CONTENT_FIELD_NAME
   security:
     jwt:
       enabled: true
@@ -62,19 +54,19 @@ terraformers:
     mode: integrated-java
     bedrock-provider-enabled: ${BEDROCK_PROVIDER_ENABLED:false}
     bedrock-embedding-enabled: ${BEDROCK_EMBEDDING_ENABLED:false}
-    bedrock-model-id: ${BEDROCK_MODEL_ID}
-    bedrock-embedding-model-id: ${BEDROCK_EMBEDDING_MODEL_ID}
+    bedrock-model-id: ${BEDROCK_MODEL_ID:}
+    bedrock-embedding-model-id: ${BEDROCK_EMBEDDING_MODEL_ID:}
     bedrock-max-tokens: ${BEDROCK_MAX_TOKENS:4096}
     opensearch-retriever-enabled: ${OPENSEARCH_RETRIEVER_ENABLED:false}
-    opensearch-endpoint: ${OPENSEARCH_ENDPOINT}
+    opensearch-endpoint: ${OPENSEARCH_ENDPOINT:}
     opensearch-service-name: ${OPENSEARCH_SERVICE_NAME:aoss}
     opensearch-top-k: ${OPENSEARCH_TOP_K:3}
-    index-name: ${INDEX_NAME}
-    vector-field-name: ${VECTOR_FIELD_NAME}
-    content-field-name: ${CONTENT_FIELD_NAME}
+    index-name: ${INDEX_NAME:}
+    vector-field-name: ${VECTOR_FIELD_NAME:}
+    content-field-name: ${CONTENT_FIELD_NAME:}
     result-bucket-name: ${ANALYSIS_RESULT_BUCKET_NAME:${S3_BUCKET_NAME}}
     result-key-prefix: ${ANALYSIS_RESULT_KEY_PREFIX:analysis-results}
     external-python-service-url: ${PYTHON_ANALYSIS_SERVICE_URL:}
     sqs-publisher-enabled: ${ANALYSIS_SQS_PUBLISHER_ENABLED:false}
-    progress-queue-url: ${AI_LOG_QUEUE_URL}
-    result-queue-url: ${TERRAFORM_LOG_QUEUE_URL}
+    progress-queue-url: ${AI_LOG_QUEUE_URL:}
+    result-queue-url: ${TERRAFORM_LOG_QUEUE_URL:}
