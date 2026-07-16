@@ -93,6 +93,9 @@ def main() -> int:
         "api_base_mode": "same-origin-relative",
         "api_path_prefix": "/api/",
         "cognito_values": "browser-public-terraform-outputs",
+        "mutable_cache_control": "no-cache,no-store,must-revalidate",
+        "static_cache_control": "public,max-age=31536000,immutable",
+        "invalidation_scope": "mutable-entrypoints-only",
         "aws_mutation": "not-performed",
     }
     (output_dir / "delivery-source-map.json").write_text(
@@ -108,12 +111,17 @@ def main() -> int:
         "cognito_source=terraform-output",
         "frontend_bucket_source=terraform-output",
         "cloudfront_distribution_source=terraform-output",
+        "mutable_cache_control=no-cache",
+        "static_cache_control=immutable-one-year",
+        "invalidation_scope=mutable-entrypoints-only",
+        "invalidation_wait=required",
         "aws_mutation=none",
     ]
     (output_dir / "bundle-summary.txt").write_text(
         "\n".join(summary) + "\n", encoding="utf-8"
     )
 
+    invalidation_file = output_dir / "frontend-invalidation.json"
     apply_order = f"""# Generated frontend delivery sequence
 # This file is a manual deployment boundary. The bundle generator did not run these commands.
 
@@ -124,8 +132,26 @@ set +a
 npm --prefix frontend ci --legacy-peer-deps --no-audit --no-fund
 npm --prefix frontend run build
 
-aws s3 sync frontend/build s3://{bucket_name} --delete
-aws cloudfront create-invalidation --distribution-id {distribution_id} --paths '/*'
+aws s3 sync frontend/build s3://{bucket_name} \\
+  --delete \\
+  --exclude 'static/*' \\
+  --cache-control 'no-cache,no-store,must-revalidate' \\
+  --only-show-errors
+
+aws s3 sync frontend/build/static s3://{bucket_name}/static \\
+  --delete \\
+  --cache-control 'public,max-age=31536000,immutable' \\
+  --only-show-errors
+
+aws cloudfront create-invalidation \\
+  --distribution-id {distribution_id} \\
+  --paths '/' '/index.html' '/asset-manifest.json' '/manifest.json' \\
+  > {invalidation_file}
+
+INVALIDATION_ID="$(python3 -c 'import json; print(json.load(open(\"{invalidation_file}\"))[\"Invalidation\"][\"Id\"])')"
+aws cloudfront wait invalidation-completed \\
+  --distribution-id {distribution_id} \\
+  --id "$INVALIDATION_ID"
 
 # Browser smoke target
 # https://{cloudfront_domain}
