@@ -1,0 +1,22 @@
+environment = "dev"
+aws_region  = "ap-northeast-2"
+name_prefix = "terraformers"
+
+backend_ecr_repository_name = "terraformers-backend"
+
+# Replace both names with globally unique, account-scoped bucket names before
+# encoding this file into the protected GitHub environment Secret.
+upload_bucket_name = "replace-with-unique-terraformers-upload-bucket"
+result_bucket_name = "replace-with-unique-terraformers-result-bucket"
+
+analysis_result_key_prefix = "analysis-results"
+ai_log_queue_name          = "terraformers-ai-log"
+terraform_log_queue_name   = "terraformers-terraform-log"
+runtime_secret_name        = "terraformers/dev/backend/runtime"
+
+tags = {
+  Project     = "terraformers-modernization"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostOwner   = "replace-with-owner"
+}
