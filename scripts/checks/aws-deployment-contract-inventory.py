@@ -15,6 +15,7 @@ SUMMARY_OUTPUT = EVIDENCE_DIR / "deployment-contract-inventory-summary.txt"
 
 LEGACY_RUNTIME_KEYS = {"AWS_S3_BUCKET_NAME", "FRONTEND_URL", "DOMAIN"}
 FORBIDDEN_STATIC_AWS_SECRETS = {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+REQUIRED_ENV_SOURCE = "terraformers.runtime.required-env"
 CANONICAL_BACKEND_BASE = [
     "SPRING_DATASOURCE_URL",
     "SPRING_DATASOURCE_USERNAME",
@@ -186,10 +187,73 @@ def collect_spring_placeholders() -> list[dict[str, object]]:
     return references
 
 
+def collect_yaml_string_list(
+    path: Path,
+    key_path: tuple[str, ...],
+) -> list[dict[str, object]]:
+    text = read(path)
+    stack: list[tuple[int, str]] = []
+    target_indent: int | None = None
+    target_found = False
+    references: list[dict[str, object]] = []
+    offset = 0
+
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            offset += len(line)
+            continue
+
+        leading = re.match(r"^[ ]*", line)
+        indent = len(leading.group(0)) if leading else 0
+
+        if target_found:
+            if indent <= (target_indent if target_indent is not None else -1):
+                break
+
+            item_match = re.match(
+                r"^[ ]*-[ ]*[\"']?([A-Z][A-Z0-9_]*)[\"']?[ ]*(?:#.*)?(?:\r?\n)?$",
+                line,
+            )
+            if item_match:
+                references.append(
+                    {
+                        "name": item_match.group(1),
+                        "file": relative(path),
+                        "line": line_number(text, offset + item_match.start(1)),
+                        "source": REQUIRED_ENV_SOURCE,
+                    }
+                )
+                offset += len(line)
+                continue
+
+            raise ValueError(
+                f"{relative(path)} contains a non-string entry under {'.'.join(key_path)} "
+                f"at line {line_number(text, offset)}"
+            )
+
+        mapping_match = re.match(
+            r"^([ ]*)([A-Za-z0-9_-]+):[ ]*(?:#.*)?(?:\r?\n)?$",
+            line,
+        )
+        if mapping_match:
+            mapping_indent = len(mapping_match.group(1))
+            while stack and stack[-1][0] >= mapping_indent:
+                stack.pop()
+            stack.append((mapping_indent, mapping_match.group(2)))
+
+            if tuple(key for _, key in stack) == key_path:
+                target_found = True
+                target_indent = mapping_indent
+
+        offset += len(line)
+
+    return references
+
+
 def collect_spring_required_env() -> list[dict[str, object]]:
     path = REPO_ROOT / "backend" / "src" / "main" / "resources" / "application-prod.yml"
-    text = read(path)
-    return records(path, text, r'\$\{([A-Z][A-Z0-9_]*):\?')
+    return collect_yaml_string_list(path, ("terraformers", "runtime", "required-env"))
 
 
 def collect_kubernetes_keys() -> list[dict[str, object]]:
@@ -231,7 +295,11 @@ def main() -> int:
     workflow_references = collect_workflow_references()
     deploy_environment = collect_deploy_script_environment()
     spring_placeholders = collect_spring_placeholders()
-    spring_required_env = collect_spring_required_env()
+    try:
+        spring_required_env = collect_spring_required_env()
+    except ValueError as error:
+        print(f"[aws-deployment-contract] ERROR: {error}", file=sys.stderr)
+        return 1
     kubernetes_keys = collect_kubernetes_keys()
     frontend_environment = collect_frontend_environment()
 
@@ -298,6 +366,7 @@ def main() -> int:
         "github_actions": {"references": workflow_references},
         "deploy_scripts": {"environment_references": deploy_environment},
         "spring": {
+            "required_env_source": REQUIRED_ENV_SOURCE,
             "required_env": spring_required_env,
             "environment_placeholders": spring_placeholders,
         },
@@ -331,6 +400,8 @@ def main() -> int:
         ),
         "",
         "## Production required environment",
+        "",
+        f"Source: `{REQUIRED_ENV_SOURCE}` in `backend/src/main/resources/application-prod.yml`.",
         "",
         *markdown_table(
             ["Key", "File", "Line"],
@@ -367,6 +438,7 @@ def main() -> int:
         f"github_variable_reference_count={sum(1 for item in workflow_references if item['scope'] == 'vars')}",
         f"github_secret_reference_count={sum(1 for item in workflow_references if item['scope'] == 'secrets')}",
         f"deploy_environment_reference_count={len(deploy_environment)}",
+        f"required_env_source={REQUIRED_ENV_SOURCE}",
         f"canonical_required_env_count={len(spring_required_env)}",
         f"unresolved_output_group_count={len(unresolved_groups)}",
         "unresolved_output_groups=" + ",".join(unresolved_groups),
