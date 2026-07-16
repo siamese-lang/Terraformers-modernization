@@ -48,6 +48,9 @@ jobs:
       - name: Verify AWS runtime input bundle contract
         run: bash scripts/checks/aws-runtime-input-bundle-contract-verification.sh
 
+      - name: Verify managed Secret delivery contract
+        run: bash scripts/checks/external-secrets-runtime-contract-verification.sh
+
       - name: Upload AWS environment contract evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -57,6 +60,7 @@ jobs:
           path: |
             artifacts/aws-environment-contract
             artifacts/aws-runtime-input-bundle-contract
+            artifacts/external-secrets-runtime-contract
 
       - name: Upload runtime contract diagnostics
         if: failure()
