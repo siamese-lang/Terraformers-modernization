@@ -143,7 +143,6 @@ function Dropzone({ closeModal, setDataMain }) {
 
     try {
       const response = await api.post('/api/upload', formData, {
-        tokenType: 'id',
         headers: {
           'Content-Type': 'multipart/form-data',
         },
