@@ -43,6 +43,68 @@ assert_not_contains() {
   fi
 }
 
+validate_rendered_manifest() {
+  local manifest="$1"
+  local label="$2"
+
+  if [[ ! -s "${manifest}" ]]; then
+    echo "Rendered Kubernetes package is empty: ${label}" >&2
+    exit 1
+  fi
+
+  awk -v label="${label}" '
+    BEGIN {
+      document_count = 0
+      has_api_version = 0
+      has_kind = 0
+      has_metadata = 0
+      has_name = 0
+    }
+    function validate_document() {
+      if (has_api_version || has_kind || has_metadata || has_name) {
+        document_count++
+        if (!has_api_version || !has_kind || !has_metadata || !has_name) {
+          printf("Rendered package %s document %d is missing apiVersion, kind, metadata, or metadata.name\n", label, document_count) > "/dev/stderr"
+          exit 1
+        }
+      }
+      has_api_version = 0
+      has_kind = 0
+      has_metadata = 0
+      has_name = 0
+    }
+    /^---[[:space:]]*$/ {
+      validate_document()
+      next
+    }
+    /^apiVersion:[[:space:]]*/ { has_api_version = 1 }
+    /^kind:[[:space:]]*/ { has_kind = 1 }
+    /^metadata:[[:space:]]*$/ { has_metadata = 1 }
+    /^[[:space:]]+name:[[:space:]]*/ {
+      if (has_metadata) {
+        has_name = 1
+      }
+    }
+    END {
+      validate_document()
+      if (document_count == 0) {
+        printf("Rendered package %s contains no Kubernetes documents\n", label) > "/dev/stderr"
+        exit 1
+      }
+      printf("package=%s documents=%d\n", label, document_count)
+    }
+  ' "${manifest}" >>"${EVIDENCE_DIR}/kubernetes-render-summary.txt"
+
+  assert_contains '^kind: ConfigMap$' "${manifest}" "Rendered package ${label} must contain the runtime ConfigMap."
+  assert_contains '^kind: ServiceAccount$' "${manifest}" "Rendered package ${label} must contain the backend ServiceAccount."
+  assert_contains '^kind: Service$' "${manifest}" "Rendered package ${label} must contain the backend Service."
+  assert_contains '^kind: Deployment$' "${manifest}" "Rendered package ${label} must contain the backend Deployment."
+  assert_not_contains '^kind: Secret$' "${manifest}" "Rendered deployment packages must not contain committed Secret resources."
+  assert_contains 'runAsNonRoot: true' "${manifest}" "Rendered Deployment must enforce non-root execution."
+  assert_contains 'allowPrivilegeEscalation: false' "${manifest}" "Rendered Deployment must block privilege escalation."
+  assert_contains 'startupProbe:' "${manifest}" "Rendered Deployment must include a startup probe."
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -60,6 +122,7 @@ require_command npm
 require_command kubectl
 require_command curl
 require_command grep
+require_command awk
 
 rm -rf "${EVIDENCE_DIR}"
 mkdir -p "${EVIDENCE_DIR}"
@@ -197,21 +260,15 @@ docker exec "${CONTAINER_NAME}" terraform version >"${EVIDENCE_DIR}/backend-terr
 docker exec "${CONTAINER_NAME}" sh -c 'test -r /app/app.jar'
 docker logs "${CONTAINER_NAME}" >"${EVIDENCE_DIR}/backend-container.log" 2>&1
 
-echo "[predeployment] rendering Kubernetes deployment packages"
+echo "[predeployment] rendering Kubernetes deployment packages without cluster discovery"
+kubectl version --client --output=yaml >"${EVIDENCE_DIR}/kubectl-client-version.yaml"
 kubectl kustomize "${K8S_BASE_DIR}" >"${EVIDENCE_DIR}/kubernetes-base.yaml"
 kubectl kustomize "${K8S_LOCAL_DIR}" >"${EVIDENCE_DIR}/kubernetes-local-stub.yaml"
 kubectl kustomize "${K8S_AWS_DIR}" >"${EVIDENCE_DIR}/kubernetes-aws-runtime-template.yaml"
 
-for manifest in \
-  "${EVIDENCE_DIR}/kubernetes-base.yaml" \
-  "${EVIDENCE_DIR}/kubernetes-local-stub.yaml" \
-  "${EVIDENCE_DIR}/kubernetes-aws-runtime-template.yaml"; do
-  kubectl create --dry-run=client --validate=false -f "${manifest}" >/dev/null
-  assert_not_contains '^kind: Secret$' "${manifest}" "Rendered deployment packages must not contain committed Secret resources."
-  assert_contains 'runAsNonRoot: true' "${manifest}" "Rendered Deployment must enforce non-root execution."
-  assert_contains 'allowPrivilegeEscalation: false' "${manifest}" "Rendered Deployment must block privilege escalation."
-  assert_contains 'startupProbe:' "${manifest}" "Rendered Deployment must include a startup probe."
-done
+validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-base.yaml" "base"
+validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-local-stub.yaml" "local-stub"
+validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-aws-runtime-template.yaml" "aws-runtime-template"
 
 assert_contains \
   'image: terraformers-backend:local-stub' \
@@ -241,7 +298,7 @@ printf '%s\n' \
   'backend_image_build=passed' \
   'backend_container_health=passed' \
   'backend_runtime_uid=10001' \
-  'kubernetes_client_dry_run=passed' \
+  'kubernetes_offline_render_validation=passed' \
   >"${EVIDENCE_DIR}/verification-summary.txt"
 
 echo "[predeployment] package verification completed"
