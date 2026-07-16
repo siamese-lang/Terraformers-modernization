@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TERRAFORM_DIR="${REPO_ROOT}/infra/terraform/envs/frontend-delivery"
 MAIN_TF="${TERRAFORM_DIR}/main.tf"
 OUTPUTS_TF="${TERRAFORM_DIR}/outputs.tf"
+VERSIONS_TF="${TERRAFORM_DIR}/versions.tf"
 FRONTEND_API="${REPO_ROOT}/frontend/src/utils/api.js"
 FRONTEND_ENV="${REPO_ROOT}/frontend/.env.example"
 FRONTEND_WORKFLOW="${REPO_ROOT}/.github/workflows/frontend-delivery.yml"
@@ -41,6 +42,7 @@ done
 for required_file in \
   "${MAIN_TF}" \
   "${OUTPUTS_TF}" \
+  "${VERSIONS_TF}" \
   "${FRONTEND_API}" \
   "${FRONTEND_ENV}" \
   "${FRONTEND_WORKFLOW}"; do
@@ -62,10 +64,19 @@ assert_contains 'status = "Enabled"' "${MAIN_TF}" "Frontend bucket versioning mu
 assert_contains 'noncurrent_version_expiration' "${MAIN_TF}" "Frontend rollback retention is missing."
 
 assert_contains 'resource "aws_cloudfront_origin_access_control" "frontend"' "${MAIN_TF}" "CloudFront OAC is required."
-assert_contains 'signing_behavior[[:space:]]*=[[:space:]]*"always"' "${MAIN_TF}" "OAC must sign every origin request."
+assert_contains 'signing_behavior[[:space:]]*=[[:space:]]*"always"' "${MAIN_TF}" "OAC must sign every S3 origin request."
 assert_contains 'signing_protocol[[:space:]]*=[[:space:]]*"sigv4"' "${MAIN_TF}" "OAC must use SigV4."
 assert_not_contains 'resource "aws_cloudfront_origin_access_identity"' "${MAIN_TF}" "Legacy OAI must not return."
 assert_not_contains 'aws_s3_bucket_website_configuration' "${MAIN_TF}" "Public S3 website hosting must not return."
+
+assert_contains 'resource "aws_cloudfront_vpc_origin" "backend"' "${MAIN_TF}" "Backend API must use a CloudFront VPC origin."
+assert_contains 'data "aws_lb" "backend_origin"' "${MAIN_TF}" "Backend origin must resolve an approved ALB ARN."
+assert_contains 'data.aws_lb.backend_origin.internal' "${MAIN_TF}" "Terraform must reject internet-facing ALBs."
+assert_contains 'load_balancer_type == "application"' "${MAIN_TF}" "Terraform must reject non-ALB origins."
+assert_contains 'vpc_origin_config' "${MAIN_TF}" "CloudFront distribution must reference the private VPC origin."
+assert_contains 'origin_protocol_policy[[:space:]]*=[[:space:]]*"http-only"' "${MAIN_TF}" "Private CloudFront-to-ALB origin protocol must match the internal HTTP listener."
+assert_not_contains 'custom_origin_config' "${MAIN_TF}" "Public custom-origin routing must not return."
+assert_contains 'version[[:space:]]*=[[:space:]]*"~> 6\.0"' "${VERSIONS_TF}" "AWS provider v6 is required for VPC origin support."
 
 assert_contains 'path_pattern[[:space:]]*=[[:space:]]*"/api/\*"' "${MAIN_TF}" "CloudFront must route /api/*."
 assert_contains 'name = "Managed-CachingDisabled"' "${MAIN_TF}" "API caching must be disabled."
@@ -76,7 +87,15 @@ assert_not_contains '/actuator/\*' "${MAIN_TF}" "Actuator must not be a public C
 assert_contains 'identifiers = \["cloudfront.amazonaws.com"\]' "${MAIN_TF}" "Bucket policy must trust the CloudFront service principal."
 assert_contains 'variable = "AWS:SourceArn"' "${MAIN_TF}" "Bucket policy must restrict the distribution SourceArn."
 
-for output_name in frontend_bucket_name cloudfront_distribution_id cloudfront_distribution_domain_name frontend_base_url frontend_api_base_url; do
+for output_name in \
+  frontend_bucket_name \
+  cloudfront_distribution_id \
+  cloudfront_distribution_domain_name \
+  frontend_base_url \
+  frontend_api_base_url \
+  backend_vpc_origin_id \
+  backend_origin_load_balancer_arn \
+  backend_origin_load_balancer_dns_name; do
   assert_contains "output \"${output_name}\"" "${OUTPUTS_TF}" "Missing frontend output: ${output_name}."
 done
 
@@ -151,6 +170,8 @@ printf '%s\n' \
   'frontend_bucket_access=private' \
   'frontend_bucket_versioning=enabled' \
   'cloudfront_origin_access=OAC-sigv4' \
+  'cloudfront_backend_origin=vpc-origin-internal-alb' \
+  'public_custom_origin=absent' \
   'api_routing=same-origin-/api/*' \
   'api_cache=disabled' \
   'spa_rewrite=cloudfront-function' \
