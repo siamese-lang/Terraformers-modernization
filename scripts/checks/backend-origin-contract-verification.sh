@@ -58,12 +58,10 @@ for required_file in \
   }
 done
 
-# Network prerequisites for CloudFront VPC origins and an internal ALB.
 assert_contains 'resource "aws_internet_gateway" "runtime"' "${NETWORK_MAIN}" "Runtime VPC must retain an Internet Gateway for CloudFront VPC origin eligibility."
 assert_contains '"kubernetes.io/role/internal-elb"[[:space:]]*=[[:space:]]*"1"' "${NETWORK_MAIN}" "Private subnets must be tagged for internal load balancers."
 assert_contains 'resource "aws_subnet" "private"' "${NETWORK_MAIN}" "Private subnets are required for the backend origin."
 
-# Dedicated controller identity and CloudFront-only frontend security group.
 assert_contains 'system:serviceaccount:\$\{var.load_balancer_controller_namespace\}:\$\{var.load_balancer_controller_service_account_name\}' "${EKS_DIR}/load_balancer_controller.tf" "Controller IRSA trust subject is missing."
 assert_contains 'com.amazonaws.global.cloudfront.origin-facing' "${EKS_DIR}/load_balancer_controller.tf" "CloudFront origin-facing managed prefix list is required."
 assert_contains 'prefix_list_ids[[:space:]]*=[[:space:]]*\[data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id\]' "${EKS_DIR}/load_balancer_controller.tf" "Private ALB ingress must be limited to the CloudFront managed prefix list."
@@ -76,17 +74,15 @@ sha256sum "${POLICY_FILE}" >"${EVIDENCE_DIR}/aws-load-balancer-controller-policy
 assert_contains 'elasticloadbalancing:CreateLoadBalancer' "${POLICY_FILE}" "Pinned controller policy must include load balancer creation permission."
 assert_contains 'elasticloadbalancing:RegisterTargets' "${POLICY_FILE}" "Pinned controller policy must include target registration permission."
 
-# Controller and Ingress templates must stay private and use Pod IP targets.
 INGRESS_TEMPLATE="${TEMPLATE_DIR}/backend-origin-ingress.yaml"
 assert_contains 'alb.ingress.kubernetes.io/scheme:[[:space:]]*internal' "${INGRESS_TEMPLATE}" "Backend origin ALB must be internal."
 assert_contains 'alb.ingress.kubernetes.io/target-type:[[:space:]]*ip' "${INGRESS_TEMPLATE}" "Backend origin ALB must register Pod IP targets."
 assert_contains 'alb.ingress.kubernetes.io/manage-backend-security-group-rules:[[:space:]]*"true"' "${INGRESS_TEMPLATE}" "Controller must reconcile backend security-group rules."
 assert_contains 'alb.ingress.kubernetes.io/healthcheck-path:[[:space:]]*/actuator/health' "${INGRESS_TEMPLATE}" "Target health must use the backend health endpoint."
-assert_contains 'path:[[:space:]]*/api' "${INGRESS_TEMPLATE}" "Ingress must expose only the application API prefix."
+assert_contains '^[[:space:]]+- path:[[:space:]]*/api$' "${INGRESS_TEMPLATE}" "Ingress must expose only the application API prefix."
 assert_not_contains 'scheme:[[:space:]]*internet-facing' "${INGRESS_TEMPLATE}" "Internet-facing ALB is forbidden in this contract."
-assert_not_contains 'path:[[:space:]]*/actuator' "${INGRESS_TEMPLATE}" "Actuator must not be a listener route."
+assert_not_contains '^[[:space:]]+- path:[[:space:]]*/actuator' "${INGRESS_TEMPLATE}" "Actuator must not be a listener route."
 
-# CloudFront must use the private ALB through a VPC origin, not a public custom origin.
 assert_contains 'resource "aws_cloudfront_vpc_origin" "backend"' "${FRONTEND_DIR}/main.tf" "CloudFront VPC origin resource is missing."
 assert_contains 'data "aws_lb" "backend_origin"' "${FRONTEND_DIR}/main.tf" "Frontend delivery must resolve the approved ALB by ARN."
 assert_contains 'origin_protocol_policy[[:space:]]*=[[:space:]]*"http-only"' "${FRONTEND_DIR}/main.tf" "Private CloudFront-to-ALB traffic must use the declared HTTP listener."
@@ -127,7 +123,7 @@ done
 assert_contains 'eks.amazonaws.com/role-arn:[[:space:]]*arn:aws:iam::111122223333:role/' "${PACKAGE_DIR}/aws-load-balancer-controller-serviceaccount.yaml" "Rendered controller ServiceAccount must carry IRSA."
 assert_contains 'clusterName:[[:space:]]*terraformers-dev-backend' "${PACKAGE_DIR}/aws-load-balancer-controller-values.yaml" "Rendered controller values must target the EKS cluster."
 assert_contains 'alb.ingress.kubernetes.io/security-groups:[[:space:]]*sg-0abcdef1234567890' "${PACKAGE_DIR}/backend-origin-ingress.yaml" "Rendered Ingress must use the Terraform-managed frontend security group."
-assert_contains -- '--version 3\.4\.2' "${PACKAGE_DIR}/apply-order.txt" "Manual install boundary must pin controller chart 3.4.2."
+assert_contains '--version 3\.4\.2' "${PACKAGE_DIR}/apply-order.txt" "Manual install boundary must pin controller chart 3.4.2."
 assert_contains 'Supply the returned LoadBalancerArn as frontend-delivery.api_origin_load_balancer_arn' "${PACKAGE_DIR}/apply-order.txt" "ALB discovery must feed the frontend Terraform input."
 
 printf '%s\n' \
