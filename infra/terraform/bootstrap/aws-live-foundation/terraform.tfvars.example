@@ -1,0 +1,23 @@
+aws_region       = "ap-northeast-2"
+state_bucket_name = "replace-with-globally-unique-terraformers-state-bucket"
+state_prefix      = "terraformers-modernization/dev"
+
+# Use the existing provider ARN instead of creating another provider when the
+# AWS account already has token.actions.githubusercontent.com configured.
+existing_github_oidc_provider_arn = null
+
+plan_role_name = "terraformers-live-terraform-plan"
+
+# Existing repositories normally use the owner/name subject below. Repositories
+# using GitHub immutable OIDC subjects must replace it with the exact owner/repo
+# ID form shown by GitHub before applying this bootstrap.
+github_oidc_subjects = [
+  "repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan",
+]
+
+common_tags = {
+  Project     = "terraformers-modernization"
+  Environment = "dev"
+  ManagedBy   = "terraform-bootstrap"
+  CostOwner   = "replace-with-owner"
+}
