@@ -19,8 +19,11 @@
 ```text
 config/live-deployment-stages.json
 config/live-aws-prerequisites.json
+config/live-kubernetes-addons.json
 docs/live-aws-predeployment-readiness.md
 docs/live-aws-prerequisite-inventory.md
+docs/live-kubernetes-addons.md
+docs/live-stage-tfvars-handoff.md
 .github/workflows/aws-live-terraform-plan.yml
 infra/terraform/bootstrap/aws-live-foundation/*
 ```
@@ -28,22 +31,33 @@ infra/terraform/bootstrap/aws-live-foundation/*
 ## 고정된 배포 기준
 
 ```text
-Terraform              1.15.8
-state                   versioned private S3
-state locking           S3 native .tflock
-DynamoDB locking        사용하지 않음
-EKS                     1.35
-EKS endpoint default    private
-initial operator path   exact public /32 only
-private node egress     single NAT gateway
-public service entry    CloudFront only
-optional adapters       disabled
+Terraform                         1.15.8
+state                             versioned private S3
+state locking                     S3 native .tflock
+DynamoDB locking                  사용하지 않음
+EKS                               1.35
+EKS endpoint default              private
+initial operator path             exact public /32 only
+private node egress               single NAT gateway
+AWS Load Balancer Controller      3.4.2
+External Secrets Operator chart   2.7.0
+public service entry              CloudFront only
+optional adapters                 disabled
 ```
+
+External Secrets identity boundary:
+
+```text
+controller ServiceAccount     external-secrets/external-secrets
+provider-auth ServiceAccount  terraformers-runtime/terraformers-external-secrets
+```
+
+두 ServiceAccount를 합치거나 controller 전체에 Terraformers Secrets Manager IRSA role을 부여하지 않는다.
 
 ## 다음 대화의 첫 작업
 
 1. PR #32의 최신 head와 모든 automatic gate를 확인한다.
-2. `pre-live-aws-readiness`와 static prerequisite inventory 결과를 확인한다.
+2. `pre-live-aws-readiness`, tfvars builder verification, static prerequisite inventory 결과를 확인한다.
 3. AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 존재하는지 읽기 전용으로 확인한다.
 4. 실제 GitHub OIDC subject가 owner/name 형식인지 immutable owner/repository ID 형식인지 확인한다.
 5. `infra/terraform/bootstrap/aws-live-foundation/terraform.tfvars.example`을 로컬 private tfvars로 복사하고 placeholder만 채운다.
@@ -63,6 +77,20 @@ foundation apply approval
 ```
 
 network plan을 검토하기 전에는 runtime, RDS, EKS를 생성하지 않는다.
+
+Applied output을 다음 단계 tfvars로 넘길 때는 수동 조립보다 다음 generator를 우선 사용한다.
+
+```text
+scripts/deploy/build-live-stage-tfvars.py
+```
+
+지원 handoff:
+
+```text
+network -> stateful-dependencies
+network + runtime-dependencies + operator /32 -> eks-runtime
+verified internal ALB ARN -> frontend-delivery
+```
 
 ## 절대 자동 실행하지 않을 작업
 
