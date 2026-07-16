@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -56,6 +57,15 @@ public class ProjectFileEntity {
     @Column(name = "s3_key", length = 1024)
     private String s3Key;
 
+    @Column(name = "storage_provider", length = 64)
+    private String storageProvider;
+
+    @Column(name = "binary_persisted", nullable = false)
+    private boolean binaryPersisted;
+
+    @Column(name = "storage_etag", length = 255)
+    private String storageETag;
+
     @Column(name = "content_type", length = 255)
     private String contentType;
 
@@ -64,6 +74,10 @@ public class ProjectFileEntity {
 
     @Column(name = "checksum", length = 128)
     private String checksum;
+
+    @Lob
+    @Column(name = "inline_content", columnDefinition = "LONGTEXT")
+    private String inlineContent;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -173,6 +187,30 @@ public class ProjectFileEntity {
         this.s3Key = s3Key;
     }
 
+    public String getStorageProvider() {
+        return storageProvider;
+    }
+
+    public void setStorageProvider(String storageProvider) {
+        this.storageProvider = storageProvider;
+    }
+
+    public boolean isBinaryPersisted() {
+        return binaryPersisted;
+    }
+
+    public void setBinaryPersisted(boolean binaryPersisted) {
+        this.binaryPersisted = binaryPersisted;
+    }
+
+    public String getStorageETag() {
+        return storageETag;
+    }
+
+    public void setStorageETag(String storageETag) {
+        this.storageETag = storageETag;
+    }
+
     public String getContentType() {
         return contentType;
     }
@@ -195,6 +233,14 @@ public class ProjectFileEntity {
 
     public void setChecksum(String checksum) {
         this.checksum = checksum;
+    }
+
+    public String getInlineContent() {
+        return inlineContent;
+    }
+
+    public void setInlineContent(String inlineContent) {
+        this.inlineContent = inlineContent;
     }
 
     public Instant getCreatedAt() {
