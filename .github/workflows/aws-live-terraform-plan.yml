@@ -254,11 +254,7 @@ jobs:
 
       - name: Remove sensitive live-plan material
         if: always()
-        run: |
-          rm -f "${RUNNER_TEMP}/live-plan.json" \
-            "${RUNNER_TEMP}/live.tfplan" \
-            "${RUNNER_TEMP}/live.auto.tfvars" \
-            "${RUNNER_TEMP}/backend.hcl"
+        run: rm -f "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl"
 
       - name: Upload sanitized live-plan evidence
         if: always()
