@@ -7,7 +7,7 @@ data "tls_certificate" "github_actions" {
 
 locals {
   normalized_state_prefix = trim(var.state_prefix, "/")
-  create_oidc_provider     = var.existing_github_oidc_provider_arn == null
+  create_oidc_provider    = var.existing_github_oidc_provider_arn == null
 }
 
 resource "aws_s3_bucket" "terraform_state" {
