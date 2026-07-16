@@ -1,14 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "terraform_cli_version": "1.15.8",
+  "state_locking": "s3-native-lockfile",
   "github_environment": "aws-live-plan",
+  "github_oidc_subject": "repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan",
   "required_github_variables": [
     "AWS_REGION",
+    "AWS_ROLE_TO_ASSUME",
     "AWS_TERRAFORM_STATE_BUCKET",
-    "AWS_TERRAFORM_LOCK_TABLE",
     "AWS_TERRAFORM_STATE_PREFIX"
   ],
   "required_github_secrets": [
-    "AWS_ROLE_TO_ASSUME",
     "AWS_LIVE_NETWORK_TFVARS_B64",
     "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64",
     "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64",
@@ -21,8 +23,11 @@
       "directory": "infra/terraform/envs/aws-runtime-network",
       "required_variables": [],
       "input_sources": {},
-      "operator_inputs": [],
-      "live_prerequisite": "AWS account and remote state only"
+      "operator_inputs": [
+        "enable_nat_gateway",
+        "single_nat_gateway"
+      ],
+      "live_prerequisite": "AWS account, S3 native-locking state backend, and an explicit private-subnet egress choice"
     },
     {
       "id": "runtime-dependencies",
@@ -79,9 +84,11 @@
         "backend_runtime_secret_arn": "runtime-dependencies.backend_runtime_secret_arn"
       },
       "operator_inputs": [
+        "kubernetes_version",
+        "cluster_endpoint_public_access",
         "cluster_endpoint_public_access_cidrs"
       ],
-      "live_prerequisite": "reviewed network/runtime outputs and a narrow operator CIDR"
+      "live_prerequisite": "reviewed network/runtime outputs, EKS standard-support version, and an explicit operator access path"
     },
     {
       "id": "frontend-delivery",
