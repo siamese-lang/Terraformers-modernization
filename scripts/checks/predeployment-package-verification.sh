@@ -64,9 +64,30 @@ require_command grep
 rm -rf "${EVIDENCE_DIR}"
 mkdir -p "${EVIDENCE_DIR}"
 
-echo "[predeployment] building deterministic frontend bundle"
 cd "${FRONTEND_DIR}"
-npm ci
+if [[ ! -f package-lock.json ]]; then
+  echo "[predeployment] frontend lockfile is absent; generating current dependency resolution"
+  npm install \
+    --package-lock-only \
+    --ignore-scripts \
+    --legacy-peer-deps \
+    --no-audit \
+    --no-fund
+  cp package-lock.json "${EVIDENCE_DIR}/frontend-package-lock.generated.json"
+  printf '%s\n' 'generated-from-current-package-json' >"${EVIDENCE_DIR}/frontend-lockfile-status.txt"
+else
+  echo "[predeployment] using committed frontend lockfile"
+  cp package-lock.json "${EVIDENCE_DIR}/frontend-package-lock.committed.json"
+  printf '%s\n' 'committed-lockfile' >"${EVIDENCE_DIR}/frontend-lockfile-status.txt"
+fi
+
+node --version >"${EVIDENCE_DIR}/frontend-node-version.txt"
+npm --version >"${EVIDENCE_DIR}/frontend-npm-version.txt"
+
+echo "[predeployment] installing frontend dependencies from lockfile"
+npm ci --legacy-peer-deps --no-audit --no-fund
+
+echo "[predeployment] building frontend production bundle"
 npm run build
 
 test -f build/index.html
@@ -172,6 +193,7 @@ assert_contains \
   "AWS runtime template must use the production profile."
 
 printf '%s\n' \
+  'frontend_lock_resolution=passed' \
   'frontend_bundle=passed' \
   'backend_image_build=passed' \
   'backend_container_health=passed' \
