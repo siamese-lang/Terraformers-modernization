@@ -16,9 +16,12 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 
 server:
   port: 8080
+  shutdown: graceful
 
 management:
   endpoints:
