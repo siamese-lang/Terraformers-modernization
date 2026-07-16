@@ -49,6 +49,12 @@ terraformers:
       - INDEX_NAME
       - VECTOR_FIELD_NAME
       - CONTENT_FIELD_NAME
+  security:
+    jwt:
+      enabled: true
+      issuer-uri: https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}
+      jwk-set-uri: ${COGNITO_JWKS_URL}
+      client-id: ${COGNITO_USER_POOL_CLIENT_ID}
   storage:
     s3-reader-enabled: ${S3_READER_ENABLED:false}
     s3-writer-enabled: ${S3_WRITER_ENABLED:false}
