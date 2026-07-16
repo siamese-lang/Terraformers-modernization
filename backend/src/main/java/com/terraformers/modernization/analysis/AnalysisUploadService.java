@@ -4,6 +4,7 @@ import com.terraformers.modernization.identity.AuthenticatedUserService;
 import com.terraformers.modernization.identity.UserEntity;
 import com.terraformers.modernization.project.ProjectVisibility;
 import com.terraformers.modernization.projectcore.OwnedProjectEntity;
+import com.terraformers.modernization.projectcore.ProjectArtifactService;
 import com.terraformers.modernization.projectcore.ProjectDomainService;
 import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import com.terraformers.modernization.storage.StoredUploadObject;
@@ -18,17 +19,20 @@ public class AnalysisUploadService {
 
     private final AuthenticatedUserService authenticatedUserService;
     private final ProjectDomainService projectDomainService;
+    private final ProjectArtifactService projectArtifactService;
     private final UploadObjectStorageService uploadObjectStorageService;
     private final AnalysisJobService analysisJobService;
 
     public AnalysisUploadService(
             AuthenticatedUserService authenticatedUserService,
             ProjectDomainService projectDomainService,
+            ProjectArtifactService projectArtifactService,
             UploadObjectStorageService uploadObjectStorageService,
             AnalysisJobService analysisJobService
     ) {
         this.authenticatedUserService = authenticatedUserService;
         this.projectDomainService = projectDomainService;
+        this.projectArtifactService = projectArtifactService;
         this.uploadObjectStorageService = uploadObjectStorageService;
         this.analysisJobService = analysisJobService;
     }
@@ -59,20 +63,13 @@ public class AnalysisUploadService {
         );
         String contentType = resolveContentType(file);
 
-        ProjectFileEntity sourceFile = projectDomainService.registerFile(
+        ProjectFileEntity sourceFile = projectArtifactService.registerSourceImage(
                 project,
                 currentUser,
-                null,
-                "FILE",
-                "ARCHITECTURE_IMAGE",
-                storedUpload.key(),
+                storedUpload,
                 originalFilename,
-                storedUpload.bucket(),
-                storedUpload.key(),
                 contentType,
-                file.getSize(),
-                null,
-                0
+                file.getSize()
         );
 
         AnalysisJobResponse job = analysisJobService.create(
