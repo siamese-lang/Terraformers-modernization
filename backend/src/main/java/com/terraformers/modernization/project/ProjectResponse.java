@@ -1,14 +1,20 @@
 package com.terraformers.modernization.project;
 
+import com.terraformers.modernization.analysis.AnalysisJobEntity;
+import com.terraformers.modernization.projectcore.OwnedProjectEntity;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import java.time.Instant;
 
 public record ProjectResponse(
-        String projectId,
+        Long projectId,
         String displayName,
+        String description,
         ProjectVisibility visibility,
         String latestAnalysisJobId,
+        Long latestResultFileId,
         String latestResultObjectKey,
         Instant terraformDraftUpdatedAt,
+        Long sourceFileId,
         String sourceBucket,
         String sourceKey,
         String sourceStorageProvider,
@@ -20,24 +26,32 @@ public record ProjectResponse(
         Instant createdAt,
         Instant updatedAt
 ) {
-    static ProjectResponse from(ProjectEntity entity) {
+    public static ProjectResponse from(
+            OwnedProjectEntity project,
+            ProjectFileEntity sourceFile,
+            ProjectFileEntity terraformFile,
+            AnalysisJobEntity latestJob
+    ) {
         return new ProjectResponse(
-                entity.getProjectId(),
-                entity.getDisplayName(),
-                entity.getVisibility(),
-                entity.getLatestAnalysisJobId(),
-                entity.getLatestResultObjectKey(),
-                entity.getTerraformDraftUpdatedAt(),
-                entity.getSourceBucket(),
-                entity.getSourceKey(),
-                entity.getSourceStorageProvider(),
-                entity.isSourceBinaryPersisted(),
-                entity.getSourceETag(),
-                entity.getOriginalFilename(),
-                entity.getContentType(),
-                entity.getUploadSizeBytes(),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                project.getProjectId(),
+                project.getName(),
+                project.getDescription(),
+                project.getVisibility(),
+                latestJob == null ? null : latestJob.getId(),
+                terraformFile == null ? null : terraformFile.getFileId(),
+                terraformFile == null ? null : terraformFile.getS3Key(),
+                terraformFile == null ? null : terraformFile.getUpdatedAt(),
+                sourceFile == null ? null : sourceFile.getFileId(),
+                sourceFile == null ? null : sourceFile.getS3Bucket(),
+                sourceFile == null ? null : sourceFile.getS3Key(),
+                sourceFile == null ? null : sourceFile.getStorageProvider(),
+                sourceFile != null && sourceFile.isBinaryPersisted(),
+                sourceFile == null ? null : sourceFile.getStorageETag(),
+                sourceFile == null ? null : sourceFile.getOriginalFilename(),
+                sourceFile == null ? null : sourceFile.getContentType(),
+                sourceFile == null ? null : sourceFile.getSizeBytes(),
+                project.getCreatedAt(),
+                project.getUpdatedAt()
         );
     }
 }
