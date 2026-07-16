@@ -37,3 +37,18 @@ output "frontend_origin_access_control_id" {
   description = "CloudFront OAC ID that protects the private frontend bucket."
   value       = aws_cloudfront_origin_access_control.frontend.id
 }
+
+output "backend_vpc_origin_id" {
+  description = "CloudFront VPC origin ID that connects /api/* to the internal backend ALB."
+  value       = aws_cloudfront_vpc_origin.backend.id
+}
+
+output "backend_origin_load_balancer_arn" {
+  description = "Approved internal Application Load Balancer ARN used by the CloudFront VPC origin."
+  value       = data.aws_lb.backend_origin.arn
+}
+
+output "backend_origin_load_balancer_dns_name" {
+  description = "Private DNS name of the backend Application Load Balancer."
+  value       = data.aws_lb.backend_origin.dns_name
+}
