@@ -82,14 +82,13 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.9.8
+          terraform_version: 1.15.8
           terraform_wrapper: false
 
       - name: Validate live-plan inputs
         env:
-          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
           STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
-          STATE_LOCK_TABLE: ${{ vars.AWS_TERRAFORM_LOCK_TABLE }}
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
         run: |
           set -euo pipefail
@@ -98,15 +97,11 @@ jobs:
             exit 1
           }
           test -n "${AWS_ROLE_TO_ASSUME}" || {
-            echo 'AWS_ROLE_TO_ASSUME environment secret is required.' >&2
+            echo 'AWS_ROLE_TO_ASSUME environment variable is required.' >&2
             exit 1
           }
           test -n "${STATE_BUCKET}" || {
             echo 'AWS_TERRAFORM_STATE_BUCKET environment variable is required.' >&2
-            exit 1
-          }
-          test -n "${STATE_LOCK_TABLE}" || {
-            echo 'AWS_TERRAFORM_LOCK_TABLE environment variable is required.' >&2
             exit 1
           }
           test -n "${STATE_PREFIX}" || {
@@ -117,7 +112,7 @@ jobs:
       - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           role-session-name: TerraformersLivePlan
           aws-region: ${{ env.AWS_REGION }}
           allowed-account-ids: ${{ inputs.expected_aws_account_id }}
@@ -125,7 +120,6 @@ jobs:
       - name: Verify AWS identity and state backend
         env:
           STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
-          STATE_LOCK_TABLE: ${{ vars.AWS_TERRAFORM_LOCK_TABLE }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/aws-live-terraform-plan
@@ -135,9 +129,7 @@ jobs:
           aws s3api head-bucket --bucket "${STATE_BUCKET}"
           VERSIONING="$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)"
           test "${VERSIONING}" = 'Enabled'
-          aws dynamodb describe-table --table-name "${STATE_LOCK_TABLE}" --query 'Table.TableStatus' --output text \
-            > artifacts/aws-live-terraform-plan/state-lock-table-status.txt
-          grep -qx 'ACTIVE' artifacts/aws-live-terraform-plan/state-lock-table-status.txt
+          printf '%s\n' 's3-native-lockfile' > artifacts/aws-live-terraform-plan/state-locking-mode.txt
 
       - name: Resolve Terraform stage and private tfvars
         id: stage
@@ -191,7 +183,6 @@ jobs:
           TF_DIR: ${{ steps.stage.outputs.tf_dir }}
           TFVARS_PATH: ${{ steps.stage.outputs.tfvars_path }}
           STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
-          STATE_LOCK_TABLE: ${{ vars.AWS_TERRAFORM_LOCK_TABLE }}
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
         run: |
           set -euo pipefail
@@ -203,11 +194,11 @@ jobs:
           EOF
           fi
           cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
-          bucket         = "${STATE_BUCKET}"
-          key            = "${STATE_PREFIX}/${{ inputs.plan_stage }}/terraform.tfstate"
-          region         = "${AWS_REGION}"
-          encrypt        = true
-          dynamodb_table = "${STATE_LOCK_TABLE}"
+          bucket       = "${STATE_BUCKET}"
+          key          = "${STATE_PREFIX}/${{ inputs.plan_stage }}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
           EOF
           terraform -chdir="${TF_DIR}" init -reconfigure -backend-config="${RUNNER_TEMP}/backend.hcl"
           terraform -chdir="${TF_DIR}" validate
@@ -244,6 +235,7 @@ jobs:
             echo 'aws_live_terraform_plan=completed'
             echo 'credential_mode=github-oidc'
             echo 'environment_gate=aws-live-plan'
+            echo 'state_locking=s3-native-lockfile'
             echo 'expected_account_id=${{ inputs.expected_aws_account_id }}'
             echo 'plan_stage=${{ inputs.plan_stage }}'
             echo 'terraform_apply_executed=false'
