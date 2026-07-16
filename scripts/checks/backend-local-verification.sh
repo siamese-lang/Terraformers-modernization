@@ -5,11 +5,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
 RUN_DOCKER_BUILD="${RUN_DOCKER_BUILD:-false}"
 MAVEN_TEST_LOG="$(mktemp "${TMPDIR:-/tmp}/terraformers-backend-local-verification.XXXXXX.log")"
+MAVEN_DIAGNOSTIC_LOG="${BACKEND_DIR}/target/backend-local-verification-maven.log"
 
 cleanup() {
   rm -f "${MAVEN_TEST_LOG}"
 }
 trap cleanup EXIT
+
+preserve_maven_log() {
+  mkdir -p "${BACKEND_DIR}/target"
+  cp "${MAVEN_TEST_LOG}" "${MAVEN_DIAGNOSTIC_LOG}"
+}
 
 print_surefire_reports() {
   local reports_dir="${BACKEND_DIR}/target/surefire-reports"
@@ -49,6 +55,7 @@ cd "${BACKEND_DIR}"
 
 echo "[backend] running Maven clean tests"
 if ! run_maven_tests; then
+  preserve_maven_log
   print_maven_tail
   print_surefire_reports
   exit 1
