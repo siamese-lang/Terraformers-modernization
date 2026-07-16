@@ -2,81 +2,49 @@
 
 ## Purpose
 
-This gate proves that the modernized service can be packaged and started without publishing an image or changing a cluster.
+This gate proves that the modernized service can be built, packaged, and statically reconciled without publishing an image or changing an AWS account or Kubernetes cluster.
 
-It verifies three delivery units:
+It verifies four delivery contracts:
 
 1. the React production bundle
 2. the Spring Boot backend runtime image
 3. the Kubernetes base, local-stub, and AWS runtime-template packages
+4. the private AWS runtime input bundle generated from Terraform output JSON
 
 ## Safety boundary
 
 The workflow does not perform any of the following:
 
-- `docker push`
+- Docker image push
 - AWS authentication or resource creation
-- Terraform apply/destroy
+- Terraform plan/apply/destroy
 - Kubernetes apply against a cluster
 - External Secrets installation
 - Bedrock, OpenSearch, SQS, or S3 production-adapter enablement
 
 Kubernetes resources are rendered and structurally checked without contacting a Kubernetes API server.
 
-## Runtime contract
-
-The base production contract requires:
-
-- MariaDB datasource URL, username, and password
-- Cognito region, user pool, app client, and JWK URL
-- `S3_BUCKET_NAME`
-
-Optional adapter settings are required only when their switches are enabled:
-
-- `BEDROCK_PROVIDER_ENABLED` -> `BEDROCK_MODEL_ID`
-- `BEDROCK_EMBEDDING_ENABLED` -> `BEDROCK_EMBEDDING_MODEL_ID`
-- `OPENSEARCH_RETRIEVER_ENABLED` -> endpoint, index, vector field, and content field
-- `ANALYSIS_SQS_PUBLISHER_ENABLED` -> progress and result queue URLs
-
-The production startup validator rejects an enabled adapter whose own settings are missing. Disabled adapters do not require placeholder secrets.
-
 ## Frontend dependency gate
 
-`frontend/package-lock.json` is a committed delivery input. The package job does not generate or repair dependency resolution in CI. A missing lockfile is a verification failure.
+`frontend/package-lock.json` is a required delivery input. CI does not generate or repair it.
 
-The gate runs this deterministic sequence:
+The package job runs:
 
 ```text
-committed package-lock.json presence check
+committed lockfile check
 AJV root compatibility checks
 npm ci
 AJV runtime module-resolution checks
 npm run build
 ```
 
-`actions/setup-node` uses `frontend/package-lock.json` as the npm cache dependency path. Cache restoration can improve execution time, but dependency installation remains `npm ci` against the committed lockfile.
+The root build dependency is pinned to `ajv@8.20.0` with `ajv-keywords@5.1.0`, while older AJV 6 copies remain nested for legacy CRA loaders. Node/npm versions, lock resolution, runtime module path, dependency tree, and build files are recorded as evidence.
 
-CRA 5 includes loaders from multiple AJV generations. The root build dependency is pinned to `ajv@8.20.0` with `ajv-keywords@5.1.0`, while older AJV 6 copies remain nested for legacy loaders. The gate records the committed lockfile, root resolution, runtime module path, and full AJV dependency tree.
+## Backend image verification
 
-## Image verification
+The workflow builds `backend/Dockerfile` with local verification tags. The image must declare non-root UID `10001`, contain the application JAR and pinned Terraform CLI, expose a healthcheck, start with local adapters, and return a successful Actuator health response.
 
-The workflow builds `backend/Dockerfile` with two local tags:
-
-```text
-terraformers-backend:predeployment
-terraformers-backend:local-stub
-```
-
-The image must:
-
-- declare the non-root `appuser`/UID `10001`
-- contain the packaged application JAR
-- contain the pinned Terraform CLI
-- expose a container healthcheck
-- start with the local profile and disabled external adapters
-- return a successful Actuator health response
-
-No image is pushed to a registry.
+No image is pushed.
 
 ## Kubernetes package verification
 
@@ -88,36 +56,37 @@ infra/kubernetes/overlays/local-stub
 infra/kubernetes/overlays/aws-runtime-template
 ```
 
-`kubectl create --dry-run=client` is not used as the offline gate. Even with validation disabled, the command can invoke API discovery and contact the current kubeconfig server. Run `29478670742` demonstrated this by attempting to reach `localhost:8080` after all three Kustomize renders had already succeeded.
+The offline gate uses `kubectl kustomize`, not API-discovery-based validation. Each package must contain complete ConfigMap, ServiceAccount, Service, and Deployment documents, contain no committed Secret resource, enforce non-root execution, block privilege escalation, and include the startup probe.
 
-The cluster-free gate uses `kubectl kustomize` and verifies that each rendered package:
+The local overlay must reference the locally built image with `imagePullPolicy: Never`. The AWS template must retain an explicit immutable image replacement contract and never use `latest`.
 
-- is non-empty
-- contains only complete YAML documents with `apiVersion`, `kind`, `metadata`, and `metadata.name`
-- contains ConfigMap, ServiceAccount, Service, and Deployment resources
-- contains no committed Secret resource
-- enforces non-root execution
-- blocks privilege escalation
-- includes a startup probe
+## AWS runtime input bundle verification
 
-The local overlay must reference `terraformers-backend:local-stub` with `imagePullPolicy: Never`.
+Fixture `terraform output -json` documents exercise the same input builder used by the private deployment package path.
 
-The AWS template must keep an explicit immutable image replacement contract and must never use `latest`.
+The gate proves that:
 
-Server-side schema admission remains a live-cluster deployment gate and is intentionally not claimed by this offline verification.
+- `BACKEND_IMAGE_URI` belongs to Terraform output `backend_image_repository_url`
+- an image from a different repository is rejected
+- namespace, ServiceAccount, IRSA role, and Kubernetes Secret identities come from the expected Terraform outputs
+- the base runtime Secret contains the eight production keys plus `ANALYSIS_RESULT_BUCKET_NAME`
+- Bedrock, embedding, OpenSearch, and SQS settings are absent while their adapters remain disabled
+- the source map contains the managed-secret pointers but never the database password
+- Secret rendering is client-side only and writes to a private output file rather than standard output
+
+The bundle records `runtime_secret_provider=unresolved` because the final managed-secret synchronization mechanism has not yet been selected or verified.
 
 ## Evidence
 
-The workflow uploads `artifacts/predeployment` containing:
+The combined workflow uploads:
 
-- committed frontend lockfile copy and `committed-lockfile` status
-- frontend Node/npm versions, AJV resolution, and build file list
-- backend image inspect and layer history
-- image healthcheck metadata
-- runtime UID and Terraform version
-- backend health response and container log
-- kubectl client version
-- rendered Kubernetes packages and document-count summary
-- verification summary including `frontend_lockfile=committed`
+- `aws-environment-contract-evidence`
+  - repository-wide Terraform and GitHub reference inventory
+  - corrected nested `vars.*` and `secrets.*` references
+  - fixture runtime input bundle and Secret render evidence
+- `predeployment-package-evidence`
+  - committed lockfile status and frontend dependency/build evidence
+  - backend image metadata, health, runtime UID, Terraform version, and logs
+  - rendered Kubernetes packages and document-count summary
 
-These files are validation evidence, not proof that an AWS deployment occurred.
+These artifacts are validation evidence, not proof that an AWS deployment occurred. The root `artifacts/` directory is ignored locally because it may contain generated private deployment inputs or downloaded CI evidence.
