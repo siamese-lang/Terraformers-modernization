@@ -6,8 +6,6 @@ BACKEND_DIR="${REPO_ROOT}/backend"
 RUN_DOCKER_BUILD="${RUN_DOCKER_BUILD:-false}"
 MAVEN_TEST_LOG="${BACKEND_DIR}/target/backend-local-verification-maven.log"
 
-cd "${BACKEND_DIR}"
-
 print_surefire_reports() {
   local reports_dir="${BACKEND_DIR}/target/surefire-reports"
 
@@ -37,6 +35,11 @@ run_maven_tests() {
   mkdir -p "$(dirname "${MAVEN_TEST_LOG}")"
   mvn -q -e clean test >"${MAVEN_TEST_LOG}" 2>&1
 }
+
+echo "[backend] verifying Flyway migration versions"
+bash "${REPO_ROOT}/scripts/checks/flyway-migration-uniqueness.sh"
+
+cd "${BACKEND_DIR}"
 
 echo "[backend] running Maven clean tests"
 if ! run_maven_tests; then
