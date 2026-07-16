@@ -2,100 +2,32 @@
 
 ## Purpose
 
-This document defines the backend persistence realignment for `Terraformers-modernization`.
+`Terraformers-modernization` is the operationally modernized completion of the original team service. It must extend the original business domain rather than replace it with a smaller metadata-only application.
 
-The modernization repository must not replace the original team service domain with a smaller unrelated metadata model merely to make local smoke tests easier. The previous `rdb-refactor` repository is the primary implementation reference for the core RDB domain. Modernization work should preserve that domain where it remains valid, improve its coupling and verification weaknesses, and add new analysis/runtime capabilities as extensions.
-
-Reference repository:
+Canonical implementation reference:
 
 ```text
 siamese-lang/rdb-refactor
 ```
 
-Target repository:
+Modernization target:
 
 ```text
 siamese-lang/Terraformers-modernization
 ```
 
-## Root cause found during AWS live validation
+## Root cause
 
-The target repository combined two incompatible schema models:
+The repository previously combined two incompatible project models:
 
-1. `V20260714_001__baseline_backend_schema.sql` used numeric project IDs and ownership/file/board relationships derived from the previous RDB refactor.
-2. The simplified `ProjectEntity` used a string project ID and stored upload metadata, analysis result pointers, and Terraform draft content directly on `projects`.
+1. Flyway created numeric owner-based projects with project/file/collaboration relationships.
+2. The simplified JPA model used a string slug as the project primary key and stored upload metadata, analysis pointers, and Terraform draft content directly on the project row.
 
-This was not a missing-column-only problem. The primary key type, ownership model, file model, lifecycle model, and API assumptions differed. Adding corrective columns to `projects` would have preserved the wrong model and created more migration debt.
+This was not a missing-column problem. Primary-key type, ownership, file lifecycle, authorization, and API assumptions all differed. Adding compensating columns would have preserved the wrong model.
 
-## Canonical reuse decisions
+## Canonical domain
 
-### Reuse and modernize
-
-The following concepts from `rdb-refactor` remain the canonical core domain:
-
-- `users`
-  - Cognito subject based identity
-  - optional email/display-name profile data
-  - role/status lifecycle
-- `projects`
-  - numeric `BIGINT` identity primary key
-  - required owner relationship
-  - name/description
-  - visibility/status
-  - soft-delete timestamp
-- `project_files`
-  - project relationship
-  - parent-child file tree
-  - S3 object metadata
-  - original filename, content type, size, checksum
-  - lifecycle timestamps
-- `terraform_runs`
-  - project-scoped run history and status
-- `boards`, `comments`, `board_reactions`
-  - authenticated author relationships
-  - project/board ownership chain
-  - status and soft-delete behavior
-- repository query patterns and ownership/visibility checks
-- Flyway-first schema management with production `ddl-auto=validate`
-
-Reuse does not mean copying the previous controller wholesale. The previous large controllers mixed authentication, S3, Bedrock, SQS, project persistence, file persistence, and compatibility responses. Those responsibilities remain separated behind services and adapters in the modernization backend.
-
-Improvements applied while porting:
-
-- `Instant` is used for UTC-oriented lifecycle timestamps.
-- role, status, and visibility values use enums instead of unvalidated string constants.
-- services use constructor injection and explicit transactional boundaries.
-- baseline migrations no longer use `CREATE TABLE IF NOT EXISTS`, which could hide drift.
-- repository methods encode active/soft-delete query rules.
-- Cognito JWT verification is handled by Spring Security resource server instead of controller-side Cognito API calls.
-- access-token `sub` is the required identity; email remains optional because Cognito access tokens do not always contain an email claim.
-
-### Keep from the modernization repository
-
-The following modernization capabilities are valid additions and are integrated with the canonical core domain:
-
-- analysis job lifecycle
-- provider abstraction for local/Bedrock analysis
-- SQS progress publication boundary
-- OpenSearch reference retrieval boundary
-- S3 upload/read service boundaries
-- runtime configuration inspection
-- Kubernetes/Secret/runtime contract verification
-- deployment package rendering and preflight verification
-- frontend compatibility adapters where they do not redefine the database model
-
-### Replace or remove
-
-The following designs are not canonical and are being replaced:
-
-- string slug used as `projects.project_id`
-- `ProjectMetadataService` creating projects implicitly from an upload filename
-- upload, analysis result, Terraform draft, and source object metadata stored in one `projects` row
-- `project_comments` as an unauthenticated parallel comment model unless a distinct business requirement is proven
-- compatibility test fixtures such as `shared-architecture`, `network`, and `app` being treated as database primary keys
-- migrations that attempt to make the numeric baseline table match the simplified string entity
-
-## Target relationships
+The modernization backend now uses this relationship model:
 
 ```text
 users
@@ -108,132 +40,178 @@ users
             └─ board_reactions
 ```
 
-Current analysis relationship:
+### Reused from `rdb-refactor`
 
-- `analysis_jobs.project_id` references `projects.project_id` as `BIGINT`.
-- `analysis_jobs.source_file_id` references the uploaded `project_files.file_id`.
-- source bucket/key values are derived from persisted source-file metadata, not accepted as independent client authority.
-- externally visible request correlation remains a string field such as `correlation_id`; it is not used as the project primary key.
-- generated Terraform output still needs to be registered as a result `project_files` artifact before the compatibility model can be removed.
+- Cognito-subject user identity
+- numeric `BIGINT` project identity
+- required project owner
+- visibility, status, and soft-delete lifecycle
+- hierarchical project files with object-storage metadata
+- project-scoped Terraform run history
+- authenticated boards, comments, and reactions
+- repository ownership and active-record query rules
+- Flyway-first schema management and production `ddl-auto=validate`
 
-## Authenticated upload flow
+### Improved while porting
+
+- `Instant` lifecycle timestamps
+- typed enums for role/status/visibility
+- constructor injection and explicit transactions
+- Spring Security OAuth2 resource-server JWT verification
+- Cognito access-token `sub` as the required identity claim
+- optional email/display-name profile data
+- separated authentication, project, storage, analysis, artifact, and compatibility responsibilities
+- no `CREATE TABLE IF NOT EXISTS` in the clean pre-release baseline
+- MariaDB schema validation before any AWS deployment
+
+## Final upload and analysis flow
 
 ```text
 Cognito access token
-  -> Spring Security JWT signature/issuer/client validation
+  -> JWT signature / issuer / client validation
   -> persisted user resolution by sub
-  -> create or authorize numeric owner-based project
-  -> upload storage boundary
-  -> project_files source metadata
-  -> analysis_jobs(project_id, source_file_id)
-  -> analysis provider/result storage
+  -> create private numeric project or authorize existing owner/admin project
+  -> store architecture image through the upload boundary
+  -> register source metadata in project_files
+  -> create analysis_jobs(project_id, source_file_id)
+  -> run analysis provider
+  -> write generated main.tf through ObjectWriter
+  -> register full Terraform content and object metadata in project_files
+  -> set analysis_jobs.result_file_id
 ```
 
-`POST /api/upload` no longer derives a database project ID from a filename. Without a supplied numeric `projectId`, it creates a private project owned by the authenticated user. With a supplied ID, the caller must be the owner or an administrator.
+Client-provided filenames and correlation IDs are never used as database project primary keys. Direct analysis creation derives bucket/key from the persisted source file instead of trusting independent client values.
 
-## Transitional compatibility isolation
+## Artifact model
 
-The simplified project metadata entity remains temporarily mapped to `project_metadata_compat`, not `projects`.
+`project_files` is the source of truth for both source and generated artifacts.
 
-This table exists only while read/edit endpoint adapters are migrated. It is not a second canonical project domain and must not receive new business logic. The canonical upload path no longer writes to it.
+### Architecture image
 
-Removal conditions:
+```text
+file_type        = ARCHITECTURE_IMAGE
+path             = source/<original filename>
+storage_provider = metadata-only | s3
+binary_persisted = true | false
+s3_bucket / s3_key / storage_etag
+content_type / size_bytes
+```
 
-1. upload resolves an authenticated persisted user — completed
-2. upload creates or selects an owner-based numeric project — completed
-3. uploaded source artifacts are stored through `project_files` — completed
-4. analysis jobs reference numeric project/source file foreign keys — completed
-5. generated Terraform results are stored as project-file/result artifacts — pending
-6. project/public/tree/draft compatibility responses read from the canonical model — pending
+### Generated Terraform
 
-After the remaining conditions are met, delete `project_metadata_compat`, the simplified entity, and `ProjectMetadataService`.
+```text
+file_type        = GENERATED_TERRAFORM
+path             = terraform/main.tf
+inline_content   = full editable Terraform content
+checksum         = SHA-256
+size_bytes       = UTF-8 byte length
+s3_bucket / s3_key / storage_etag
+```
+
+A new analysis result soft-deletes the previous active generated Terraform artifact. Editing `main.tf` updates the canonical artifact and writes through the configured object-storage boundary.
+
+## API compatibility policy
+
+Frontend-visible endpoint names are preserved where useful, but all identifiers and authorization rules now delegate to the canonical domain.
+
+Examples:
+
+```text
+POST /api/upload
+GET  /api/projects/{numericProjectId}
+GET  /api/project-tree/{numericProjectId}
+GET  /api/projects/{numericProjectId}/terraform/main.tf
+GET  /api/public-projects
+GET  /api/getProjectComments/{numericProjectId}
+POST /api/addProjectComment
+```
+
+Compatibility endpoints no longer define a second persistence model.
+
+## Collaboration flow
+
+The parallel `project_comments` table and unauthenticated author field were removed.
+
+Public project comments now use:
+
+```text
+projects
+  -> boards(category=PUBLIC_DISCUSSION)
+       -> comments(writer_user_id)
+```
+
+- public comment listing remains anonymous-readable
+- comment creation requires an authenticated Cognito user
+- request `userEmail` is retained only as a compatibility input and is not trusted as author identity
+- response author data comes from the persisted authenticated user
+- private project comments are rejected
+
+## Removed designs
+
+- string project slug primary key
+- `ProjectEntity` and `ProjectRepository` compatibility aggregate
+- `project_metadata_compat`
+- implicit anonymous project creation
+- project row containing source upload and Terraform draft state
+- `ProjectCommentEntity`, `ProjectCommentRepository`, and `project_comments`
+- client-controlled comment author identity
+- unauthenticated analysis job polling
 
 ## Migration policy
 
-The AWS live-smoke database was disposable and has been removed. Before editing the migration chain, confirm that no persistent shared database depends on the current `20260714` migration history.
-
-For the repository before a production release, use a reviewed clean baseline derived from the final entity model rather than adding compensating migrations to an internally inconsistent baseline.
+The current migration chain is a reviewed clean pre-release baseline. It is valid only because the previous AWS live-smoke database was disposable and removed.
 
 Rules:
 
 1. No duplicate Flyway versions.
-2. Existing applied production migrations are never silently rewritten.
-3. Pre-release disposable databases may use a clean rebaseline only after the affected environments are explicitly identified.
-4. MariaDB is the schema-validation target; H2 is not sufficient for production schema compatibility.
-5. CI must apply all migrations to an empty MariaDB instance and start the application with `ddl-auto=validate`.
-6. `ddl-auto=update/create` is not an accepted production workaround.
+2. An applied production migration must never be silently rewritten.
+3. MariaDB is the schema-validation target; H2 alone is insufficient.
+4. Production remains `spring.jpa.hibernate.ddl-auto=validate`.
+5. `ddl-auto=update/create` is not an accepted workaround.
+6. Repository/schema validation must pass before AWS or Kubernetes deployment work resumes.
 
-## Delivery phases
+## Verification gates
 
-### Phase 1: guardrails and audit — completed
+`Backend Local Verification` contains two independent jobs.
 
-- added Flyway duplicate-version verification
-- documented canonical reuse decisions
-- stopped AWS deployment attempts while schema realignment is incomplete
-- isolated cross-platform line-ending noise
+### Backend local verification
 
-### Phase 2A: core domain port — completed and baseline-verified
+- Flyway migration-version uniqueness
+- Maven clean test
+- Spring Security/JPA context creation
+- authenticated upload and polling
+- numeric project/source/result file contracts
+- canonical project metadata/tree/draft/source-object adapters
+- authenticated board/comment compatibility adapters
 
-- ported and modernized `UserEntity` and `UserRepository`
-- ported the owner-based numeric project aggregate as `OwnedProjectEntity`
-- ported `ProjectFileEntity` and repository query patterns
-- added `ProjectDomainService` ownership/access/file registration rules
-- replaced baseline DDL with the canonical ownership/file/collaboration schema
-- isolated the simplified project model in `project_metadata_compat`
-- added unit tests that reject project creation without a persisted owner
-- passed Backend Local Verification run `29471302512`
+### MariaDB Flyway and Hibernate validation
 
-### Phase 2B: authentication and upload integration — implemented, awaiting CI
+- MariaDB 11.4 service
+- package backend
+- start production profile
+- apply Flyway migrations to an empty database
+- start Hibernate with `ddl-auto=validate`
+- require actuator health success
+- upload startup logs on failure
 
-- added Spring Security Cognito JWT resource-server validation
-- added persisted user resolution from validated access-token claims
-- changed frontend upload/analysis requests to authenticated requests
-- create/select numeric owner-based projects before upload storage
-- persist source object metadata in `project_files`
-- remove filename-derived project slugs from canonical persistence
-- added 401 and authenticated upload contract tests
-- added an access-token test without an email claim
+## Remaining pre-deployment sequence
 
-### Phase 3A: numeric analysis integration — implemented, awaiting CI
-
-- changed `analysis_jobs.project_id` to a numeric project foreign key
-- added required `source_file_id` foreign key
-- derive source bucket/key from the persisted project file
-- authorize direct analysis-job creation against project ownership and source-file membership
-
-### Phase 3B: result artifact integration — next
-
-- register generated `main.tf` as a project file/result artifact
-- connect the analysis job to the result file
-- migrate Terraform draft/tree/read adapters to the canonical project/file model
-- remove write dependency on `project_metadata_compat`
-
-### Phase 4: collaboration integration
-
-- reuse `boards/comments/reactions` where they satisfy the public-project comment flow
-- remove `project_comments` if it is only a compatibility shortcut
-- preserve frontend endpoint aliases through adapters, not duplicate persistence models
-
-### Phase 5: MariaDB CI gate
-
-Required order before AWS live validation:
-
-1. Flyway migration uniqueness
-2. backend unit tests
-3. empty MariaDB migration
-4. production-profile application context with `ddl-auto=validate`
-5. repository query smoke tests
-6. runtime contract verification
-7. deployment package render/dry-run
-8. image build
-9. AWS live validation
+1. pass both Backend Local Verification jobs
+2. fix any actual MariaDB/Flyway/JPA mismatch
+3. add focused repository-query smoke assertions if needed
+4. run runtime contract verification
+5. render and dry-run deployment packages
+6. build application images
+7. only then reconsider AWS live validation
 
 ## Completion condition
 
-The realignment is complete only when:
+The RDB realignment is complete when:
 
-- every JPA entity maps to the Flyway-created MariaDB schema
-- project ownership and file relationships are preserved
-- compatibility endpoints do not redefine primary keys or persistence ownership
-- analysis/runtime additions are linked to the original domain instead of replacing it
-- CI catches duplicate migration versions and entity/schema drift before an AWS deployment is attempted
+- backend tests pass against the canonical model
+- Flyway creates an empty MariaDB schema successfully
+- the production profile starts with `ddl-auto=validate`
+- no JPA entity references removed compatibility tables
+- project ownership and file relationships are enforced
+- compatibility endpoints do not redefine primary keys or author identity
+- analysis and collaboration features extend the original domain rather than replacing it
