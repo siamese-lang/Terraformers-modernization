@@ -37,6 +37,9 @@ jobs:
       - name: Verify runtime contract
         run: bash scripts/checks/runtime-contract-verification.sh
 
+      - name: Verify AWS environment contract
+        run: bash scripts/checks/aws-environment-contract-verification.sh
+
       - name: Upload runtime contract diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -45,6 +48,7 @@ jobs:
           path: |
             backend/target/surefire-reports
             backend/target/*.log
+            artifacts/aws-environment-contract
 
   predeployment-package-verification:
     name: Build images and dry-run deployment packages
