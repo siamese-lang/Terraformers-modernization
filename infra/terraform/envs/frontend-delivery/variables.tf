@@ -89,11 +89,6 @@ variable "acm_certificate_arn" {
   type        = string
   default     = null
   nullable    = true
-
-  validation {
-    condition     = length(var.aliases) == 0 || (var.acm_certificate_arn != null && length(trimspace(var.acm_certificate_arn)) > 0)
-    error_message = "acm_certificate_arn is required when aliases are configured."
-  }
 }
 
 variable "price_class" {
