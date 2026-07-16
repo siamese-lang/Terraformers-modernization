@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document is the canonical static contract between the current Spring Boot production profile, the public-safe Kubernetes package, and the React production build.
+This document is the canonical static contract between the current Spring Boot production profile, the public-safe Kubernetes package, the React production build, Terraform outputs, deployment scripts, and GitHub Actions configuration references.
 
 It does not claim that a real AWS account, Terraform state, GitHub Environment, EKS cluster, IRSA role, or Secret provider is configured. Those mappings remain deployment preconditions and must be verified separately before any live apply or rollout.
 
@@ -24,22 +24,24 @@ The production backend must receive these eight keys through `terraformers-backe
 
 | Kubernetes Secret key | Spring consumer | Intended AWS source | Current mapping status |
 |---|---|---|---|
-| `SPRING_DATASOURCE_URL` | `spring.datasource.url` | RDS endpoint, port, database name, and JDBC options | Terraform output/GitHub mapping unresolved |
+| `SPRING_DATASOURCE_URL` | `spring.datasource.url` | RDS endpoint, port, database name, and JDBC options | repository inventory required |
 | `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | managed database credential | Secret provider mapping unresolved |
 | `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | managed database credential | Secret provider mapping unresolved |
-| `COGNITO_REGION` | Cognito issuer construction | Cognito/Terraform region | Terraform output/GitHub mapping unresolved |
-| `COGNITO_USER_POOL_ID` | Cognito issuer construction | Cognito user-pool output | Terraform output/GitHub mapping unresolved |
-| `COGNITO_USER_POOL_CLIENT_ID` | JWT client validation | Cognito app-client output | Terraform output/GitHub mapping unresolved |
-| `COGNITO_JWKS_URL` | JWT JWK set URI | derived from region and user-pool ID or explicit output | Terraform output/GitHub mapping unresolved |
-| `S3_BUCKET_NAME` | upload/source object storage and default result bucket | application bucket output | Terraform output/GitHub mapping unresolved |
+| `COGNITO_REGION` | Cognito issuer construction | Cognito/Terraform region | repository inventory required |
+| `COGNITO_USER_POOL_ID` | Cognito issuer construction | Cognito user-pool output | repository inventory required |
+| `COGNITO_USER_POOL_CLIENT_ID` | JWT client validation | Cognito app-client output | repository inventory required |
+| `COGNITO_JWKS_URL` | JWT JWK set URI | derived from region and user-pool ID or explicit output | repository inventory required |
+| `S3_BUCKET_NAME` | upload/source object storage and default result bucket | application bucket output | repository inventory required |
 
 `ANALYSIS_RESULT_BUCKET_NAME` is an optional override. When absent, the backend uses `S3_BUCKET_NAME` as the result bucket.
 
-The following former documentation aliases are not part of the canonical backend contract:
+The following former documentation aliases are not part of the canonical backend runtime contract:
 
 - `AWS_S3_BUCKET_NAME`
 - `FRONTEND_URL`
 - `DOMAIN`
+
+A deployment script may still use a generic domain input for DNS or frontend infrastructure, but it must never inject that name as a backend Secret key.
 
 ## Optional adapter contract
 
@@ -100,9 +102,10 @@ Run:
 
 ```bash
 bash scripts/checks/aws-environment-contract-verification.sh
+python3 scripts/checks/aws-deployment-contract-inventory.py
 ```
 
-The checker compares:
+The first checker compares:
 
 1. `application-prod.yml` required keys
 2. the active and documented keys in `backend-secret.example.yaml`
@@ -111,11 +114,29 @@ The checker compares:
 5. the React `.env.example` build variables
 6. the rendered AWS runtime-template identities, image policy, and Secret reference
 
-Evidence is written to `artifacts/aws-environment-contract`.
+The repository inventory then collects:
+
+1. every Terraform `output` and `variable` declaration in the checkout
+2. every GitHub Actions `${{ vars.* }}` and `${{ secrets.* }}` reference
+3. deployment-script environment-variable references
+4. Spring environment placeholders
+5. Kubernetes runtime keys
+6. frontend public build variables
+
+It fails immediately when:
+
+- no Terraform output contract exists
+- a workflow references `secrets.AWS_ACCESS_KEY_ID` or `secrets.AWS_SECRET_ACCESS_KEY`
+- a legacy backend runtime key is active in Spring or Kubernetes configuration
+- the Spring base contract or frontend public contract drifts
+
+Output-name groups that cannot yet be matched are warnings and remain explicit in the evidence rather than being guessed.
+
+Evidence is written to `artifacts/aws-environment-contract` and uploaded as `aws-environment-contract-evidence` on every combined workflow run.
 
 ## Remaining AWS preflight work
 
-The next gate must inspect and reconcile the real infrastructure and automation layers:
+The generated inventory must be reviewed to reconcile:
 
 1. Terraform output names and actual module/resource ownership
 2. GitHub repository/environment Variables and Secrets referenced by workflows
@@ -127,4 +148,4 @@ The next gate must inspect and reconcile the real infrastructure and automation 
 8. Secret delivery mechanism and exact provider-to-Kubernetes key mapping
 9. frontend build variables and CloudFront/backend origin routing
 
-No live AWS deployment should start until those mappings are explicit and the static checker remains green.
+No live AWS deployment should start until those mappings are explicit and both static gates remain green.
