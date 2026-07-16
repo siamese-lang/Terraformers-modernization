@@ -12,32 +12,40 @@ if (!envApiBaseUrl && process.env.NODE_ENV === 'production') {
   console.warn('[api] REACT_APP_API_BASE_URL is not set. Production requests will use relative paths.');
 }
 
-const AUTH_REQUIRED_PATH_PREFIXES = ['/api/'];
-const AUTH_OPTIONAL_PATHS = [
+const PUBLIC_EXACT_PATHS = new Set([
   '/api/login',
   '/api/register',
   '/api/public-projects',
-  '/api/project-tree',
-  '/api/project-tree/',
-  '/api/getProjectInfrastructureImage/',
-  '/api/getProjectComments/',
-  '/api/addProjectComment',
+  '/api/projects/public',
+]);
+
+const PUBLIC_GET_PATTERNS = [
+  /^\/api\/projects\/\d+$/,
+  /^\/api\/projects\/\d+\/terraform\/main\.tf$/,
+  /^\/api\/projects\/\d+\/comments$/,
+  /^\/api\/projects\/\d+\/source-object$/,
+  /^\/api\/project-tree\/\d+$/,
+  /^\/api\/getProjectInfrastructureImage\/\d+$/,
+  /^\/api\/getProjectComments\/\d+$/,
 ];
+
+const isPublicRequest = (method, path) => {
+  if (PUBLIC_EXACT_PATHS.has(path)) {
+    return true;
+  }
+  return method === 'get' && PUBLIC_GET_PATTERNS.some((pattern) => pattern.test(path));
+};
 
 export const isAuthRequiredRequest = (config = {}) => {
   const method = String(config.method || 'get').toLowerCase();
   const rawUrl = config.url || '';
-  const path = rawUrl.startsWith('http') ? new URL(rawUrl).pathname : rawUrl;
+  const path = rawUrl.startsWith('http') ? new URL(rawUrl).pathname : rawUrl.split('?')[0];
 
-  if (!AUTH_REQUIRED_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+  if (!path.startsWith('/api/') || method === 'options') {
     return false;
   }
 
-  if (AUTH_OPTIONAL_PATHS.some((allowedPath) => path.startsWith(allowedPath))) {
-    return false;
-  }
-
-  return method !== 'options';
+  return !isPublicRequest(method, path);
 };
 
 const api = axios.create({
