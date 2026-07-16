@@ -26,7 +26,16 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.8.5
+          terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Verify Terraform configurations
         run: bash scripts/checks/terraform-static-verification.sh
+
+      - name: Upload Terraform static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-static-verification-evidence
+          path: artifacts/terraform-static-verification
+          if-no-files-found: warn
