@@ -123,9 +123,6 @@ public class AnalysisJobEntity {
         return status;
     }
 
-    status;
-    }
-
     public void setStatus(AnalysisJobStatus status) {
         this.status = status;
     }
