@@ -1,0 +1,51 @@
+project_name = "terraformers"
+environment  = "dev"
+aws_region  = "ap-northeast-2"
+
+# Replace with outputs from the applied network stage.
+vpc_id         = "vpc-replace-from-network-output"
+vpc_cidr_block = "10.40.0.0/16"
+private_subnet_ids = [
+  "subnet-replace-private-a",
+  "subnet-replace-private-b",
+]
+
+# 1.35 remains in EKS standard support through March 27, 2027. Reconfirm the
+# AWS EKS release calendar immediately before the live plan.
+kubernetes_version = "1.35"
+
+# The default module posture is private-only. For the first short-lived
+# operator-driven deployment, public access may be enabled only for the exact
+# current operator /32. Replace the documentation CIDR before use.
+cluster_endpoint_public_access = true
+cluster_endpoint_public_access_cidrs = [
+  "203.0.113.10/32",
+]
+
+enabled_cluster_log_types = ["api", "audit", "authenticator"]
+node_instance_types       = ["t3.medium"]
+node_disk_size            = 20
+node_desired_size         = 1
+node_min_size             = 1
+node_max_size             = 2
+
+node_labels = {
+  role = "backend-runtime"
+}
+
+backend_namespace            = "terraformers-runtime"
+backend_service_account_name = "terraformers-backend"
+
+load_balancer_controller_namespace            = "kube-system"
+load_balancer_controller_service_account_name = "aws-load-balancer-controller"
+
+# Replace with outputs from backend-runtime-dependencies.
+upload_bucket_arn          = "arn:aws:s3:::replace-upload-bucket"
+result_bucket_arn          = "arn:aws:s3:::replace-result-bucket"
+ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:000000000000:replace-ai-log"
+terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:000000000000:replace-terraform-log"
+backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:000000000000:secret:replace-runtime-secret"
+
+# Optional Bedrock access remains disabled until model access and application
+# adapter behavior are separately approved.
+bedrock_model_resource_arns = []
