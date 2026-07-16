@@ -58,6 +58,13 @@ OUTPUT_GROUPS: dict[str, tuple[str, ...]] = {
     ),
     "frontend_bucket": ("frontend_bucket_name", "web_bucket_name", "static_bucket_name"),
     "cloudfront_distribution": ("cloudfront_distribution_id", "distribution_id"),
+    "cloudfront_vpc_origin": ("backend_vpc_origin_id",),
+    "backend_origin_load_balancer": (
+        "backend_origin_load_balancer_arn",
+        "backend_origin_load_balancer_dns_name",
+    ),
+    "load_balancer_controller_irsa": ("load_balancer_controller_irsa_role_arn",),
+    "backend_origin_security_group": ("backend_origin_alb_security_group_id",),
     "backend_irsa_role": (
         "backend_service_account_role_arn",
         "backend_irsa_role_arn",
@@ -173,49 +180,28 @@ def collect_deploy_script_environment() -> list[dict[str, object]]:
 
 def collect_spring_placeholders() -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
-    root = REPO_ROOT / "backend" / "src" / "main" / "resources"
-    for path in iter_files(root, {".yml", ".yaml", ".properties"}):
+    for path in iter_files(REPO_ROOT / "backend" / "src" / "main" / "resources", {".yml", ".yaml", ".properties"}):
         text = read(path)
-        references.extend(records(path, text, r'\$\{([A-Z][A-Z0-9_]*)(?::[^}]*)?\}'))
+        references.extend(records(path, text, r'\$\{([A-Z][A-Z0-9_]*)'))
     return references
 
 
 def collect_spring_required_env() -> list[dict[str, object]]:
     path = REPO_ROOT / "backend" / "src" / "main" / "resources" / "application-prod.yml"
-    if not path.exists():
-        return []
     text = read(path)
-    block_match = re.search(
-        r'(?m)^ {4}required-env:[ \t]*\n((?: {6}- [A-Z0-9_]+[ \t]*(?:\n|$))+)',
-        text,
-    )
-    if not block_match:
-        return []
-    block_start = block_match.start(1)
-    block = block_match.group(1)
-    return [
-        {
-            "name": match.group(1),
-            "file": relative(path),
-            "line": line_number(text, block_start + match.start()),
-        }
-        for match in re.finditer(r'(?m)^ {6}- ([A-Z0-9_]+)[ \t]*$', block)
-    ]
+    return records(path, text, r'\$\{([A-Z][A-Z0-9_]*):\?')
 
 
 def collect_kubernetes_keys() -> list[dict[str, object]]:
-    keys: list[dict[str, object]] = []
+    references: list[dict[str, object]] = []
     for path in iter_files(REPO_ROOT / "infra" / "kubernetes", {".yml", ".yaml"}):
         text = read(path)
-        keys.extend(records(path, text, r'(?m)^\s+([A-Z][A-Z0-9_]*)\s*:'))
-        keys.extend(records(path, text, r'(?m)^\s+-\s+name:\s*([A-Z][A-Z0-9_]*)\s*$'))
-    return keys
+        references.extend(records(path, text, r'(?m)^\s*-?\s*name:\s*([A-Z][A-Z0-9_]*)\s*$'))
+    return references
 
 
 def collect_frontend_environment() -> list[dict[str, object]]:
     path = REPO_ROOT / "frontend" / ".env.example"
-    if not path.exists():
-        return []
     text = read(path)
     return records(path, text, r'(?m)^(REACT_APP_[A-Z0-9_]+)=')
 
@@ -223,22 +209,19 @@ def collect_frontend_environment() -> list[dict[str, object]]:
 def group_output_status(output_names: set[str]) -> dict[str, dict[str, object]]:
     return {
         group: {
-            "status": "matched" if (matched := sorted(output_names.intersection(aliases))) else "unresolved",
-            "matched_outputs": matched,
-            "aliases": list(aliases),
+            "status": "resolved" if any(name in output_names for name in names) else "unresolved",
+            "matched_outputs": sorted(name for name in names if name in output_names),
         }
-        for group, aliases in OUTPUT_GROUPS.items()
+        for group, names in OUTPUT_GROUPS.items()
     }
 
 
 def markdown_table(headers: list[str], rows: list[list[object]]) -> list[str]:
-    result = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    result.extend(
-        ["| " + " | ".join("-" for _ in headers) + " |"]
-        if not rows
-        else ["| " + " | ".join(str(value) for value in row) + " |" for row in rows]
-    )
-    return result
+    return [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+        *["| " + " | ".join(str(value) for value in row) + " |" for row in rows],
+    ]
 
 
 def main() -> int:
