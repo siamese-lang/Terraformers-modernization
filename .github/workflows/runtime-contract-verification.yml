@@ -41,7 +41,12 @@ jobs:
         run: bash scripts/checks/aws-environment-contract-verification.sh
 
       - name: Inventory AWS deployment contract sources
-        run: python3 scripts/checks/aws-deployment-contract-inventory.py
+        run: |
+          python3 scripts/checks/aws-deployment-contract-inventory.py
+          python3 scripts/checks/aws-workflow-reference-reconciliation.py
+
+      - name: Verify AWS runtime input bundle contract
+        run: bash scripts/checks/aws-runtime-input-bundle-contract-verification.sh
 
       - name: Upload AWS environment contract evidence
         if: always()
@@ -49,7 +54,9 @@ jobs:
         with:
           name: aws-environment-contract-evidence
           if-no-files-found: warn
-          path: artifacts/aws-environment-contract
+          path: |
+            artifacts/aws-environment-contract
+            artifacts/aws-runtime-input-bundle-contract
 
       - name: Upload runtime contract diagnostics
         if: failure()
