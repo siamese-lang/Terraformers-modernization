@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
 
@@ -90,22 +89,31 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def records(path: Path, text: str, pattern: str, *, name_group: int = 1, **extra: object) -> list[dict[str, object]]:
+    return [
+        {
+            "name": match.group(name_group),
+            "file": relative(path),
+            "line": line_number(text, match.start()),
+            **extra,
+        }
+        for match in re.finditer(pattern, text)
+    ]
+
+
 def collect_terraform() -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     outputs: list[dict[str, object]] = []
     variables: list[dict[str, object]] = []
     for path in iter_files(REPO_ROOT, {".tf"}):
         text = read(path)
-        for match in re.finditer(r'(?m)^\s*output\s+"([^"]+)"\s*\{', text):
-            outputs.append({"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())})
-        for match in re.finditer(r'(?m)^\s*variable\s+"([^"]+)"\s*\{', text):
-            variables.append({"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())})
+        outputs.extend(records(path, text, r'(?m)^\s*output\s+"([^"]+)"\s*\{'))
+        variables.extend(records(path, text, r'(?m)^\s*variable\s+"([^"]+)"\s*\{'))
     return outputs, variables
 
 
 def collect_workflow_references() -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
-    workflow_root = REPO_ROOT / ".github" / "workflows"
-    for path in iter_files(workflow_root, {".yml", ".yaml"}):
+    for path in iter_files(REPO_ROOT / ".github" / "workflows", {".yml", ".yaml"}):
         text = read(path)
         for match in re.finditer(r'\$\{\{\s*(vars|secrets)\.([A-Z][A-Z0-9_]*)', text):
             references.append(
@@ -121,25 +129,29 @@ def collect_workflow_references() -> list[dict[str, object]]:
 
 def collect_deploy_script_environment() -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
-    deploy_root = REPO_ROOT / "scripts" / "deploy"
-    for path in iter_files(deploy_root, {".sh", ".py", ".ps1"}):
+    for path in iter_files(REPO_ROOT / "scripts" / "deploy", {".sh", ".py", ".ps1"}):
         text = read(path)
         matches: list[tuple[str, int, str]] = []
         if path.suffix == ".sh":
-            for match in re.finditer(r'\$\{([A-Z][A-Z0-9_]*)(?::[-+?=][^}]*)?\}', text):
-                matches.append((match.group(1), match.start(), "shell-parameter"))
+            matches.extend(
+                (match.group(1), match.start(), "shell-parameter")
+                for match in re.finditer(r'\$\{([A-Z][A-Z0-9_]*)(?::[-+?=][^}]*)?\}', text)
+            )
         elif path.suffix == ".py":
-            for match in re.finditer(r'os\.(?:environ(?:\.get|\[)|getenv\()\s*["\']([A-Z][A-Z0-9_]*)', text):
-                matches.append((match.group(1), match.start(), "python-environment"))
+            for pattern in (
+                r'os\.(?:environ\.get|getenv)\(\s*["\']([A-Z][A-Z0-9_]*)["\']',
+                r'os\.environ\[\s*["\']([A-Z][A-Z0-9_]*)["\']\s*\]',
+            ):
+                matches.extend(
+                    (match.group(1), match.start(), "python-environment")
+                    for match in re.finditer(pattern, text)
+                )
         elif path.suffix == ".ps1":
-            for match in re.finditer(r'\$env:([A-Z][A-Z0-9_]*)', text, re.I):
-                matches.append((match.group(1).upper(), match.start(), "powershell-environment"))
-        seen: set[tuple[str, int]] = set()
-        for name, offset, source in matches:
-            key = (name, offset)
-            if key in seen:
-                continue
-            seen.add(key)
+            matches.extend(
+                (match.group(1).upper(), match.start(), "powershell-environment")
+                for match in re.finditer(r'\$env:([A-Z][A-Z0-9_]*)', text, re.I)
+            )
+        for name, offset, source in sorted(set(matches), key=lambda item: (item[1], item[0])):
             references.append(
                 {"name": name, "source": source, "file": relative(path), "line": line_number(text, offset)}
             )
@@ -148,23 +160,19 @@ def collect_deploy_script_environment() -> list[dict[str, object]]:
 
 def collect_spring_placeholders() -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
-    resource_root = REPO_ROOT / "backend" / "src" / "main" / "resources"
-    for path in iter_files(resource_root, {".yml", ".yaml", ".properties"}):
+    root = REPO_ROOT / "backend" / "src" / "main" / "resources"
+    for path in iter_files(root, {".yml", ".yaml", ".properties"}):
         text = read(path)
-        for match in re.finditer(r'\$\{([A-Z][A-Z0-9_]*)(?::[^}]*)?\}', text):
-            references.append({"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())})
+        references.extend(records(path, text, r'\$\{([A-Z][A-Z0-9_]*)(?::[^}]*)?\}'))
     return references
 
 
 def collect_kubernetes_keys() -> list[dict[str, object]]:
     keys: list[dict[str, object]] = []
-    kubernetes_root = REPO_ROOT / "infra" / "kubernetes"
-    for path in iter_files(kubernetes_root, {".yml", ".yaml"}):
+    for path in iter_files(REPO_ROOT / "infra" / "kubernetes", {".yml", ".yaml"}):
         text = read(path)
-        for match in re.finditer(r'(?m)^\s+(?:name:\s*)?([A-Z][A-Z0-9_]*)\s*:', text):
-            keys.append({"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())})
-        for match in re.finditer(r'(?m)^\s+-\s+name:\s*([A-Z][A-Z0-9_]*)\s*$', text):
-            keys.append({"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())})
+        keys.extend(records(path, text, r'(?m)^\s+([A-Z][A-Z0-9_]*)\s*:'))
+        keys.extend(records(path, text, r'(?m)^\s+-\s+name:\s*([A-Z][A-Z0-9_]*)\s*$'))
     return keys
 
 
@@ -173,26 +181,27 @@ def collect_frontend_environment() -> list[dict[str, object]]:
     if not path.exists():
         return []
     text = read(path)
-    return [
-        {"name": match.group(1), "file": relative(path), "line": line_number(text, match.start())}
-        for match in re.finditer(r'(?m)^(REACT_APP_[A-Z0-9_]+)=', text)
-    ]
+    return records(path, text, r'(?m)^(REACT_APP_[A-Z0-9_]+)=')
 
 
 def group_output_status(output_names: set[str]) -> dict[str, dict[str, object]]:
-    status: dict[str, dict[str, object]] = {}
-    for group, aliases in OUTPUT_GROUPS.items():
-        matched = sorted(name for name in output_names if name in aliases)
-        status[group] = {"status": "matched" if matched else "unresolved", "matched_outputs": matched, "aliases": list(aliases)}
-    return status
+    return {
+        group: {
+            "status": "matched" if (matched := sorted(output_names.intersection(aliases))) else "unresolved",
+            "matched_outputs": matched,
+            "aliases": list(aliases),
+        }
+        for group, aliases in OUTPUT_GROUPS.items()
+    }
 
 
 def markdown_table(headers: list[str], rows: list[list[object]]) -> list[str]:
     result = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
-    if not rows:
-        result.append("| " + " | ".join("-" for _ in headers) + " |")
-    else:
-        result.extend("| " + " | ".join(str(value) for value in row) + " |" for row in rows)
+    result.extend(
+        ["| " + " | ".join("-" for _ in headers) + " |"]
+        if not rows
+        else ["| " + " | ".join(str(value) for value in row) + " |" for row in rows]
+    )
     return result
 
 
@@ -211,11 +220,11 @@ def main() -> int:
     workflow_secret_names = {
         str(item["name"]) for item in workflow_references if item["scope"] == "secrets"
     }
-    active_runtime_names = {
-        str(item["name"])
-        for item in spring_placeholders + kubernetes_keys + deploy_environment
+    runtime_names = {
+        str(item["name"]) for item in spring_placeholders + kubernetes_keys
     }
     frontend_names = [str(item["name"]) for item in frontend_environment]
+    spring_names = {str(item["name"]) for item in spring_placeholders}
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -230,9 +239,16 @@ def main() -> int:
             + ", ".join(forbidden_secret_refs)
         )
 
-    active_legacy = sorted(active_runtime_names & LEGACY_RUNTIME_KEYS)
+    active_legacy = sorted(runtime_names & LEGACY_RUNTIME_KEYS)
     if active_legacy:
-        errors.append("Legacy runtime keys are active outside documentation: " + ", ".join(active_legacy))
+        errors.append("Legacy keys are active in Spring/Kubernetes runtime configuration: " + ", ".join(active_legacy))
+
+    deploy_legacy = sorted({str(item["name"]) for item in deploy_environment} & LEGACY_RUNTIME_KEYS)
+    if deploy_legacy:
+        warnings.append(
+            "Deployment scripts reference legacy-named inputs; verify they are infrastructure-only and never injected into the backend Secret: "
+            + ", ".join(deploy_legacy)
+        )
 
     if frontend_names != CANONICAL_FRONTEND:
         errors.append(
@@ -240,7 +256,7 @@ def main() -> int:
             f"expected={CANONICAL_FRONTEND}, actual={frontend_names}"
         )
 
-    missing_spring_base = sorted(set(CANONICAL_BACKEND_BASE) - {str(item["name"]) for item in spring_placeholders})
+    missing_spring_base = sorted(set(CANONICAL_BACKEND_BASE) - spring_names)
     if missing_spring_base:
         errors.append("Spring configuration is missing canonical base placeholders: " + ", ".join(missing_spring_base))
 
@@ -266,51 +282,49 @@ def main() -> int:
     }
     JSON_OUTPUT.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    lines: list[str] = [
+    lines = [
         "# AWS Deployment Contract Inventory",
         "",
         "This inventory is generated from the checked-out repository. It performs no AWS authentication, Terraform planning, image publishing, or Kubernetes mutation.",
         "",
         "## Terraform outputs",
         "",
-    ]
-    lines.extend(
-        markdown_table(
+        *markdown_table(
             ["Output", "File", "Line"],
             [[item["name"], item["file"], item["line"]] for item in terraform_outputs],
-        )
-    )
-    lines.extend(["", "## Required output groups", ""])
-    lines.extend(
-        markdown_table(
+        ),
+        "",
+        "## Required output groups",
+        "",
+        *markdown_table(
             ["Group", "Status", "Matched outputs"],
             [
                 [group, item["status"], ", ".join(item["matched_outputs"]) or "-"]
                 for group, item in sorted(output_groups.items())
             ],
-        )
-    )
-    lines.extend(["", "## GitHub Actions repository/environment references", ""])
-    lines.extend(
-        markdown_table(
+        ),
+        "",
+        "## GitHub Actions repository/environment references",
+        "",
+        *markdown_table(
             ["Scope", "Name", "File", "Line"],
             [[item["scope"], item["name"], item["file"], item["line"]] for item in workflow_references],
-        )
-    )
-    lines.extend(["", "## Deployment-script environment references", ""])
-    lines.extend(
-        markdown_table(
+        ),
+        "",
+        "## Deployment-script environment references",
+        "",
+        *markdown_table(
             ["Name", "Source", "File", "Line"],
             [[item["name"], item["source"], item["file"], item["line"]] for item in deploy_environment],
-        )
-    )
-    lines.extend(["", "## Findings", ""])
-    lines.append(f"- critical errors: {len(errors)}")
-    lines.append(f"- unresolved warnings: {len(warnings)}")
-    for error in errors:
-        lines.append(f"- ERROR: {error}")
-    for warning in warnings:
-        lines.append(f"- WARNING: {warning}")
+        ),
+        "",
+        "## Findings",
+        "",
+        f"- critical errors: {len(errors)}",
+        f"- unresolved warnings: {len(warnings)}",
+        *[f"- ERROR: {error}" for error in errors],
+        *[f"- WARNING: {warning}" for warning in warnings],
+    ]
     MARKDOWN_OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     summary_lines = [
