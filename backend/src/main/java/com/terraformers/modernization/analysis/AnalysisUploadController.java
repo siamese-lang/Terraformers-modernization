@@ -1,14 +1,14 @@
 package com.terraformers.modernization.analysis;
 
-import com.terraformers.modernization.project.ProjectMetadataService;
-import com.terraformers.modernization.storage.StoredUploadObject;
-import com.terraformers.modernization.storage.UploadObjectStorageService;
 import com.terraformers.modernization.storage.UploadStorageException;
 import java.net.URI;
-import java.util.Locale;
+import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,52 +20,43 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class AnalysisUploadController {
 
-    private final AnalysisJobService analysisJobService;
-    private final ProjectMetadataService projectMetadataService;
-    private final UploadObjectStorageService uploadObjectStorageService;
+    private final AnalysisUploadService uploadService;
 
-    public AnalysisUploadController(
-            AnalysisJobService analysisJobService,
-            ProjectMetadataService projectMetadataService,
-            UploadObjectStorageService uploadObjectStorageService
-    ) {
-        this.analysisJobService = analysisJobService;
-        this.projectMetadataService = projectMetadataService;
-        this.uploadObjectStorageService = uploadObjectStorageService;
+    public AnalysisUploadController(AnalysisUploadService uploadService) {
+        this.uploadService = uploadService;
     }
 
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AnalysisUploadResponse> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "projectId", required = false) String requestedProjectId
+            @RequestParam(value = "projectId", required = false) Long requestedProjectId,
+            @RequestParam(value = "projectName", required = false) String requestedProjectName,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("file must not be empty");
-        }
-
-        String originalFilename = safeOriginalFilename(file);
-        String projectId = normalizeProjectId(requestedProjectId, originalFilename);
-        StoredUploadObject storedUpload = uploadObjectStorageService.store(file, projectId, originalFilename);
-
-        AnalysisJobResponse job = analysisJobService.create(new AnalysisJobRequest(
-                projectId,
-                storedUpload.bucket(),
-                storedUpload.key(),
-                "upload-compat-" + System.currentTimeMillis()
-        ));
-
-        AnalysisUploadResponse response = AnalysisUploadResponse.from(
-                job,
-                originalFilename,
-                resolveContentType(file),
-                file.getSize(),
-                storedUpload
+        AnalysisUploadResponse response = uploadService.upload(
+                file,
+                requestedProjectId,
+                requestedProjectName,
+                jwt
         );
-        projectMetadataService.upsertFromUpload(response);
-
         return ResponseEntity
-                .created(URI.create("/api/analysis/jobs/" + job.id()))
+                .created(URI.create("/api/analysis/jobs/" + response.analysisJobId()))
                 .body(response);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<String> handleUnauthorized(AuthenticationException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<String> handleForbidden(SecurityException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(exception.getMessage());
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    public ResponseEntity<String> handleNotFound(NoSuchElementException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -76,41 +67,5 @@ public class AnalysisUploadController {
     @ExceptionHandler(UploadStorageException.class)
     public ResponseEntity<String> handleUploadStorageFailure(UploadStorageException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(exception.getMessage());
-    }
-
-    private String normalizeProjectId(String requestedProjectId, String originalFilename) {
-        String source = requestedProjectId;
-        if (source == null || source.isBlank()) {
-            source = stripExtension(originalFilename);
-        }
-        String normalized = source.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9-]+", "-")
-                .replaceAll("^-+|-+$", "");
-        if (normalized.isBlank()) {
-            normalized = "browser-upload";
-        }
-        return normalized.length() > 64 ? normalized.substring(0, 64) : normalized;
-    }
-
-    private String safeOriginalFilename(MultipartFile file) {
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null || originalFilename.isBlank()) {
-            return "architecture-image.png";
-        }
-        String normalized = originalFilename.replace('\\', '/');
-        return normalized.substring(normalized.lastIndexOf('/') + 1);
-    }
-
-    private String stripExtension(String filename) {
-        int dotIndex = filename.lastIndexOf('.');
-        if (dotIndex <= 0) {
-            return filename;
-        }
-        return filename.substring(0, dotIndex);
-    }
-
-    private String resolveContentType(MultipartFile file) {
-        String contentType = file.getContentType();
-        return contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType;
     }
 }
