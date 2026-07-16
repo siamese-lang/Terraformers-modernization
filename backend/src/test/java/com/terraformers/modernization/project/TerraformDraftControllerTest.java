@@ -16,6 +16,7 @@ import com.terraformers.modernization.collaboration.CommentRepository;
 import com.terraformers.modernization.identity.UserRepository;
 import com.terraformers.modernization.projectcore.OwnedProjectRepository;
 import com.terraformers.modernization.projectcore.ProjectFileRepository;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,7 +88,7 @@ class TerraformDraftControllerTest {
     void updateMainTfPersistsCanonicalArtifactContent() throws Exception {
         Long projectId = upload("app.png");
         String updatedContent = "resource \"aws_s3_bucket\" \"example\" {}";
-        String requestBody = "{\"content\":\"" + updatedContent + "\"}";
+        String requestBody = objectMapper.writeValueAsString(Map.of("content", updatedContent));
 
         mockMvc.perform(put("/api/projects/" + projectId + "/terraform/main.tf")
                         .with(testUserJwt())
@@ -95,12 +96,12 @@ class TerraformDraftControllerTest {
                         .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(projectId))
-                .andExpect(jsonPath("$.content").value("resource \"aws_s3_bucket\" \"example\" {}"))
+                .andExpect(jsonPath("$.content").value(updatedContent))
                 .andExpect(jsonPath("$.draftUpdatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/projects/" + projectId + "/terraform/main.tf").with(testUserJwt()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").value("resource \"aws_s3_bucket\" \"example\" {}"));
+                .andExpect(jsonPath("$.content").value(updatedContent));
     }
 
     @Test
