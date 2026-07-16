@@ -129,9 +129,19 @@ grep -qx 'REACT_APP_COGNITO_USER_POOL_ID=ap-northeast-2_fixture' "${BUILD_ENV}"
 grep -qx 'REACT_APP_COGNITO_USER_POOL_CLIENT_ID=fixture-client-id' "${BUILD_ENV}"
 assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY' "${BUILD_ENV}" "Frontend build bundle must contain public values only."
 assert_contains '"api_base_mode": "same-origin-relative"' "${SOURCE_MAP}" "Source map must record same-origin API mode."
+assert_contains '"invalidation_scope": "mutable-entrypoints-only"' "${SOURCE_MAP}" "Source map must record the limited invalidation scope."
 assert_contains '^frontend_build_variable_count=4$' "${BUNDLE_SUMMARY}" "Frontend build variable count must remain four."
-assert_contains 'aws s3 sync frontend/build s3://terraformers-dev-frontend-fixture --delete' "${APPLY_ORDER}" "Manual delivery order must include S3 sync."
-assert_contains 'aws cloudfront create-invalidation --distribution-id E123456789FIXTURE' "${APPLY_ORDER}" "Manual delivery order must include invalidation."
+assert_contains '^invalidation_wait=required$' "${BUNDLE_SUMMARY}" "Bundle must require invalidation completion."
+assert_contains 'aws s3 sync frontend/build s3://terraformers-dev-frontend-fixture' "${APPLY_ORDER}" "Manual delivery order must include mutable S3 sync."
+assert_contains "--exclude 'static/\*'" "${APPLY_ORDER}" "Mutable sync must exclude immutable static assets."
+assert_contains "--cache-control 'no-cache,no-store,must-revalidate'" "${APPLY_ORDER}" "Mutable sync must set no-cache metadata."
+assert_contains 'aws s3 sync frontend/build/static s3://terraformers-dev-frontend-fixture/static' "${APPLY_ORDER}" "Manual delivery order must include static asset sync."
+assert_contains "--cache-control 'public,max-age=31536000,immutable'" "${APPLY_ORDER}" "Static sync must set immutable metadata."
+assert_contains 'aws cloudfront create-invalidation' "${APPLY_ORDER}" "Manual delivery order must include invalidation."
+assert_contains '--distribution-id E123456789FIXTURE' "${APPLY_ORDER}" "Invalidation must target the Terraform output distribution."
+assert_contains "--paths '/' '/index.html' '/asset-manifest.json' '/manifest.json'" "${APPLY_ORDER}" "Bundle must invalidate only mutable entrypoints."
+assert_not_contains "--paths '/\*'" "${APPLY_ORDER}" "Bundle must not invalidate all immutable assets."
+assert_contains 'aws cloudfront wait invalidation-completed' "${APPLY_ORDER}" "Bundle must wait for invalidation completion."
 
 printf '%s\n' \
   'frontend_delivery_contract=passed' \
@@ -149,6 +159,7 @@ printf '%s\n' \
   'mutable_cache_control=no-cache' \
   'static_cache_control=immutable-one-year' \
   'invalidation_scope=mutable-entrypoints-only' \
+  'invalidation_wait=required' \
   'frontend_output_groups=resolved' \
   'cluster_contact=none' \
   'aws_mutation=none' \
