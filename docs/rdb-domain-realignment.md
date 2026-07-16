@@ -20,12 +20,12 @@ siamese-lang/Terraformers-modernization
 
 ## Root cause found during AWS live validation
 
-The current target repository combines two incompatible schema models:
+The current target repository combined two incompatible schema models:
 
-1. `V20260714_001__baseline_backend_schema.sql` uses numeric project IDs and ownership/file/board relationships derived from the previous RDB refactor.
-2. The current `ProjectEntity` uses a string project ID and stores upload metadata, analysis result pointers, and Terraform draft content directly on `projects`.
+1. `V20260714_001__baseline_backend_schema.sql` used numeric project IDs and ownership/file/board relationships derived from the previous RDB refactor.
+2. The simplified `ProjectEntity` used a string project ID and stored upload metadata, analysis result pointers, and Terraform draft content directly on `projects`.
 
-This is not a missing-column-only problem. The primary key type, ownership model, file model, lifecycle model, and API assumptions differ. Adding corrective columns to the current `projects` table would preserve the wrong model and create more migration debt.
+This was not a missing-column-only problem. The primary key type, ownership model, file model, lifecycle model, and API assumptions differed. Adding corrective columns to `projects` would have preserved the wrong model and created more migration debt.
 
 ## Canonical reuse decisions
 
@@ -58,7 +58,15 @@ The following concepts from `rdb-refactor` remain the canonical core domain:
 - repository query patterns and ownership/visibility checks
 - Flyway-first schema management with production `ddl-auto=validate`
 
-Reuse does not mean copying the previous controller wholesale. The previous large controllers mixed authentication, S3, Bedrock, SQS, project persistence, file persistence, and compatibility responses. Those responsibilities must remain separated behind services and adapters in the modernization backend.
+Reuse does not mean copying the previous controller wholesale. The previous large controllers mixed authentication, S3, Bedrock, SQS, project persistence, file persistence, and compatibility responses. Those responsibilities remain separated behind services and adapters in the modernization backend.
+
+Improvements applied while porting:
+
+- `Instant` is used for UTC-oriented lifecycle timestamps.
+- role, status, and visibility values use enums instead of unvalidated string constants.
+- services use constructor injection and explicit transactional boundaries.
+- baseline migrations no longer use `CREATE TABLE IF NOT EXISTS`, which could hide drift.
+- repository methods encode active/soft-delete query rules.
 
 ### Keep from the modernization repository
 
@@ -76,7 +84,7 @@ The following modernization capabilities are valid additions and should be integ
 
 ### Replace or remove
 
-The following current designs are not canonical and should be replaced:
+The following designs are not canonical and are being replaced:
 
 - string slug used as `projects.project_id`
 - `ProjectMetadataService` creating projects implicitly from an upload filename
@@ -105,11 +113,25 @@ Recommended analysis relationship:
 - externally visible request correlation remains a string field such as `correlation_id`; it is not used as the project primary key.
 - generated Terraform output is represented as a project file and/or an analysis result artifact, not as the sole state of the project row.
 
+## Transitional compatibility isolation
+
+The simplified project metadata entity is temporarily mapped to `project_metadata_compat`, not `projects`.
+
+This table exists only while endpoint adapters are migrated. It is not a second canonical project domain and must not receive new business logic. The removal condition is:
+
+1. upload resolves an authenticated persisted user,
+2. upload creates or selects an owner-based numeric project,
+3. source and generated artifacts are stored through `project_files`,
+4. analysis jobs reference the numeric project and source/result files,
+5. project/public/tree/draft compatibility responses read from the canonical model.
+
+After those conditions are met, delete `project_metadata_compat`, the simplified entity, and `ProjectMetadataService`.
+
 ## Migration policy
 
 The AWS live-smoke database was disposable and has been removed. Before editing the migration chain, confirm that no persistent shared database depends on the current `20260714` migration history.
 
-For the repository before a production release, prefer a reviewed clean baseline derived from the final entity model rather than adding many compensating migrations to an internally inconsistent baseline.
+For the repository before a production release, use a reviewed clean baseline derived from the final entity model rather than adding compensating migrations to an internally inconsistent baseline.
 
 Rules:
 
@@ -122,26 +144,37 @@ Rules:
 
 ## Delivery phases
 
-### Phase 1: guardrails and audit
+### Phase 1: guardrails and audit — completed
 
-- add Flyway duplicate-version verification
-- document the canonical reuse decisions
-- stop AWS deployment attempts while schema realignment is incomplete
-- inventory current API contracts and classify them as canonical, compatibility-only, or removable
+- added Flyway duplicate-version verification
+- documented the canonical reuse decisions
+- stopped AWS deployment attempts while schema realignment is incomplete
+- isolated cross-platform line ending noise
 
-### Phase 2: core domain port
+### Phase 2A: core domain port — completed, awaiting CI
 
-- port and modernize `UserEntity`, `ProjectEntity`, and `ProjectFileEntity`
-- port repositories and ownership/visibility service logic
-- keep packages and constructor injection consistent with the modernization codebase
-- avoid copying obsolete AWS SDK v1, controller field injection, and dependency duplication
+- ported and modernized `UserEntity` and `UserRepository`
+- ported the owner-based numeric project aggregate as `OwnedProjectEntity`
+- ported `ProjectFileEntity` and repository query patterns
+- added `ProjectDomainService` ownership/access/file registration rules
+- replaced the baseline DDL with the canonical ownership/file/collaboration schema
+- isolated the simplified project model in `project_metadata_compat`
+- added unit tests that reject project creation without a persisted owner
+
+### Phase 2B: authentication and upload integration — next
+
+- add Spring Security resource-server JWT validation for Cognito-issued tokens
+- resolve/create the persisted user from validated claims
+- create/select a numeric owner-based project before upload storage
+- persist the source object in `project_files`
+- remove filename-derived project slugs from canonical persistence
 
 ### Phase 3: analysis integration
 
 - change `analysis_jobs.project_id` to the canonical numeric project foreign key
 - associate analysis jobs with source and result project files
 - stop implicit project creation from upload slugs
-- define authenticated project creation/upload behavior
+- store generated Terraform output as a project file/result artifact
 
 ### Phase 4: collaboration integration
 
