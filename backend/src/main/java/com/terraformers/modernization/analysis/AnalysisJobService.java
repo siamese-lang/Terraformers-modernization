@@ -63,9 +63,10 @@ public class AnalysisJobService {
     }
 
     @Transactional(readOnly = true)
-    public AnalysisJobResponse get(String id) {
-        return repository.findById(id)
-                .map(AnalysisJobResponse::from)
+    public AnalysisJobResponse get(String id, UserEntity requester) {
+        AnalysisJobEntity entity = repository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("analysis job not found: " + id));
+        projectDomainService.requireAccessibleProject(entity.getProjectId(), requester);
+        return AnalysisJobResponse.from(entity);
     }
 }
