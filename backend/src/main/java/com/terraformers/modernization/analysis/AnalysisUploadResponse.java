@@ -9,7 +9,8 @@ public record AnalysisUploadResponse(
         boolean binaryPersisted,
         String storageETag,
         String analysisJobId,
-        String projectId,
+        Long projectId,
+        Long sourceFileId,
         String sourceBucket,
         String sourceKey,
         String originalFilename,
@@ -32,12 +33,13 @@ public record AnalysisUploadResponse(
             StoredUploadObject storedUpload
     ) {
         return new AnalysisUploadResponse(
-                "analysis-job-compatibility",
+                "owned-project-analysis",
                 storedUpload.provider(),
                 storedUpload.binaryPersisted(),
                 storedUpload.eTag(),
                 job.id(),
                 job.projectId(),
+                job.sourceFileId(),
                 job.sourceBucket(),
                 job.sourceKey(),
                 originalFilename,
