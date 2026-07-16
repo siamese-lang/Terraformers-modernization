@@ -99,11 +99,17 @@ def main() -> int:
     require(errors, "chart: eks/aws-load-balancer-controller 3.4.2" in backend_origin_doc, "load-balancer-controller-doc-drift")
 
     require(errors, eso.get("chart_version") == "2.7.0", "external-secrets-version-drift")
-    require(errors, eso.get("service_account_create") is False, "external-secrets-service-account-create-enabled")
+    require(errors, eso.get("controller_service_account") == "external-secrets", "external-secrets-controller-service-account-drift")
+    require(errors, eso.get("controller_service_account_create") is True, "external-secrets-controller-service-account-not-created")
+    require(errors, eso.get("provider_auth_namespace") == "terraformers-runtime", "external-secrets-provider-auth-namespace-drift")
+    require(errors, eso.get("provider_auth_service_account") == "terraformers-external-secrets", "external-secrets-provider-auth-service-account-drift")
+    require(errors, eso.get("provider_auth_service_account_create_by_helm") is False, "external-secrets-provider-auth-created-by-helm")
     require(errors, eso.get("helm_install_crds") is False, "external-secrets-helm-crd-install-enabled")
     require(errors, eso.get("crd_installation") == "pinned-server-side-apply-before-helm", "external-secrets-crd-strategy-drift")
     require(errors, "/v2.7.0/deploy/crds/bundle.yaml" in str(eso.get("crd_bundle_url", "")), "external-secrets-crd-url-drift")
     require(errors, "External Secrets Operator chart: 2.7.0" in managed_secret_doc, "external-secrets-doc-version-missing")
+    require(errors, "controller ServiceAccount: external-secrets" in managed_secret_doc, "external-secrets-controller-doc-drift")
+    require(errors, "provider-auth ServiceAccount: terraformers-runtime/terraformers-external-secrets" in managed_secret_doc, "external-secrets-provider-auth-doc-drift")
 
     require(errors, 'choices=["stateful-dependencies", "eks-runtime", "frontend-delivery"]' in tfvars_builder, "tfvars-builder-stage-contract-drift")
     require(errors, "Operator CIDR must be an exact public IPv4 /32." in tfvars_builder, "tfvars-builder-operator-cidr-guard-missing")
