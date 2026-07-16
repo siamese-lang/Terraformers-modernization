@@ -45,8 +45,8 @@ done
 mkdir -p "${BACKEND_DIR}/target"
 cd "${BACKEND_DIR}"
 
-echo "[mariadb] packaging backend"
-mvn -q -DskipTests package
+echo "[mariadb] packaging backend without compiling or running tests"
+mvn -q -Dmaven.test.skip=true package
 
 jar_file="$(find target -maxdepth 1 -type f -name '*.jar' ! -name '*.original' | head -n 1)"
 if [[ -z "${jar_file}" ]]; then
