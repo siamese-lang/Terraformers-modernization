@@ -1,7 +1,7 @@
 CREATE TABLE users (
     user_id BIGINT NOT NULL AUTO_INCREMENT,
     cognito_sub VARCHAR(128) NOT NULL,
-    email VARCHAR(320) NOT NULL,
+    email VARCHAR(320) NULL,
     display_name VARCHAR(100) NULL,
     role VARCHAR(30) NOT NULL,
     status VARCHAR(30) NOT NULL,
