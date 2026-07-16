@@ -17,7 +17,8 @@ class AnalysisResultStorageTest {
 
         AnalysisResultStorage storage = new AnalysisResultStorage(new StubObjectWriter(), properties);
         AnalysisJobEntity job = new AnalysisJobEntity();
-        job.setProjectId("project-1");
+        job.setProjectId(101L);
+        job.setSourceFileId(201L);
         job.setSourceBucket("source-bucket");
         job.setSourceKey("uploads/diagram.png");
         job.prePersist();
@@ -30,8 +31,9 @@ class AnalysisResultStorageTest {
         ));
 
         assertThat(writeResult.bucket()).isEqualTo("result-bucket");
-        assertThat(writeResult.key()).startsWith("custom-prefix/project-1/");
+        assertThat(writeResult.key()).startsWith("custom-prefix/101/");
         assertThat(writeResult.key()).endsWith("/" + job.getId() + "/main.tf");
+        assertThat(writeResult.eTag()).isEqualTo("stub-etag");
     }
 
     @Test
@@ -39,7 +41,8 @@ class AnalysisResultStorageTest {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         AnalysisResultStorage storage = new AnalysisResultStorage(new StubObjectWriter(), properties);
         AnalysisJobEntity job = new AnalysisJobEntity();
-        job.setProjectId("project-2");
+        job.setProjectId(102L);
+        job.setSourceFileId(202L);
         job.setSourceBucket("source-bucket");
         job.setSourceKey("uploads/diagram.png");
         job.prePersist();
@@ -52,6 +55,6 @@ class AnalysisResultStorageTest {
         ));
 
         assertThat(writeResult.bucket()).isEqualTo("source-bucket");
-        assertThat(writeResult.key()).startsWith("analysis-results/project-2/");
+        assertThat(writeResult.key()).startsWith("analysis-results/102/");
     }
 }
