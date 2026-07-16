@@ -16,6 +16,12 @@ spring:
 terraformers:
   runtime:
     required-env: []
+  security:
+    jwt:
+      enabled: true
+      issuer-uri: https://cognito-idp.ap-northeast-2.amazonaws.com/test-pool
+      jwk-set-uri: http://127.0.0.1:65535/.well-known/jwks.json
+      client-id: test-client
   storage:
     s3-reader-enabled: false
     s3-writer-enabled: false
