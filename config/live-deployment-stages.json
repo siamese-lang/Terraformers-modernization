@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "project": "terraformers-modernization",
+  "environment": "dev",
+  "public_entrypoint": "cloudfront-only",
+  "terraform_plan_stages": [
+    "network",
+    "runtime-dependencies",
+    "stateful-dependencies",
+    "eks-runtime",
+    "frontend-delivery"
+  ],
+  "stages": [
+    {
+      "id": "00-state-and-identity-preflight",
+      "kind": "read-only-preflight",
+      "depends_on": [],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "expected AWS account matches STS caller identity",
+        "Terraform state bucket exists and versioning is enabled",
+        "plan role can read state and acquire the state lock"
+      ],
+      "stop_conditions": [
+        "unexpected AWS account",
+        "state backend missing or inaccessible",
+        "state lock cannot be acquired"
+      ],
+      "rollback": "No rollback. No resource mutation is permitted."
+    },
+    {
+      "id": "10-network-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "network",
+      "terraform_directory": "infra/terraform/envs/aws-runtime-network",
+      "depends_on": ["00-state-and-identity-preflight"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "saved Terraform plan and JSON representation",
+        "no delete or replace action",
+        "no 0.0.0.0/0 ingress introduced",
+        "private subnets retain internal load balancer tags"
+      ],
+      "stop_conditions": [
+        "delete or replace action",
+        "public ingress widening",
+        "unexpected NAT gateway creation",
+        "resource count exceeds reviewed scope"
+      ],
+      "rollback": "Discard the plan. No apply is performed by this stage."
+    },
+    {
+      "id": "20-runtime-dependencies-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "runtime-dependencies",
+      "terraform_directory": "infra/terraform/envs/backend-runtime-dependencies",
+      "depends_on": ["10-network-plan"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "ECR, S3, SQS and runtime Secret changes are enumerated",
+        "no static AWS credentials are introduced",
+        "optional production adapters remain disabled"
+      ],
+      "stop_conditions": [
+        "delete or replace action",
+        "public S3 access",
+        "unreviewed optional adapter resources",
+        "runtime Secret value material appears in evidence"
+      ],
+      "rollback": "Discard the plan. No apply is performed by this stage."
+    },
+    {
+      "id": "30-stateful-dependencies-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "stateful-dependencies",
+      "terraform_directory": "infra/terraform/envs/backend-stateful-dependencies",
+      "depends_on": ["10-network-plan", "20-runtime-dependencies-plan"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "RDS, Cognito and network dependencies are enumerated",
+        "RDS-managed password remains the credential source",
+        "database replacement is absent"
+      ],
+      "stop_conditions": [
+        "RDS delete or replacement",
+        "public database accessibility",
+        "credential value copied into Terraform evidence",
+        "unreviewed storage reduction"
+      ],
+      "rollback": "Discard the plan. Database replacement requires a separate migration and restore plan."
+    },
+    {
+      "id": "40-eks-runtime-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "eks-runtime",
+      "terraform_directory": "infra/terraform/envs/eks-runtime",
+      "depends_on": ["10-network-plan", "20-runtime-dependencies-plan", "30-stateful-dependencies-plan"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "EKS control plane, node group and IRSA changes are enumerated",
+        "backend, External Secrets and Load Balancer Controller identities remain separate",
+        "private backend origin security group remains CloudFront-scoped"
+      ],
+      "stop_conditions": [
+        "cluster or node group replacement",
+        "public endpoint CIDR widening",
+        "IAM wildcard expansion outside the pinned controller policy",
+        "backend origin security group becomes public"
+      ],
+      "rollback": "Discard the plan. Cluster replacement is not approved in the normal deployment path."
+    },
+    {
+      "id": "50-image-publish",
+      "kind": "future-approved-mutation",
+      "depends_on": ["40-eks-runtime-plan"],
+      "mutation_allowed": true,
+      "approval_required": true,
+      "success_evidence": [
+        "immutable backend image tag and digest",
+        "ECR repository matches Terraform output",
+        "source commit and image digest are recorded"
+      ],
+      "stop_conditions": [
+        "latest tag used as deployment identity",
+        "image vulnerability or container health gate fails",
+        "repository mismatch"
+      ],
+      "rollback": "Retain the previous known-good digest and redeploy that digest if rollout validation fails."
+    },
+    {
+      "id": "60-cluster-operators-and-secrets",
+      "kind": "future-approved-mutation",
+      "depends_on": ["40-eks-runtime-plan"],
+      "mutation_allowed": true,
+      "approval_required": true,
+      "success_evidence": [
+        "AWS Load Balancer Controller and External Secrets versions are recorded",
+        "ServiceAccount annotations match Terraform IRSA outputs",
+        "ExternalSecret target contains exactly nine runtime keys"
+      ],
+      "stop_conditions": [
+        "controller CRDs or webhooks are unhealthy",
+        "IRSA subject mismatch",
+        "database password appears outside the RDS-managed Secret mapping"
+      ],
+      "rollback": "Restore the previous Helm release revision and suspend reconciliation before removing generated resources."
+    },
+    {
+      "id": "70-backend-rollout",
+      "kind": "future-approved-mutation",
+      "depends_on": ["50-image-publish", "60-cluster-operators-and-secrets"],
+      "mutation_allowed": true,
+      "approval_required": true,
+      "success_evidence": [
+        "Deployment uses the reviewed image digest",
+        "readiness and liveness probes pass",
+        "database, Cognito and S3 runtime checks pass"
+      ],
+      "stop_conditions": [
+        "rollout timeout",
+        "readiness failure",
+        "Flyway migration failure",
+        "runtime Secret key mismatch"
+      ],
+      "rollback": "Roll back to the previous ReplicaSet and known-good image digest; do not reverse database migrations without a reviewed restore procedure."
+    },
+    {
+      "id": "80-private-origin-reconciliation",
+      "kind": "future-approved-mutation",
+      "depends_on": ["70-backend-rollout"],
+      "mutation_allowed": true,
+      "approval_required": true,
+      "success_evidence": [
+        "internal ALB exists in private subnets",
+        "targets are healthy Pod IPs",
+        "listener exposes /api only",
+        "direct public access is absent"
+      ],
+      "stop_conditions": [
+        "internet-facing load balancer",
+        "unhealthy target group",
+        "actuator listener route present",
+        "security group source differs from CloudFront origin-facing prefix list"
+      ],
+      "rollback": "Remove or revert the Ingress and controller reconciliation while leaving the backend ClusterIP service available for internal diagnosis."
+    },
+    {
+      "id": "90-frontend-delivery-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "frontend-delivery",
+      "terraform_directory": "infra/terraform/envs/frontend-delivery",
+      "depends_on": ["80-private-origin-reconciliation"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "CloudFront VPC origin resolves the approved internal ALB ARN",
+        "private S3 OAC policy remains distribution-scoped",
+        "API caching remains disabled",
+        "no custom error response replaces API errors"
+      ],
+      "stop_conditions": [
+        "public custom origin",
+        "internet-facing or non-application load balancer",
+        "S3 public access",
+        "distribution replacement without rollback review"
+      ],
+      "rollback": "Discard the plan. No frontend infrastructure mutation is performed by this stage."
+    },
+    {
+      "id": "100-frontend-publish",
+      "kind": "future-approved-mutation",
+      "depends_on": ["90-frontend-delivery-plan"],
+      "mutation_allowed": true,
+      "approval_required": true,
+      "success_evidence": [
+        "frontend build file and digest inventory",
+        "S3 sync destination",
+        "limited invalidation ID and completion status",
+        "CloudFront entrypoint smoke result"
+      ],
+      "stop_conditions": [
+        "Cognito build inputs missing",
+        "global /* invalidation requested",
+        "CloudFront invalidation does not complete",
+        "API response is replaced with HTML"
+      ],
+      "rollback": "Re-sync the previous verified build and issue a new limited invalidation for mutable entrypoints."
+    },
+    {
+      "id": "110-e2e-and-incident-evidence",
+      "kind": "live-verification",
+      "depends_on": ["100-frontend-publish"],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "authenticated upload, project/file registration, analysis and Terraform retrieval",
+        "public project read path",
+        "401/403/404 API errors remain JSON",
+        "one controlled failure and recovery scenario with timestamps and evidence"
+      ],
+      "stop_conditions": [
+        "ownership boundary failure",
+        "API caching observed",
+        "recovery cannot be explained by layer-specific evidence",
+        "cleanup scope is unclear"
+      ],
+      "rollback": "Return traffic to the previous verified frontend and backend digests, then preserve evidence before cleanup."
+    }
+  ]
+}
