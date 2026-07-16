@@ -20,7 +20,7 @@ siamese-lang/Terraformers-modernization
 
 ## Root cause found during AWS live validation
 
-The current target repository combined two incompatible schema models:
+The target repository combined two incompatible schema models:
 
 1. `V20260714_001__baseline_backend_schema.sql` used numeric project IDs and ownership/file/board relationships derived from the previous RDB refactor.
 2. The simplified `ProjectEntity` used a string project ID and stored upload metadata, analysis result pointers, and Terraform draft content directly on `projects`.
@@ -35,7 +35,7 @@ The following concepts from `rdb-refactor` remain the canonical core domain:
 
 - `users`
   - Cognito subject based identity
-  - email and display name
+  - optional email/display-name profile data
   - role/status lifecycle
 - `projects`
   - numeric `BIGINT` identity primary key
@@ -67,10 +67,12 @@ Improvements applied while porting:
 - services use constructor injection and explicit transactional boundaries.
 - baseline migrations no longer use `CREATE TABLE IF NOT EXISTS`, which could hide drift.
 - repository methods encode active/soft-delete query rules.
+- Cognito JWT verification is handled by Spring Security resource server instead of controller-side Cognito API calls.
+- access-token `sub` is the required identity; email remains optional because Cognito access tokens do not always contain an email claim.
 
 ### Keep from the modernization repository
 
-The following modernization capabilities are valid additions and should be integrated with the canonical core domain:
+The following modernization capabilities are valid additions and are integrated with the canonical core domain:
 
 - analysis job lifecycle
 - provider abstraction for local/Bedrock analysis
@@ -106,26 +108,45 @@ users
             └─ board_reactions
 ```
 
-Recommended analysis relationship:
+Current analysis relationship:
 
 - `analysis_jobs.project_id` references `projects.project_id` as `BIGINT`.
-- the uploaded source object is represented by `project_files.file_id` or a dedicated nullable source-file foreign key.
+- `analysis_jobs.source_file_id` references the uploaded `project_files.file_id`.
+- source bucket/key values are derived from persisted source-file metadata, not accepted as independent client authority.
 - externally visible request correlation remains a string field such as `correlation_id`; it is not used as the project primary key.
-- generated Terraform output is represented as a project file and/or an analysis result artifact, not as the sole state of the project row.
+- generated Terraform output still needs to be registered as a result `project_files` artifact before the compatibility model can be removed.
+
+## Authenticated upload flow
+
+```text
+Cognito access token
+  -> Spring Security JWT signature/issuer/client validation
+  -> persisted user resolution by sub
+  -> create or authorize numeric owner-based project
+  -> upload storage boundary
+  -> project_files source metadata
+  -> analysis_jobs(project_id, source_file_id)
+  -> analysis provider/result storage
+```
+
+`POST /api/upload` no longer derives a database project ID from a filename. Without a supplied numeric `projectId`, it creates a private project owned by the authenticated user. With a supplied ID, the caller must be the owner or an administrator.
 
 ## Transitional compatibility isolation
 
-The simplified project metadata entity is temporarily mapped to `project_metadata_compat`, not `projects`.
+The simplified project metadata entity remains temporarily mapped to `project_metadata_compat`, not `projects`.
 
-This table exists only while endpoint adapters are migrated. It is not a second canonical project domain and must not receive new business logic. The removal condition is:
+This table exists only while read/edit endpoint adapters are migrated. It is not a second canonical project domain and must not receive new business logic. The canonical upload path no longer writes to it.
 
-1. upload resolves an authenticated persisted user,
-2. upload creates or selects an owner-based numeric project,
-3. source and generated artifacts are stored through `project_files`,
-4. analysis jobs reference the numeric project and source/result files,
-5. project/public/tree/draft compatibility responses read from the canonical model.
+Removal conditions:
 
-After those conditions are met, delete `project_metadata_compat`, the simplified entity, and `ProjectMetadataService`.
+1. upload resolves an authenticated persisted user — completed
+2. upload creates or selects an owner-based numeric project — completed
+3. uploaded source artifacts are stored through `project_files` — completed
+4. analysis jobs reference numeric project/source file foreign keys — completed
+5. generated Terraform results are stored as project-file/result artifacts — pending
+6. project/public/tree/draft compatibility responses read from the canonical model — pending
+
+After the remaining conditions are met, delete `project_metadata_compat`, the simplified entity, and `ProjectMetadataService`.
 
 ## Migration policy
 
@@ -147,34 +168,45 @@ Rules:
 ### Phase 1: guardrails and audit — completed
 
 - added Flyway duplicate-version verification
-- documented the canonical reuse decisions
+- documented canonical reuse decisions
 - stopped AWS deployment attempts while schema realignment is incomplete
-- isolated cross-platform line ending noise
+- isolated cross-platform line-ending noise
 
-### Phase 2A: core domain port — completed, awaiting CI
+### Phase 2A: core domain port — completed and baseline-verified
 
 - ported and modernized `UserEntity` and `UserRepository`
 - ported the owner-based numeric project aggregate as `OwnedProjectEntity`
 - ported `ProjectFileEntity` and repository query patterns
 - added `ProjectDomainService` ownership/access/file registration rules
-- replaced the baseline DDL with the canonical ownership/file/collaboration schema
+- replaced baseline DDL with the canonical ownership/file/collaboration schema
 - isolated the simplified project model in `project_metadata_compat`
 - added unit tests that reject project creation without a persisted owner
+- passed Backend Local Verification run `29471302512`
 
-### Phase 2B: authentication and upload integration — next
+### Phase 2B: authentication and upload integration — implemented, awaiting CI
 
-- add Spring Security resource-server JWT validation for Cognito-issued tokens
-- resolve/create the persisted user from validated claims
-- create/select a numeric owner-based project before upload storage
-- persist the source object in `project_files`
+- added Spring Security Cognito JWT resource-server validation
+- added persisted user resolution from validated access-token claims
+- changed frontend upload/analysis requests to authenticated requests
+- create/select numeric owner-based projects before upload storage
+- persist source object metadata in `project_files`
 - remove filename-derived project slugs from canonical persistence
+- added 401 and authenticated upload contract tests
+- added an access-token test without an email claim
 
-### Phase 3: analysis integration
+### Phase 3A: numeric analysis integration — implemented, awaiting CI
 
-- change `analysis_jobs.project_id` to the canonical numeric project foreign key
-- associate analysis jobs with source and result project files
-- stop implicit project creation from upload slugs
-- store generated Terraform output as a project file/result artifact
+- changed `analysis_jobs.project_id` to a numeric project foreign key
+- added required `source_file_id` foreign key
+- derive source bucket/key from the persisted project file
+- authorize direct analysis-job creation against project ownership and source-file membership
+
+### Phase 3B: result artifact integration — next
+
+- register generated `main.tf` as a project file/result artifact
+- connect the analysis job to the result file
+- migrate Terraform draft/tree/read adapters to the canonical project/file model
+- remove write dependency on `project_metadata_compat`
 
 ### Phase 4: collaboration integration
 
