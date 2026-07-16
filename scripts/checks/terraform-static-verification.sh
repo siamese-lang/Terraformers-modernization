@@ -6,6 +6,7 @@ EVIDENCE_DIR="${REPO_ROOT}/artifacts/terraform-static-verification"
 SUMMARY="${EVIDENCE_DIR}/verification-summary.txt"
 TERRAFORM_DIRS=(
   "${REPO_ROOT}/infra/terraform/runtime-contract"
+  "${REPO_ROOT}/infra/terraform/bootstrap/aws-live-foundation"
   "${REPO_ROOT}/infra/terraform/envs/aws-runtime-network"
   "${REPO_ROOT}/infra/terraform/envs/backend-runtime-dependencies"
   "${REPO_ROOT}/infra/terraform/envs/backend-stateful-dependencies"
@@ -47,6 +48,7 @@ done
 
 printf '%s\n' \
   "terraform_static_verification=passed" \
+  "terraform_cli_minimum=1.15.0" \
   "terraform_directory_count=${#TERRAFORM_DIRS[@]}" \
   >>"${SUMMARY}"
 
