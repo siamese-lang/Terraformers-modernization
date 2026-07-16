@@ -4,7 +4,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
 RUN_DOCKER_BUILD="${RUN_DOCKER_BUILD:-false}"
-MAVEN_TEST_LOG="${BACKEND_DIR}/target/backend-local-verification-maven.log"
+MAVEN_TEST_LOG="$(mktemp "${TMPDIR:-/tmp}/terraformers-backend-local-verification.XXXXXX.log")"
+
+cleanup() {
+  rm -f "${MAVEN_TEST_LOG}"
+}
+trap cleanup EXIT
 
 print_surefire_reports() {
   local reports_dir="${BACKEND_DIR}/target/surefire-reports"
@@ -27,12 +32,13 @@ print_surefire_reports() {
 print_maven_tail() {
   if [[ -f "${MAVEN_TEST_LOG}" ]]; then
     echo "[backend] Maven output tail" >&2
-    tail -n 160 "${MAVEN_TEST_LOG}" >&2
+    tail -n 200 "${MAVEN_TEST_LOG}" >&2
+  else
+    echo "[backend] Maven output log not found: ${MAVEN_TEST_LOG}" >&2
   fi
 }
 
 run_maven_tests() {
-  mkdir -p "$(dirname "${MAVEN_TEST_LOG}")"
   mvn -q -e clean test >"${MAVEN_TEST_LOG}" 2>&1
 }
 
