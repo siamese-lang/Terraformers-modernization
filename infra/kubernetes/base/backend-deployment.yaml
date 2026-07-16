@@ -7,6 +7,14 @@ metadata:
     app.kubernetes.io/part-of: terraformers-modernization
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: terraformers-backend
@@ -17,10 +25,21 @@ spec:
         app.kubernetes.io/part-of: terraformers-modernization
     spec:
       serviceAccountName: terraformers-backend
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: public.ecr.aws/example/terraformers-backend:replace-with-immutable-tag
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 8080
@@ -29,11 +48,17 @@ spec:
                 name: terraformers-backend-runtime-config
             - secretRef:
                 name: terraformers-backend-runtime-secrets
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
               port: http
-            initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 6
@@ -41,7 +66,6 @@ spec:
             httpGet:
               path: /actuator/health/liveness
               port: http
-            initialDelaySeconds: 40
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 6
