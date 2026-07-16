@@ -69,6 +69,7 @@ function normalizeUploadResponse(uploadResponse) {
     id: resolveJobId(uploadResponse),
     projectId: uploadResponse.projectId,
     sourceFileId: uploadResponse.sourceFileId,
+    resultFileId: uploadResponse.resultFileId,
     sourceBucket: uploadResponse.sourceBucket,
     sourceKey: uploadResponse.sourceKey,
     status: uploadResponse.status,
@@ -121,7 +122,7 @@ function Dropzone({ closeModal, setDataMain }) {
     eventBus.emit('bedrock:logs', [
       `Selected image: ${file.name}`,
       'Uploading as the signed-in Cognito user: POST /api/upload',
-      'The backend creates an owned numeric project, persists source file metadata, and starts an analysis job.',
+      'The backend creates an owned numeric project, persists source and generated artifacts, and starts an analysis job.',
     ]);
 
     setDataMain((previous) => [
@@ -152,6 +153,7 @@ function Dropzone({ closeModal, setDataMain }) {
       eventBus.emit('bedrock:logs', [
         `Project created or selected: ${created.projectId}`,
         `Source file registered: ${created.sourceFileId}`,
+        `Terraform result file registered: ${created.resultFileId}`,
         `Analysis job created: ${created.id}`,
         `Source reference: s3://${created.sourceBucket}/${created.sourceKey}`,
       ]);
@@ -166,6 +168,7 @@ function Dropzone({ closeModal, setDataMain }) {
 
       eventBus.emit('bedrock:result', {
         projectId: completed?.projectId || created.projectId,
+        resultFileId: completed?.resultFileId || created.resultFileId,
         terraformCode: completed?.resultPreview || '',
         explanation: `분석 작업이 완료되었습니다. provider=${completed?.provider || '-'}, resultObjectKey=${completed?.resultObjectKey || '-'}`,
       });
@@ -182,7 +185,7 @@ function Dropzone({ closeModal, setDataMain }) {
     <section className="dropzone-panel">
       <h2>Upload architecture image</h2>
       <p className="muted-copy">
-        로그인한 사용자 소유의 프로젝트와 파일 메타데이터를 생성한 뒤 <code>POST /api/upload</code>로 분석 작업을 시작합니다.
+        로그인한 사용자 소유의 프로젝트에 원본 이미지와 생성된 <code>main.tf</code> 아티팩트를 등록합니다.
       </p>
       <div {...getRootProps({ style })}>
         <input {...getInputProps()} />
