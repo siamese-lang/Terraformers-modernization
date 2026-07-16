@@ -39,11 +39,6 @@ output "vpc_id" {
   value       = var.vpc_id
 }
 
-output "aws_region" {
-  description = "AWS region used by EKS runtime and controller installation."
-  value       = var.aws_region
-}
-
 output "backend_service_account_name" {
   description = "Kubernetes ServiceAccount name that should receive the backend IRSA annotation."
   value       = var.backend_service_account_name
