@@ -1,0 +1,38 @@
+name: Live Deployment Plan Contract Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aws-live-terraform-plan.yml"
+      - ".github/workflows/live-deployment-plan-contract-verification.yml"
+      - "config/live-deployment-stages.json"
+      - "scripts/deploy/build-live-deployment-execution-plan.py"
+      - "scripts/deploy/summarize-terraform-plan.py"
+      - "scripts/checks/live-deployment-plan-contract-verification.sh"
+      - "docs/live-aws-deployment-execution-plan.md"
+
+permissions:
+  contents: read
+
+jobs:
+  live-deployment-plan-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify live deployment plan contract
+        run: bash scripts/checks/live-deployment-plan-contract-verification.sh
+
+      - name: Upload live deployment plan contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-deployment-plan-contract-evidence
+          path: artifacts/live-deployment-plan-contract
+          if-no-files-found: warn
