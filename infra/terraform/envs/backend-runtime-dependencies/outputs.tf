@@ -8,9 +8,19 @@ output "upload_bucket_name" {
   value       = aws_s3_bucket.uploads.bucket
 }
 
+output "upload_bucket_arn" {
+  description = "S3 upload bucket ARN consumed by the EKS backend IRSA policy."
+  value       = aws_s3_bucket.uploads.arn
+}
+
 output "result_bucket_name" {
   description = "S3 bucket name for generated analysis/Terraform result objects."
   value       = aws_s3_bucket.results.bucket
+}
+
+output "result_bucket_arn" {
+  description = "S3 result bucket ARN consumed by the EKS backend IRSA policy."
+  value       = aws_s3_bucket.results.arn
 }
 
 output "analysis_result_key_prefix" {
@@ -23,9 +33,19 @@ output "ai_log_queue_url" {
   value       = aws_sqs_queue.ai_log.url
 }
 
+output "ai_log_queue_arn" {
+  description = "SQS AI progress queue ARN consumed by the EKS backend IRSA policy."
+  value       = aws_sqs_queue.ai_log.arn
+}
+
 output "terraform_log_queue_url" {
   description = "SQS queue URL available when the optional Terraform compatibility publisher is enabled."
   value       = aws_sqs_queue.terraform_log.url
+}
+
+output "terraform_log_queue_arn" {
+  description = "SQS Terraform compatibility queue ARN consumed by the EKS backend IRSA policy."
+  value       = aws_sqs_queue.terraform_log.arn
 }
 
 output "backend_runtime_secret_arn" {
