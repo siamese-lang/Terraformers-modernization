@@ -31,6 +31,7 @@ public class CognitoJwtSecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/upload", "/api/analysis/jobs").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/analysis/jobs/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/projects", "/api/project-tree").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/projects/*/visibility").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/projects/*/terraform/main.tf").authenticated()
