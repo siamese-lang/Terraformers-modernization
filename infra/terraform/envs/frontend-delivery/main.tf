@@ -179,16 +179,21 @@ resource "aws_cloudfront_distribution" "frontend" {
     ssl_support_method             = var.acm_certificate_arn == null ? null : "sni-only"
     minimum_protocol_version       = var.acm_certificate_arn == null ? "TLSv1" : "TLSv1.2_2021"
   }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.aliases) == 0 || (var.acm_certificate_arn != null && length(trimspace(var.acm_certificate_arn)) > 0)
+      error_message = "acm_certificate_arn is required when aliases are configured."
+    }
+  }
 }
 
 data "aws_iam_policy_document" "frontend_bucket" {
   statement {
-    sid     = "AllowCloudFrontServiceReadOnly"
-    effect  = "Allow"
-    actions = ["s3:GetObject"]
-    resources = [
-      "${aws_s3_bucket.frontend.arn}/*"
-    ]
+    sid       = "AllowCloudFrontServiceReadOnly"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.frontend.arn}/*"]
 
     principals {
       type        = "Service"
