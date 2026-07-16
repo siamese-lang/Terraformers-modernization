@@ -9,4 +9,14 @@ public interface ProjectFileRepository extends JpaRepository<ProjectFileEntity, 
     List<ProjectFileEntity> findByProject_ProjectIdAndDeletedAtIsNullOrderBySortOrderAscCreatedAtAsc(Long projectId);
 
     Optional<ProjectFileEntity> findByFileIdAndDeletedAtIsNull(Long fileId);
+
+    Optional<ProjectFileEntity> findFirstByProject_ProjectIdAndFileTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
+            Long projectId,
+            String fileType
+    );
+
+    List<ProjectFileEntity> findByProject_ProjectIdAndFileTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
+            Long projectId,
+            String fileType
+    );
 }
