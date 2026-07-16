@@ -17,11 +17,7 @@ Previous RDB refactor
 
 The RDB refactor is the primary reference for the backend business domain. The original repositories remain references for frontend-visible behavior, product terminology, and infrastructure intent.
 
-The detailed persistence decision is defined in:
-
-```text
-docs/rdb-domain-realignment.md
-```
+The detailed persistence decision is defined in `docs/rdb-domain-realignment.md`.
 
 ## 2. Reuse-first rule
 
@@ -29,11 +25,11 @@ Before implementing or replacing a feature:
 
 1. locate the corresponding implementation and contract in the original repositories and `rdb-refactor`
 2. identify what is product behavior, what is business-domain persistence, and what is obsolete runtime coupling
-3. reuse valid domain models, repository behavior, API contracts, and tests
+3. reuse valid domain models, repository behavior, API contracts, tests, deployment patterns, and operations guidance
 4. refactor tightly coupled implementation behind smaller services and adapters
 5. implement new code only where the modernization requirements are genuinely new
 
-A smaller implementation is not automatically a better modernization. Simplification that removes ownership, relationships, lifecycle state, or auditability is a regression.
+A smaller implementation is not automatically a better modernization. Simplification that removes ownership, relationships, lifecycle state, auditability, or operational evidence is a regression.
 
 ## 3. What must be reused
 
@@ -72,6 +68,10 @@ Reuse these established operating decisions:
 - environment/Secret-driven datasource values
 - no emergency switch to Hibernate schema mutation
 - schema and runtime verification before AWS deployment
+- GitHub OIDC rather than long-lived AWS access keys
+- immutable ECR image references
+- Terraform output-driven deployment inputs
+- manual live-deployment boundary after static preflight
 
 ## 4. What should be improved instead of copied
 
@@ -84,6 +84,9 @@ Do not copy the previous implementation mechanically where it has these weakness
 - direct AWS client creation inside controllers
 - compatibility parsing mixed into business services
 - manual schema artifacts competing with Flyway as source of truth
+- static AWS credential fallbacks
+- placeholder Secret values for disabled adapters
+- target architecture described as if it were already deployed
 
 Modernization improvements should include:
 
@@ -94,6 +97,7 @@ Modernization improvements should include:
 - versioned MariaDB migrations
 - Testcontainers-based entity/Flyway validation
 - CI ordering that prevents AWS deployment when local contracts fail
+- exact Terraform-output-to-runtime-input verification
 
 ## 5. Current design decisions being reversed
 
@@ -120,8 +124,31 @@ The following remain valid new capabilities, but must extend rather than replace
 - Kubernetes Secret/ConfigMap contract verification
 - deployment package rendering and dry-run checks
 - AWS evidence collection and cleanup runbooks
+- private AWS runtime input bundle generated from Terraform outputs
+- OIDC-only image and AWS validation workflows
 
-## 7. Verification rule
+## 7. Current deployment reuse boundary
+
+The current repository has verified source contracts for:
+
+- backend ECR repository
+- RDS MariaDB and Cognito
+- upload/result S3 buckets
+- EKS namespace, ServiceAccount, and IRSA role
+- Secrets Manager container and Kubernetes Secret name
+- backend image and Kubernetes package
+- React production build
+
+The following remain modernization extensions rather than completed reused functionality:
+
+- frontend hosting bucket and CloudFront distribution
+- final managed-secret synchronization and rotation
+- live EKS rollout and authenticated smoke validation
+- optional adapter enablement with resource, IAM, network, and runtime evidence
+
+The original infrastructure intent may guide these extensions, but missing current contracts must not be concealed by copying obsolete workflow or documentation claims.
+
+## 8. Verification rule
 
 A reused or improved feature is complete only when:
 
@@ -130,4 +157,8 @@ A reused or improved feature is complete only when:
 3. JPA mappings and Flyway DDL match on MariaDB
 4. compatibility adapters are tested separately from domain services
 5. runtime configuration is checked before deployment
-6. no real AWS apply/destroy or Kubernetes apply is required to discover repository-level mismatches
+6. Terraform outputs match the private deployment input bundle
+7. generated artifacts and downloaded evidence are excluded from source control
+8. no real AWS apply/destroy or Kubernetes apply is required to discover repository-level mismatches
+
+Temporary compatibility code, generated deployment artifacts, and target architecture documentation must not redefine the core service or be presented as completed deployment state.
