@@ -1,0 +1,41 @@
+name: Pre-Live AWS Readiness Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aws-live-terraform-plan.yml"
+      - ".github/workflows/pre-live-aws-readiness-verification.yml"
+      - ".github/workflows/terraform-static-verification.yml"
+      - "config/live-aws-prerequisites.json"
+      - "infra/terraform/bootstrap/aws-live-foundation/**"
+      - "infra/terraform/envs/**/live.tfvars.example"
+      - "infra/terraform/envs/eks-runtime/variables.tf"
+      - "scripts/checks/pre-live-aws-readiness-verification.py"
+      - "scripts/deploy/live-aws-prerequisite-inventory.py"
+      - "docs/live-aws-*.md"
+
+permissions:
+  contents: read
+
+jobs:
+  pre-live-aws-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify deployment-ready static contract
+        run: python3 scripts/checks/pre-live-aws-readiness-verification.py
+
+      - name: Upload pre-live readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pre-live-aws-readiness-evidence
+          path: artifacts/pre-live-aws-readiness
+          if-no-files-found: error
