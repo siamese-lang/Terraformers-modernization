@@ -3,14 +3,15 @@ package com.terraformers.modernization.project;
 import java.time.Instant;
 
 public record PublicProjectResponse(
-        String projectId,
-        String id,
+        Long projectId,
+        Long id,
         String projectName,
         String name,
         ProjectVisibility visibility,
         boolean isPrivate,
         String imageUrl,
         String description,
+        Long sourceFileId,
         String originalFilename,
         String contentType,
         Long uploadSizeBytes,
@@ -20,6 +21,7 @@ public record PublicProjectResponse(
         boolean sourceBinaryPersisted,
         String sourceETag,
         String latestAnalysisJobId,
+        Long latestResultFileId,
         String latestResultObjectKey,
         Instant terraformDraftUpdatedAt,
         Instant createdAt,
@@ -28,7 +30,7 @@ public record PublicProjectResponse(
         String terraformDraftApiPath
 ) {
     static PublicProjectResponse from(ProjectResponse project) {
-        String projectId = project.projectId();
+        Long projectId = project.projectId();
         String displayName = project.displayName();
         return new PublicProjectResponse(
                 projectId,
@@ -38,7 +40,8 @@ public record PublicProjectResponse(
                 project.visibility(),
                 project.visibility() != ProjectVisibility.PUBLIC,
                 null,
-                null,
+                project.description(),
+                project.sourceFileId(),
                 project.originalFilename(),
                 project.contentType(),
                 project.uploadSizeBytes(),
@@ -48,6 +51,7 @@ public record PublicProjectResponse(
                 project.sourceBinaryPersisted(),
                 project.sourceETag(),
                 project.latestAnalysisJobId(),
+                project.latestResultFileId(),
                 project.latestResultObjectKey(),
                 project.terraformDraftUpdatedAt(),
                 project.createdAt(),
