@@ -13,17 +13,21 @@ on:
         type: boolean
         default: false
       aws_region:
-        description: AWS region for ECR login when push_image=true.
-        required: true
-        default: ap-northeast-2
+        description: Optional AWS region override. Defaults to repository/environment variable AWS_REGION, then ap-northeast-2.
+        required: false
+        default: ''
       aws_role_to_assume:
-        description: Optional IAM role ARN for GitHub OIDC. Leave blank to use repository AWS secrets when push_image=true.
+        description: Optional GitHub OIDC role ARN override. Defaults to repository/environment secret AWS_ROLE_TO_ASSUME.
         required: false
         default: ''
 
 permissions:
   contents: read
   id-token: write
+
+env:
+  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'ap-northeast-2' }}
+  AWS_ROLE_TO_ASSUME: ${{ inputs.aws_role_to_assume || secrets.AWS_ROLE_TO_ASSUME }}
 
 jobs:
   backend-image-publish:
@@ -44,34 +48,26 @@ jobs:
           docker build -f backend/Dockerfile -t "${{ inputs.image_uri }}" backend
           docker image inspect "${{ inputs.image_uri }}" > backend-image-inspect.json
 
-      - name: Configure AWS credentials through OIDC role
-        if: ${{ inputs.push_image && inputs.aws_role_to_assume != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws_role_to_assume }}
-          aws-region: ${{ inputs.aws_region }}
-
-      - name: Export static AWS credentials from repository secrets
-        if: ${{ inputs.push_image && inputs.aws_role_to_assume == '' }}
-        env:
-          SECRET_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          SECRET_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SECRET_AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      - name: Validate OIDC role configuration
+        if: ${{ inputs.push_image }}
         run: |
           set -euo pipefail
-          if [[ -z "${SECRET_AWS_ACCESS_KEY_ID}" || -z "${SECRET_AWS_SECRET_ACCESS_KEY}" ]]; then
-            echo "Set aws_role_to_assume or repository secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY before pushing." >&2
+          if [[ -z "${AWS_ROLE_TO_ASSUME}" ]]; then
+            echo "AWS_ROLE_TO_ASSUME repository/environment secret or aws_role_to_assume input is required when push_image=true." >&2
             exit 1
           fi
-          {
-            echo "AWS_ACCESS_KEY_ID=${SECRET_AWS_ACCESS_KEY_ID}"
-            echo "AWS_SECRET_ACCESS_KEY=${SECRET_AWS_SECRET_ACCESS_KEY}"
-            if [[ -n "${SECRET_AWS_SESSION_TOKEN}" ]]; then
-              echo "AWS_SESSION_TOKEN=${SECRET_AWS_SESSION_TOKEN}"
-            fi
-            echo "AWS_REGION=${{ inputs.aws_region }}"
-            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
-          } >> "${GITHUB_ENV}"
+
+      - name: Configure AWS credentials through OIDC
+        if: ${{ inputs.push_image }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersBackendImagePublish
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS caller identity
+        if: ${{ inputs.push_image }}
+        run: aws sts get-caller-identity --region "${AWS_REGION}"
 
       - name: Login to ECR
         if: ${{ inputs.push_image }}
@@ -82,7 +78,7 @@ jobs:
             echo "image_uri must be an ECR URI when push_image=true: ${{ inputs.image_uri }}" >&2
             exit 1
           fi
-          aws ecr get-login-password --region "${{ inputs.aws_region }}" \
+          aws ecr get-login-password --region "${AWS_REGION}" \
             | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
       - name: Push backend image
@@ -93,6 +89,8 @@ jobs:
           {
             echo "image_uri=${{ inputs.image_uri }}"
             echo "pushed=true"
+            echo "aws_region=${AWS_REGION}"
+            echo "credential_mode=github-oidc"
             echo "pushed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > backend-image-publish-summary.txt
 
@@ -103,6 +101,7 @@ jobs:
           {
             echo "image_uri=${{ inputs.image_uri }}"
             echo "pushed=false"
+            echo "credential_mode=not-configured"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > backend-image-publish-summary.txt
 
