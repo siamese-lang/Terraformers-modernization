@@ -40,6 +40,17 @@ jobs:
       - name: Verify AWS environment contract
         run: bash scripts/checks/aws-environment-contract-verification.sh
 
+      - name: Inventory AWS deployment contract sources
+        run: python3 scripts/checks/aws-deployment-contract-inventory.py
+
+      - name: Upload AWS environment contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-environment-contract-evidence
+          if-no-files-found: warn
+          path: artifacts/aws-environment-contract
+
       - name: Upload runtime contract diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -48,7 +59,6 @@ jobs:
           path: |
             backend/target/surefire-reports
             backend/target/*.log
-            artifacts/aws-environment-contract
 
   predeployment-package-verification:
     name: Build images and dry-run deployment packages
