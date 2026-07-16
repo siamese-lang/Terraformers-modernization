@@ -1,6 +1,5 @@
 package com.terraformers.modernization.security;
 
-import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -31,8 +30,12 @@ public class CognitoJwtSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/upload").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/analysis/jobs").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/upload", "/api/analysis/jobs").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/projects", "/api/project-tree").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/projects/*/visibility").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/projects/*/terraform/main.tf").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/projects/*/comments", "/api/addProjectComment")
+                        .authenticated()
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer.jwt(Customizer.withDefaults()))
@@ -72,15 +75,12 @@ public class CognitoJwtSecurityConfig {
     }
 
     private OAuth2TokenValidatorResult validateCognitoClaims(Jwt jwt, String clientId) {
-        String tokenUse = jwt.getClaimAsString("token_use");
-        if (!List.of("id", "access").contains(tokenUse)) {
-            return failure("invalid_token_use", "Cognito token_use must be id or access");
+        if (!"access".equals(jwt.getClaimAsString("token_use"))) {
+            return failure("invalid_token_use", "Cognito token_use must be access");
         }
 
-        String accessTokenClientId = jwt.getClaimAsString("client_id");
-        boolean clientMatches = clientId.equals(accessTokenClientId) || jwt.getAudience().contains(clientId);
-        if (!clientMatches) {
-            return failure("invalid_client", "Cognito token client does not match configured client id");
+        if (!clientId.equals(jwt.getClaimAsString("client_id"))) {
+            return failure("invalid_client", "Cognito access-token client_id does not match configured client id");
         }
         return OAuth2TokenValidatorResult.success();
     }
