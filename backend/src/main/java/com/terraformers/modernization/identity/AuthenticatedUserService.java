@@ -24,23 +24,29 @@ public class AuthenticatedUserService {
         }
 
         String cognitoSub = requiredClaim(jwt, "sub", 128);
-        String email = requiredClaim(jwt, "email", 320).toLowerCase(Locale.ROOT);
-        String displayName = resolveDisplayName(jwt, email);
+        String email = optionalClaim(jwt, "email", 320);
+        if (email != null) {
+            email = email.toLowerCase(Locale.ROOT);
+        }
+        String displayName = resolveDisplayName(jwt, email, cognitoSub);
 
+        String resolvedEmail = email;
         return userRepository.findByCognitoSub(cognitoSub)
-                .map(existing -> synchronize(existing, email, displayName))
-                .orElseGet(() -> createWithRetry(cognitoSub, email, displayName));
+                .map(existing -> synchronize(existing, resolvedEmail, displayName))
+                .orElseGet(() -> createWithRetry(cognitoSub, resolvedEmail, displayName));
     }
 
     private UserEntity synchronize(UserEntity existing, String email, String displayName) {
-        userRepository.findByEmail(email)
-                .filter(other -> !Objects.equals(other.getUserId(), existing.getUserId()))
-                .ifPresent(other -> {
-                    throw new IllegalStateException("authenticated email is already linked to another user");
-                });
+        if (email != null) {
+            userRepository.findByEmail(email)
+                    .filter(other -> !Objects.equals(other.getUserId(), existing.getUserId()))
+                    .ifPresent(other -> {
+                        throw new IllegalStateException("authenticated email is already linked to another user");
+                    });
+        }
 
         boolean changed = false;
-        if (!email.equals(existing.getEmail())) {
+        if (email != null && !email.equals(existing.getEmail())) {
             existing.setEmail(email);
             changed = true;
         }
@@ -55,9 +61,11 @@ public class AuthenticatedUserService {
     }
 
     private UserEntity createWithRetry(String cognitoSub, String email, String displayName) {
-        userRepository.findByEmail(email).ifPresent(existing -> {
-            throw new IllegalStateException("authenticated email is already linked to another Cognito subject");
-        });
+        if (email != null) {
+            userRepository.findByEmail(email).ifPresent(existing -> {
+                throw new IllegalStateException("authenticated email is already linked to another Cognito subject");
+            });
+        }
 
         UserEntity user = new UserEntity();
         user.setCognitoSub(cognitoSub);
@@ -75,22 +83,31 @@ public class AuthenticatedUserService {
         }
     }
 
-    private String resolveDisplayName(Jwt jwt, String email) {
+    private String resolveDisplayName(Jwt jwt, String email, String cognitoSub) {
         String displayName = firstNonBlank(
                 jwt.getClaimAsString("name"),
                 jwt.getClaimAsString("preferred_username"),
                 jwt.getClaimAsString("cognito:username"),
-                email
+                email,
+                cognitoSub
         );
         return displayName.length() <= 100 ? displayName : displayName.substring(0, 100);
     }
 
     private String requiredClaim(Jwt jwt, String claimName, int maxLength) {
-        String value = jwt.getClaimAsString(claimName);
-        if (value == null || value.isBlank()) {
+        String value = optionalClaim(jwt, claimName, maxLength);
+        if (value == null) {
             throw new AuthenticationCredentialsNotFoundException(
                     "authenticated Cognito JWT is missing required claim: " + claimName
             );
+        }
+        return value;
+    }
+
+    private String optionalClaim(Jwt jwt, String claimName, int maxLength) {
+        String value = jwt.getClaimAsString(claimName);
+        if (value == null || value.isBlank()) {
+            return null;
         }
         String normalized = value.strip();
         if (normalized.length() > maxLength) {
