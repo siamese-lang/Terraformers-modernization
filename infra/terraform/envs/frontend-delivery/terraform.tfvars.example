@@ -1,0 +1,20 @@
+environment = "dev"
+aws_region  = "ap-northeast-2"
+name_prefix = "terraformers"
+
+# Use a globally unique bucket name. Keep the bucket private; CloudFront OAC is the only reader.
+frontend_bucket_name          = "terraformers-dev-frontend-example"
+frontend_bucket_force_destroy = false
+
+# Preserve deployable frontend versions for rollback evidence.
+noncurrent_version_expiration_days = 30
+
+# Existing approved backend origin. Supply a hostname only, without https:// or a path.
+# This is expected to become the private/public load-balancer DNS name selected in the next network step.
+api_origin_domain_name   = "api-origin.example.internal"
+api_origin_protocol_policy = "https-only"
+
+# Leave empty to use the CloudFront default domain and certificate during initial validation.
+aliases             = []
+acm_certificate_arn = null
+price_class         = "PriceClass_200"
