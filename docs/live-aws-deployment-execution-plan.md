@@ -2,21 +2,21 @@
 
 ## 1. 목적
 
-정적 source/runtime/package 계약이 모두 통과한 뒤, 실제 AWS 배포를 한 번에 실행하지 않고 **계정 확인 → 원격 state 확인 → 단계별 Terraform plan → 명시적 승인 → 배포·검증·복구** 순서로 진행한다.
-
-현재 저장소가 자동화하는 범위는 다음까지다.
+정적 source/runtime/package 계약이 통과한 뒤 실제 AWS 배포를 한 번에 실행하지 않고 다음 순서로 진행한다.
 
 ```text
-repository contract
-  -> protected GitHub environment
-  -> GitHub OIDC
-  -> expected AWS account verification
-  -> versioned S3 remote state + DynamoDB lock verification
-  -> selected Terraform environment plan
-  -> sanitized risk evidence
+account and identity verification
+  -> foundation plan review
+  -> explicit foundation apply approval
+  -> foundation post-apply verification
+  -> bootstrap state migration to versioned S3
+  -> protected GitHub environment configuration
+  -> strict prerequisite inventory
+  -> stage-by-stage Terraform plan and approval
+  -> deployment, verification, recovery, and cleanup evidence
 ```
 
-현재 workflow에는 `terraform apply`, `terraform destroy`, `kubectl apply`, Helm install/upgrade, image push, S3 sync, CloudFront invalidation이 없다.
+현재 저장소 workflow는 plan과 검증까지만 자동화한다. `terraform apply`, `terraform destroy`, `kubectl apply`, Helm install/upgrade, image push, S3 sync, CloudFront invalidation은 자동 실행하지 않는다.
 
 ## 2. 최종 서비스 경로
 
@@ -32,18 +32,186 @@ Browser
 
 Public entry point는 CloudFront 하나다. Internet-facing ALB, public backend DNS, public `/actuator/*` route는 허용하지 않는다.
 
-## 3. 단계 구조
+## 3. State 및 identity 기준
+
+Canonical prerequisite contract:
+
+```text
+config/live-aws-prerequisites.json
+```
+
+고정 기준:
+
+```text
+Terraform CLI             1.15.8
+AWS region                ap-northeast-2
+state backend             private versioned S3
+state locking             S3 native .tflock
+DynamoDB lock table       not used
+GitHub authentication     protected environment + OIDC
+GitHub environment        aws-live-plan
+state prefix              terraformers-modernization/dev
+```
+
+Required GitHub environment variables:
+
+```text
+AWS_REGION
+AWS_ROLE_TO_ASSUME
+AWS_TERRAFORM_STATE_BUCKET
+AWS_TERRAFORM_STATE_PREFIX
+```
+
+Required GitHub environment secrets:
+
+```text
+AWS_LIVE_NETWORK_TFVARS_B64
+AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64
+AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64
+AWS_LIVE_EKS_TFVARS_B64
+AWS_LIVE_FRONTEND_TFVARS_B64
+```
+
+`AWS_TERRAFORM_LOCK_TABLE`은 사용하지 않는다. Backend init은 `use_lockfile=true`를 사용한다.
+
+Stage state key 규칙:
+
+```text
+<AWS_TERRAFORM_STATE_PREFIX>/<plan_stage>/terraform.tfstate
+```
+
+예:
+
+```text
+terraformers-modernization/dev/network/terraform.tfstate
+terraformers-modernization/dev/eks-runtime/terraform.tfstate
+```
+
+## 4. Foundation bootstrap
+
+Terraform directory:
+
+```text
+infra/terraform/bootstrap/aws-live-foundation
+```
+
+Foundation 생성 대상:
+
+- versioning이 활성화된 private S3 state bucket
+- S3 public access block
+- TLS-only bucket policy
+- AES256 server-side encryption
+- S3 native state 및 `.tflock` object 권한
+- 기존 GitHub IAM OIDC provider 재사용 또는 신규 생성
+- `aws-live-plan` environment subject만 신뢰하는 Terraform plan role
+- AWS `ReadOnlyAccess` 및 state prefix 한정 write 권한
+
+Foundation은 최초 1회 local state로 시작한다. 다음 순서를 바꾸지 않는다.
+
+1. exact AWS account와 기존 OIDC provider를 확인한다.
+2. private bootstrap tfvars를 저장소 밖에 작성한다.
+3. `scripts/deploy/plan-live-foundation.sh`로 plan을 생성하고 검증한다.
+4. create-only resource set, role trust, S3 보호 설정, binary plan digest를 검토한다.
+5. 사용자가 foundation apply를 명시적으로 승인한다.
+6. 검토한 binary plan만 apply한다.
+7. AWS API와 Terraform output으로 생성 결과를 읽기 전용 검증한다.
+8. local bootstrap state의 백업을 만든다.
+9. private backend configuration을 작성한다.
+10. `terraform init -migrate-state`로 bootstrap state를 생성된 S3 backend로 이전한다.
+11. remote state와 local backup의 resource address를 비교한다.
+12. migration 후 plan이 `No changes`인지 확인한다.
+
+Foundation apply와 state migration은 같은 작업으로 취급하지 않는다. Apply 검증이 끝나기 전에 state migration을 시작하지 않는다.
+
+## 5. Foundation apply 승인 조건
+
+Foundation apply는 다음 조건이 모두 충족된 경우에만 승인 대상으로 본다.
+
+1. PR head와 local head가 일치한다.
+2. 최신 8개 automatic verification workflow가 모두 성공한다.
+3. `scripts/deploy/plan-live-foundation.sh` 결과가 `apply-review-ready`다.
+4. OIDC provider mode가 실제 AWS inventory와 일치한다.
+5. plan이 예상된 foundation resource만 포함한다.
+6. 모든 managed action이 `create`다.
+7. delete, update, replacement가 없다.
+8. expected AWS account와 caller account가 일치한다.
+9. state bucket 이름, region, prefix가 검토값과 일치한다.
+10. `force_destroy=false`, public access block, versioning, encryption이 확인된다.
+11. role trust subject와 audience가 exact match다.
+12. binary plan은 저장소 밖에 있으며 plan 이후 source/tfvars가 변경되지 않았다.
+13. 사용자가 apply 실행을 명시적으로 승인한다.
+
+`allow_destructive=true`는 일반 apply 허용 스위치가 아니다. 데이터 이전·백업·복구 계획이 있는 별도 변경에서만 검토한다.
+
+## 6. Foundation 사후 검증
+
+Apply 직후 다음을 읽기 전용으로 확인한다.
+
+```text
+STS caller account
+S3 bucket existence and region
+S3 versioning Enabled
+S3 public access block all true
+S3 default encryption AES256
+S3 bucket policy denies insecure transport
+IAM plan role existence
+IAM role trust subject and audience
+ReadOnlyAccess attachment
+state prefix object permissions
+Terraform outputs
+```
+
+사후 검증 중 하나라도 실패하면 GitHub environment 또는 후속 Terraform stage를 구성하지 않는다. 먼저 실제 리소스와 local state의 일치 여부를 조사한다.
+
+## 7. Bootstrap state migration
+
+Private backend configuration은 다음 계약을 사용한다.
+
+```hcl
+bucket       = "<created-state-bucket>"
+key          = "terraformers-modernization/dev/bootstrap/terraform.tfstate"
+region       = "ap-northeast-2"
+encrypt      = true
+use_lockfile = true
+```
+
+Migration 전:
+
+- local `terraform.tfstate`와 backup을 저장소 밖에 보관한다.
+- `terraform state list`를 기록한다.
+- state serial과 lineage를 기록한다.
+- bucket versioning과 native lockfile 권한을 재확인한다.
+
+Migration 후:
+
+- remote backend init 성공
+- remote state object 존재
+- state version 생성
+- `terraform state list` address 동일
+- `terraform plan` 결과 `No changes`
+- local raw state와 backend configuration 미커밋
+
+State migration 실패 시 local state를 삭제하지 않는다. 원격 object와 local backup을 모두 보존하고 원인을 확인한다.
+
+## 8. GitHub 보호 환경
+
+Foundation output과 state migration이 확정된 뒤 `aws-live-plan` environment를 구성한다.
+
+권장 protection:
+
+- deployment branch는 배포 시점의 승인된 branch만 허용
+- required reviewer 설정
+- administrator bypass 비활성 또는 사용 금지
+- environment variable과 Secret은 environment scope에 저장
+
+Role ARN은 credential이 아니므로 variable로 저장한다. Private tfvars plaintext와 base64 값은 console output, workflow artifact, issue, PR에 붙이지 않는다.
+
+## 9. 단계 구조
 
 Canonical stage manifest:
 
 ```text
 config/live-deployment-stages.json
-```
-
-생성기:
-
-```text
-scripts/deploy/build-live-deployment-execution-plan.py
 ```
 
 단계:
@@ -61,85 +229,19 @@ scripts/deploy/build-live-deployment-execution-plan.py
 11. `100-frontend-publish`
 12. `110-e2e-and-incident-evidence`
 
-Terraform plan이 가능한 환경은 다섯 개다.
+Terraform plan selector:
 
 | Selector | Terraform directory | 선행 조건 |
 |---|---|---|
-| `network` | `infra/terraform/envs/aws-runtime-network` | AWS account/state preflight |
-| `runtime-dependencies` | `infra/terraform/envs/backend-runtime-dependencies` | network plan review |
-| `stateful-dependencies` | `infra/terraform/envs/backend-stateful-dependencies` | network/runtime dependency review |
-| `eks-runtime` | `infra/terraform/envs/eks-runtime` | network/runtime/stateful review |
-| `frontend-delivery` | `infra/terraform/envs/frontend-delivery` | internal ALB가 실제로 존재하고 ARN이 확정됨 |
+| `network` | `infra/terraform/envs/aws-runtime-network` | foundation/state/environment strict inventory |
+| `runtime-dependencies` | `infra/terraform/envs/backend-runtime-dependencies` | network plan/apply output review |
+| `stateful-dependencies` | `infra/terraform/envs/backend-stateful-dependencies` | network/runtime output review |
+| `eks-runtime` | `infra/terraform/envs/eks-runtime` | network/runtime/stateful output review |
+| `frontend-delivery` | `infra/terraform/envs/frontend-delivery` | healthy controller-created internal ALB ARN |
 
-`frontend-delivery`는 Ingress 적용 전에는 계획할 수 없다. CloudFront VPC origin이 참조할 internal ALB ARN이 실제 AWS에 존재해야 하기 때문이다.
+`frontend-delivery`는 internal ALB ARN이 실제 AWS에 존재한 뒤에만 계획한다.
 
-## 4. GitHub 보호 환경
-
-실제 AWS plan job은 다음 protected environment를 사용한다.
-
-```text
-aws-live-plan
-```
-
-GitHub repository settings에서 이 environment에 required reviewer를 설정한다. PR workflow나 기본 contract job은 AWS credential을 받지 않으며, `execute_live_plan=true`인 manual dispatch만 environment approval을 거친다.
-
-### Required environment/repository variables
-
-```text
-AWS_REGION=ap-northeast-2
-AWS_TERRAFORM_STATE_BUCKET=<versioned-state-bucket>
-AWS_TERRAFORM_LOCK_TABLE=<dynamodb-lock-table>
-AWS_TERRAFORM_STATE_PREFIX=terraformers-modernization/dev
-```
-
-### Required environment secrets
-
-```text
-AWS_ROLE_TO_ASSUME
-AWS_LIVE_NETWORK_TFVARS_B64
-AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64
-AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64
-AWS_LIVE_EKS_TFVARS_B64
-AWS_LIVE_FRONTEND_TFVARS_B64
-```
-
-Stage tfvars는 로컬 `.tfvars` 파일을 UTF-8로 작성한 뒤 base64로 저장한다. Secret 값이나 DB password를 tfvars에 넣지 않는다. DB password source는 계속 RDS-managed Secret이다.
-
-PowerShell 예시:
-
-```powershell
-$Bytes = [System.IO.File]::ReadAllBytes("infra\terraform\private\network.tfvars")
-[Convert]::ToBase64String($Bytes) | Set-Clipboard
-```
-
-붙여넣은 값은 해당 GitHub environment secret에 저장한다. 원본 private tfvars와 base64 값은 저장소에 커밋하지 않는다.
-
-## 5. Remote state prerequisite
-
-Live plan은 다음을 시작 전에 확인한다.
-
-- STS caller account가 dispatch 입력 `expected_aws_account_id`와 일치
-- `AWS_TERRAFORM_STATE_BUCKET` 접근 가능
-- state bucket versioning `Enabled`
-- `AWS_TERRAFORM_LOCK_TABLE` 상태 `ACTIVE`
-- stage별 state key가 분리됨
-
-State key 규칙:
-
-```text
-<AWS_TERRAFORM_STATE_PREFIX>/<plan_stage>/terraform.tfstate
-```
-
-예:
-
-```text
-terraformers-modernization/dev/network/terraform.tfstate
-terraformers-modernization/dev/eks-runtime/terraform.tfstate
-```
-
-State bucket 또는 lock table이 아직 없다면 live plan을 실행하지 않는다. 별도 bootstrap 절차로 먼저 생성하고, 생성 evidence와 소유 계정을 확인해야 한다.
-
-## 6. Guarded plan workflow
+## 10. Guarded plan workflow
 
 Workflow:
 
@@ -153,9 +255,7 @@ Workflow:
 execute_live_plan=false
 ```
 
-이 경우 AWS 인증 없이 execution plan artifact만 생성한다.
-
-실제 plan 실행 조건:
+실제 plan 실행 입력:
 
 ```text
 execute_live_plan=true
@@ -165,31 +265,13 @@ allow_destructive=false
 allow_optional_adapters=false
 ```
 
-실제 plan job은:
+실제 plan job은 protected environment 승인, OIDC role assumption, account/S3 backend 검증, private tfvars decode, S3 backend init, validate, saved plan, risk 분석, sanitized evidence 생성, raw input 삭제 순서로 동작한다.
 
-1. protected environment 승인
-2. GitHub OIDC role assumption
-3. account/state backend 검증
-4. 선택한 private tfvars decode
-5. remote S3 backend init
-6. `terraform validate`
-7. saved `terraform plan`
-8. ephemeral plan JSON 분석
-9. sanitized evidence 생성
-10. raw tfvars, binary plan, raw plan JSON 삭제
-
-## 7. Plan risk gate
-
-Parser:
-
-```text
-scripts/deploy/summarize-terraform-plan.py
-```
+## 11. Plan risk gate
 
 기본 차단 항목:
 
-- delete action
-- create+delete replacement
+- delete 또는 replacement
 - internet-facing ALB
 - `0.0.0.0/0` 또는 `::/0` ingress
 - publicly accessible RDS
@@ -197,7 +279,7 @@ scripts/deploy/summarize-terraform-plan.py
 - EKS endpoint CIDR 전체 공개
 - Bedrock/OpenSearch optional adapter resource
 
-Cost-bearing resource는 별도 목록으로 표시한다.
+Cost-bearing resource는 별도로 표시한다.
 
 - EKS cluster/node group
 - RDS instance
@@ -207,41 +289,29 @@ Cost-bearing resource는 별도 목록으로 표시한다.
 - EC2 instance
 - OpenSearch collection/domain
 
-이 목록은 가격 계산 결과가 아니다. Apply 승인 전에는 AWS Pricing Calculator 또는 같은 기준의 비용 산출물로 월 비용 상한을 별도로 확인한다. 예상 비용이 승인된 상한을 넘으면 plan이 기술적으로 정상이어도 중단한다.
+이 목록은 가격 계산 결과가 아니다. 각 apply 승인 전 월 비용 상한과 validation window를 별도로 확인한다.
 
-## 8. Sensitive evidence boundary
+## 12. Sensitive evidence boundary
 
-Terraform binary plan과 `terraform show -json` 결과에는 sensitive value가 포함될 수 있다. 따라서 workflow는 다음을 artifact로 업로드하지 않는다.
+다음을 artifact로 업로드하지 않는다.
 
 ```text
-live.tfplan
-live-plan.json
-live.auto.tfvars
+private tfvars
+base64 private tfvars
 backend.hcl
+Terraform binary plan
+raw terraform show JSON
+local or remote tfstate
 ```
 
-업로드하는 것은 다음뿐이다.
+업로드 가능한 것은 caller account, checksum, provider lock checksum, resource action summary, risk count처럼 secret을 포함하지 않는 sanitized evidence뿐이다.
 
-```text
-caller-identity.json
-state-lock-table-status.txt
-tfvars.sha256
-binary-plan.sha256
-provider-lock.sha256
-plan-risk-summary.txt
-plan-risk-summary.json
-plan-risk-summary.md
-live-plan-summary.txt
-```
-
-즉 raw plan은 runner 내부에서만 사용하고 삭제한다. Evidence에는 resource address/type/action, 위험 카운트, digest만 남긴다.
-
-## 9. 단계별 중단 기준
+## 13. 단계별 중단 기준
 
 ### Network
 
 - public ingress 확대
-- 예상하지 않은 NAT Gateway
+- 예상하지 않은 추가 NAT Gateway
 - subnet/route replacement
 - internal load balancer tag 제거
 
@@ -250,7 +320,7 @@ live-plan-summary.txt
 - S3 public access
 - ECR repository replacement
 - runtime Secret payload에 password 포함
-- optional adapter용 OpenSearch/Bedrock resource 등장
+- optional adapter resource 등장
 
 ### Stateful dependencies
 
@@ -274,40 +344,25 @@ live-plan-summary.txt
 - API caching 활성화
 - distribution-wide error substitution
 
-## 10. Apply 승인 조건
-
-현재 workflow는 apply를 수행하지 않는다. 향후 apply 작업은 다음 조건이 모두 충족된 뒤 별도 승인 단계로 진행한다.
-
-1. 최신 source/runtime/package 자동 gate 통과
-2. 최신 manual Runtime Contract Verification 통과
-3. plan evidence의 destructive/public/optional-adapter count가 0
-4. expected account/region 확인
-5. state versioning 및 lock 확인
-6. resource action과 월 비용 상한 검토
-7. 단계별 rollback target 확인
-8. 변경 창과 cleanup 책임자 확정
-9. apply 명령과 plan digest를 별도로 검토
-
-`allow_destructive=true`는 일반적인 apply 허용 스위치가 아니다. 데이터 이전·백업·복구 계획이 첨부된 별도 변경에서만 사용할 수 있다.
-
-## 11. Rollback 원칙
+## 14. Rollback 원칙
 
 - Network/EKS/RDS replacement는 일반 배포 rollback으로 처리하지 않는다.
 - Backend는 이전 known-good image digest로 되돌린다.
 - Kubernetes rollout은 이전 ReplicaSet으로 복구한다.
 - Controller는 이전 Helm revision으로 rollback한다.
-- Frontend는 이전 검증 build를 다시 sync하고 mutable entrypoint만 invalidate한다.
-- DB migration은 애플리케이션 rollback과 분리한다. 검증되지 않은 down migration을 자동 실행하지 않는다.
+- Frontend는 이전 검증 build를 다시 배포한다.
+- DB migration은 애플리케이션 rollback과 분리하며 검증되지 않은 down migration을 자동 실행하지 않는다.
 - 장애 evidence를 수집하기 전에 리소스를 삭제하지 않는다.
 
-## 12. 최종 live evidence
+## 15. 최종 live evidence
 
 실제 운영 경험 포트폴리오로 인정하려면 다음 evidence가 필요하다.
 
+- foundation apply와 state migration 검증
 - 각 Terraform stage plan digest와 sanitized risk summary
 - apply 전후 output 차이
 - ECR image digest와 Deployment digest 일치
-- ExternalSecret sync와 9-key target Secret 확인
+- ExternalSecret sync와 target Secret key 확인
 - internal ALB target health
 - CloudFront VPC origin 상태
 - authenticated browser E2E
