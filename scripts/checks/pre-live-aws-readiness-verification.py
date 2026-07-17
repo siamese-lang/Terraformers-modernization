@@ -42,6 +42,7 @@ def main() -> int:
     managed_secret_doc = read("docs/managed-secret-delivery.md")
     tfvars_builder = read("scripts/deploy/build-live-stage-tfvars.py")
     prerequisite_inventory = read("scripts/deploy/live-aws-prerequisite-inventory.py")
+    prerequisite_wrapper = read("scripts/deploy/inventory-live-aws-prerequisites.sh")
 
     examples = {
         "network": read("infra/terraform/envs/aws-runtime-network/live.tfvars.example"),
@@ -105,6 +106,26 @@ def main() -> int:
     expected_examples = {stage["id"] for stage in contract.get("terraform_stages", [])}
     require(errors, expected_examples == set(examples), "live-tfvars-example-stage-drift")
 
+    expected_stage_secret_mapping = {
+        "network": ["AWS_LIVE_NETWORK_TFVARS_B64"],
+        "runtime-dependencies": ["AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64"],
+        "stateful-dependencies": ["AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64"],
+        "eks-runtime": ["AWS_LIVE_EKS_TFVARS_B64"],
+        "frontend-delivery": ["AWS_LIVE_FRONTEND_TFVARS_B64"],
+    }
+    stage_secret_mapping = contract.get("required_github_secrets_by_stage", {})
+    mapped_secrets = [secret for secrets in stage_secret_mapping.values() for secret in secrets]
+    require(errors, contract.get("schema_version") == 3, "live-prerequisite-schema-version-drift")
+    require(errors, stage_secret_mapping == expected_stage_secret_mapping, "stage-secret-mapping-drift")
+    require(
+        errors,
+        sorted(mapped_secrets) == sorted(contract.get("required_github_secrets", [])),
+        "stage-secret-set-drift",
+    )
+    require(errors, 'STAGE="network"' in prerequisite_wrapper, "prerequisite-wrapper-network-default-missing")
+    require(errors, "required_github_secrets_by_stage" in prerequisite_wrapper, "prerequisite-wrapper-stage-map-missing")
+    require(errors, 'contract["required_github_secrets"] = selected' in prerequisite_wrapper, "prerequisite-wrapper-stage-filter-missing")
+
     addon_items = addons.get("addons", {})
     lbc = addon_items.get("aws-load-balancer-controller", {})
     eso = addon_items.get("external-secrets", {})
@@ -139,6 +160,7 @@ def main() -> int:
         "terraform_cli_version": contract.get("terraform_cli_version"),
         "state_locking": contract.get("state_locking"),
         "execution_plan_locking_aligned": not any(error.startswith("execution-plan-") for error in errors),
+        "stage_aware_prerequisites": stage_secret_mapping == expected_stage_secret_mapping,
         "eks_default_version": "1.35",
         "eks_endpoint_default": "private",
         "live_egress_baseline": "single-nat-gateway",
@@ -161,6 +183,7 @@ def main() -> int:
         f"terraform_cli_version={report['terraform_cli_version']}",
         f"state_locking={report['state_locking']}",
         f"execution_plan_locking_aligned={str(report['execution_plan_locking_aligned']).lower()}",
+        f"stage_aware_prerequisites={str(report['stage_aware_prerequisites']).lower()}",
         f"eks_default_version={report['eks_default_version']}",
         f"eks_endpoint_default={report['eks_endpoint_default']}",
         f"live_egress_baseline={report['live_egress_baseline']}",
