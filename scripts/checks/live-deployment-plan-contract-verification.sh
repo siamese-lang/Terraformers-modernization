@@ -200,6 +200,9 @@ assert_contains 'terraform apply' "${DOC}" "Deployment documentation must state 
 assert_contains 'AWS_TERRAFORM_STATE_BUCKET' "${DOC}" "State backend prerequisite is not documented."
 assert_contains 'AWS_LIVE_NETWORK_TFVARS_B64' "${DOC}" "Private stage tfvars contract is not documented."
 assert_contains 'raw plan' "${DOC}" "Sensitive raw-plan evidence boundary is not documented."
+assert_contains 'state locking[[:space:]]+S3 native \.tflock' "${DOC}" "S3 native state locking is not documented."
+assert_contains 'use_lockfile=true' "${DOC}" "Native S3 lockfile backend setting is not documented."
+assert_not_contains 'AWS_TERRAFORM_LOCK_TABLE' "${DOC}" "Deprecated lock table variable must not be documented as a live prerequisite."
 
 printf '%s\n' \
   'live_deployment_plan_contract=passed' \
@@ -209,7 +212,7 @@ printf '%s\n' \
   'environment_gate=aws-live-plan' \
   'expected_account_check=required' \
   'remote_state_versioning=required' \
-  'remote_state_lock_table=required' \
+  'remote_state_locking=s3-native-lockfile' \
   'destructive_action_default=blocked' \
   'public_exposure=blocked' \
   'optional_adapter_default=blocked' \
