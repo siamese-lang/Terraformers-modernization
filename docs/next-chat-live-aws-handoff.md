@@ -9,10 +9,40 @@
 - repository: `siamese-lang/Terraformers-modernization`
 - baseline branch: `agent/rdb-domain-realignment`
 - Draft PR: `#32`
-- live AWS resource mutation: 아직 없음
-- caller account inventory: expected account와 일치 확인
-- static deployment contracts: 완료
-- actual AWS integration/evidence: 다음 단계
+- AWS foundation apply: 완료
+- bootstrap managed resources: 9개
+- bootstrap canonical state: versioned private S3
+- state locking: S3 native `.tflock`
+- state migration reconciliation: 완료
+- final reconciled head: `f70f157deccacd721f4c6864f6dd91add120c00f`
+- network/runtime/RDS/EKS apply: 아직 없음
+- GitHub environment/variables/secrets mutation: 아직 없음
+
+Foundation state evidence:
+
+```text
+RemoteStateVersionCount=1
+ManagedStateResourceCount=9
+StateResourcesExact=true
+StateOutputsExact=true
+StateCheckResultsOrderOnly=true
+StateCheckStatuses=pass
+StatePayloadSemanticallyEquivalent=true
+StateLineageRebased=true
+StateSerialResetValid=true
+PostMigrationPlanNoChanges=true
+StaleLockObjectPresent=false
+LocalStateBackupPreserved=true
+ProviderRuntimeIsolation=success
+ProviderSchemaLoaded=true
+RemoteStateWriteAttempted=false
+```
+
+상세 기록:
+
+```text
+docs/live-foundation-state-migration.md
+```
 
 ## 반드시 먼저 읽을 파일
 
@@ -20,6 +50,7 @@
 config/live-deployment-stages.json
 config/live-aws-prerequisites.json
 config/live-kubernetes-addons.json
+docs/live-foundation-state-migration.md
 docs/live-aws-predeployment-readiness.md
 docs/live-aws-prerequisite-inventory.md
 docs/live-kubernetes-addons.md
@@ -56,27 +87,47 @@ provider-auth ServiceAccount  terraformers-runtime/terraformers-external-secrets
 
 ## 다음 대화의 첫 작업
 
-1. PR #32의 최신 head와 모든 automatic gate를 확인한다.
-2. `pre-live-aws-readiness`, tfvars builder verification, static prerequisite inventory 결과를 확인한다.
-3. AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 존재하는지 읽기 전용으로 확인한다.
-4. 실제 GitHub OIDC subject가 owner/name 형식인지 immutable owner/repository ID 형식인지 확인한다.
-5. `infra/terraform/bootstrap/aws-live-foundation/terraform.tfvars.example`을 로컬 private tfvars로 복사하고 placeholder만 채운다.
-6. bootstrap `terraform init -backend=false`, `validate`, `plan`까지만 수행한다.
-7. plan의 S3 bucket, OIDC provider, plan role, IAM policy를 검토한다.
-8. 사용자가 명시적으로 승인하기 전에는 bootstrap apply를 실행하지 않는다.
-
-## bootstrap 이후 순서
+1. PR #32의 최신 head와 automatic gate를 확인한다.
+2. `aws-live-plan` protected environment 존재 여부를 읽기 전용으로 확인한다.
+3. 다음 environment variable 이름의 등록 여부를 확인한다.
 
 ```text
-foundation apply approval
-  -> bootstrap state migration
-  -> aws-live-plan environment 생성
+AWS_REGION
+AWS_ROLE_TO_ASSUME
+AWS_TERRAFORM_STATE_BUCKET
+AWS_TERRAFORM_STATE_PREFIX
+```
+
+4. 다음 environment Secret 이름의 등록 여부를 확인한다. 값은 읽거나 출력하지 않는다.
+
+```text
+AWS_LIVE_NETWORK_TFVARS_B64
+AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64
+AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64
+AWS_LIVE_EKS_TFVARS_B64
+AWS_LIVE_FRONTEND_TFVARS_B64
+```
+
+5. 누락 항목을 확인한 뒤 별도 승인하에 GitHub environment/variable/Secret을 설정한다.
+6. `scripts/deploy/live-aws-prerequisite-inventory.py --expected-account-id <id> --fail-on-missing`을 통과시킨다.
+7. Network private tfvars와 state backend key만 검토한다.
+8. `network` plan만 생성하고 delete/replace/public exposure/NAT count를 검토한다.
+9. 별도 명시적 승인 전에는 network apply를 실행하지 않는다.
+
+## 이후 순서
+
+```text
+aws-live-plan environment 생성
   -> GitHub variables/secrets 설정
   -> strict prerequisite inventory
   -> network plan only
+  -> network apply approval
+  -> runtime-dependencies plan/apply
+  -> stateful-dependencies plan/apply
+  -> eks-runtime plan/apply
 ```
 
-network plan을 검토하기 전에는 runtime, RDS, EKS를 생성하지 않는다.
+Network plan을 검토하기 전에는 runtime, RDS, EKS를 생성하지 않는다.
 
 Applied output을 다음 단계 tfvars로 넘길 때는 수동 조립보다 다음 generator를 우선 사용한다.
 
@@ -98,12 +149,14 @@ verified internal ALB ARN -> frontend-delivery
 - kubectl apply
 - Helm install/upgrade
 - Docker/ECR image push
-- AWS resource mutation
+- GitHub environment/variable/Secret mutation
 - GitHub PR merge 또는 ready 전환
 - External Secrets 설치
 - public ALB/Ingress 추가
 - Bedrock/OpenSearch/optional S3 writer/SQS adapter 활성화
-- Secret 값 출력 또는 raw plan 업로드
+- Secret 값 출력 또는 raw plan/state 업로드
+
+각 mutation은 대상과 범위를 명시한 별도 승인 이후에만 수행한다.
 
 ## Agent Toolkit for AWS
 
