@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "terraform_cli_version": "1.15.8",
   "state_locking": "s3-native-lockfile",
   "github_environment": "aws-live-plan",
@@ -17,6 +17,23 @@
     "AWS_LIVE_EKS_TFVARS_B64",
     "AWS_LIVE_FRONTEND_TFVARS_B64"
   ],
+  "required_github_secrets_by_stage": {
+    "network": [
+      "AWS_LIVE_NETWORK_TFVARS_B64"
+    ],
+    "runtime-dependencies": [
+      "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64"
+    ],
+    "stateful-dependencies": [
+      "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64"
+    ],
+    "eks-runtime": [
+      "AWS_LIVE_EKS_TFVARS_B64"
+    ],
+    "frontend-delivery": [
+      "AWS_LIVE_FRONTEND_TFVARS_B64"
+    ]
+  },
   "terraform_stages": [
     {
       "id": "network",
