@@ -47,8 +47,8 @@ assert_contains 'environment:[[:space:]]*aws-live-plan' "${REUSABLE_LIVE_PLAN}" 
 assert_not_contains '(^|[[:space:]])terraform[[:space:]]+(apply|destroy)([[:space:]]|$)' "${REUSABLE_LIVE_PLAN}" 'Pre-merge plan path must not contain Terraform apply/destroy.'
 
 assert_contains 'inventory-live-aws-prerequisites\.sh' "${DISPATCH_SCRIPT}" 'Dispatch must run strict prerequisites first.'
-assert_contains -- '--stage network' "${DISPATCH_SCRIPT}" 'Dispatch must be limited to the network stage.'
-assert_contains -- '--strict' "${DISPATCH_SCRIPT}" 'Dispatch must require strict prerequisites.'
+assert_contains '--stage network' "${DISPATCH_SCRIPT}" 'Dispatch must be limited to the network stage.'
+assert_contains '--strict' "${DISPATCH_SCRIPT}" 'Dispatch must require strict prerequisites.'
 assert_contains 'execute_live_plan=true' "${DISPATCH_SCRIPT}" 'Dispatch must explicitly enable live planning.'
 assert_contains 'allow_destructive=false' "${DISPATCH_SCRIPT}" 'Destructive findings must remain blocked.'
 assert_contains 'allow_optional_adapters=false' "${DISPATCH_SCRIPT}" 'Optional adapters must remain blocked.'
