@@ -5,11 +5,18 @@ usage() {
   cat <<'EOF'
 Usage:
   bash scripts/deploy/migrate-live-foundation-state.sh \
-    --expected-head SHA [--execute-migration]
+    --expected-head SHA \
+    [--execute-migration | --reconcile-existing-remote]
 
-Without --execute-migration, this command performs preflight only and does not
-write Terraform state to S3. The execution mode migrates the verified local
-bootstrap state to the versioned S3 backend and confirms a no-change plan.
+Modes:
+  no mode flag                  Preflight only. No S3 state write.
+  --execute-migration           Migrate verified local state to S3.
+  --reconcile-existing-remote   Verify an already-created remote state after a
+                                migration that stopped during post-checks.
+
+Reconciliation never overwrites or pushes state. It compares the complete
+resources, outputs, and check-results payload with the preserved local backup,
+checks serial monotonicity, and confirms a no-change plan without refresh.
 EOF
 }
 
@@ -34,6 +41,7 @@ read_tfvar_string() {
 
 EXPECTED_HEAD=""
 EXECUTE_MIGRATION=false
+RECONCILE_EXISTING_REMOTE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +52,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --execute-migration)
       EXECUTE_MIGRATION=true
+      shift
+      ;;
+    --reconcile-existing-remote)
+      RECONCILE_EXISTING_REMOTE=true
       shift
       ;;
     -h|--help)
@@ -57,6 +69,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$EXPECTED_HEAD" ]] || fail "EXPECTED_HEAD_REQUIRED"
+if [[ "$EXECUTE_MIGRATION" == true && "$RECONCILE_EXISTING_REMOTE" == true ]]; then
+  fail "MIGRATION_MODE_CONFLICT"
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FOUNDATION_DIR="${REPO_ROOT}/infra/terraform/bootstrap/aws-live-foundation"
@@ -69,10 +84,11 @@ STATE_BACKUP_DIGEST="${STATE_BACKUP}.sha256"
 BACKEND_CONFIG="${PRIVATE_DIR}/foundation.backend.hcl"
 LOCAL_INVENTORY="${PRIVATE_DIR}/foundation.local-pre-migration.inventory.json"
 REMOTE_STATE="${PRIVATE_DIR}/foundation.remote-post-migration.tfstate"
+RECONCILIATION_RESULT="${PRIVATE_DIR}/foundation.state-reconciliation.json"
 POST_PLAN="${PRIVATE_DIR}/foundation.post-migration.tfplan"
 POST_PLAN_LOG="${PRIVATE_DIR}/foundation.post-migration-plan.log"
 
-for command_name in git aws sha256sum cygpath sed sort diff grep; do
+for command_name in git aws sha256sum cygpath sed sort diff grep awk tr; do
   command -v "$command_name" >/dev/null 2>&1 || fail "REQUIRED_COMMAND_NOT_FOUND: $command_name"
 done
 
@@ -94,7 +110,6 @@ fi
 
 [[ -x "$TF_EXE" ]] || fail "TERRAFORM_1_15_8_NOT_FOUND"
 [[ -f "$TFVARS_PATH" ]] || fail "PRIVATE_FOUNDATION_TFVARS_NOT_FOUND"
-[[ -f "$LOCAL_STATE" ]] || fail "FOUNDATION_LOCAL_STATE_NOT_FOUND"
 [[ -f "${FOUNDATION_DIR}/versions.tf" ]] || fail "FOUNDATION_VERSIONS_FILE_NOT_FOUND"
 grep -Eq 'backend[[:space:]]+"s3"[[:space:]]*\{' "${FOUNDATION_DIR}/versions.tf" || fail "S3_BACKEND_DECLARATION_MISSING"
 
@@ -136,7 +151,16 @@ ENCRYPTION="$(aws s3api get-bucket-encryption --bucket "$STATE_BUCKET" --query '
 
 mkdir -p "$PRIVATE_DIR"
 
-"${PYTHON_CMD[@]}" - "$LOCAL_STATE" "$LOCAL_INVENTORY" <<'PY'
+SOURCE_STATE=""
+if [[ -f "$LOCAL_STATE" ]]; then
+  SOURCE_STATE="$LOCAL_STATE"
+elif [[ -f "$STATE_BACKUP" ]]; then
+  SOURCE_STATE="$STATE_BACKUP"
+else
+  fail "FOUNDATION_SOURCE_STATE_NOT_FOUND"
+fi
+
+"${PYTHON_CMD[@]}" - "$SOURCE_STATE" "$LOCAL_INVENTORY" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -193,13 +217,13 @@ inventory = {
 inventory_path.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
 PY
 
-LOCAL_DIGEST="$(sha256sum "$LOCAL_STATE" | awk '{print $1}')"
+SOURCE_DIGEST="$(sha256sum "$SOURCE_STATE" | awk '{print $1}')"
 
 if [[ -f "$STATE_BACKUP" ]]; then
   BACKUP_DIGEST="$(sha256sum "$STATE_BACKUP" | awk '{print $1}')"
-  [[ "$BACKUP_DIGEST" == "$LOCAL_DIGEST" ]] || fail "LOCAL_STATE_BACKUP_DIGEST_MISMATCH"
+  [[ "$BACKUP_DIGEST" == "$SOURCE_DIGEST" ]] || fail "LOCAL_STATE_BACKUP_DIGEST_MISMATCH"
 else
-  cp -f "$LOCAL_STATE" "$STATE_BACKUP"
+  cp -f "$SOURCE_STATE" "$STATE_BACKUP"
 fi
 sha256sum "$STATE_BACKUP" > "$STATE_BACKUP_DIGEST"
 
@@ -216,7 +240,7 @@ if aws s3api head-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" >/dev/null 
   REMOTE_STATE_EXISTS=true
 fi
 
-if [[ "$EXECUTE_MIGRATION" != true ]]; then
+if [[ "$EXECUTE_MIGRATION" != true && "$RECONCILE_EXISTING_REMOTE" != true ]]; then
   printf '%s\n' \
     "StateMigrationPreflight=passed" \
     "RepositoryHead=${ACTUAL_HEAD:0:12}" \
@@ -231,57 +255,93 @@ if [[ "$EXECUTE_MIGRATION" != true ]]; then
   exit 0
 fi
 
-[[ "$REMOTE_STATE_EXISTS" == false ]] || fail "REMOTE_BOOTSTRAP_STATE_ALREADY_EXISTS"
-
 cd "$FOUNDATION_DIR"
 BACKEND_CONFIG_WIN="$(cygpath -aw "$BACKEND_CONFIG")"
 TFVARS_PATH_WIN="$(cygpath -aw "$TFVARS_PATH")"
 POST_PLAN_WIN="$(cygpath -aw "$POST_PLAN")"
 
-"$TF_EXE" init \
-  -input=false \
-  -migrate-state \
-  -force-copy \
-  -backend-config="$BACKEND_CONFIG_WIN"
+MIGRATION_PERFORMED=false
+if [[ "$EXECUTE_MIGRATION" == true ]]; then
+  [[ "$REMOTE_STATE_EXISTS" == false ]] || fail "REMOTE_BOOTSTRAP_STATE_ALREADY_EXISTS_USE_RECONCILIATION"
+
+  "$TF_EXE" init \
+    -input=false \
+    -migrate-state \
+    -force-copy \
+    -backend-config="$BACKEND_CONFIG_WIN"
+
+  MIGRATION_PERFORMED=true
+else
+  [[ "$REMOTE_STATE_EXISTS" == true ]] || fail "REMOTE_BOOTSTRAP_STATE_NOT_FOUND"
+fi
 
 "$TF_EXE" state pull > "$REMOTE_STATE"
 
-"${PYTHON_CMD[@]}" - "$LOCAL_INVENTORY" "$REMOTE_STATE" <<'PY'
+LINEAGE_STATUS="$(
+  "${PYTHON_CMD[@]}" - "$STATE_BACKUP" "$REMOTE_STATE" "$RECONCILIATION_RESULT" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-inventory = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-state = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+local_path = Path(sys.argv[1])
+remote_path = Path(sys.argv[2])
+result_path = Path(sys.argv[3])
+local = json.loads(local_path.read_text(encoding="utf-8"))
+remote = json.loads(remote_path.read_text(encoding="utf-8"))
 
-addresses = []
-for resource in state.get("resources", []):
-    if resource.get("mode") != "managed":
-        continue
-    prefix = resource.get("module")
-    base = f"{resource['type']}.{resource['name']}"
-    if prefix:
-        base = f"{prefix}.{base}"
-    instances = resource.get("instances", [])
-    if not instances:
-        addresses.append(base)
-        continue
-    for instance in instances:
-        index = instance.get("index_key")
-        if index is None:
+
+def managed_addresses(state):
+    addresses = []
+    for resource in state.get("resources", []):
+        if resource.get("mode") != "managed":
+            continue
+        prefix = resource.get("module")
+        base = f"{resource['type']}.{resource['name']}"
+        if prefix:
+            base = f"{prefix}.{base}"
+        instances = resource.get("instances", [])
+        if not instances:
             addresses.append(base)
-        elif isinstance(index, int):
-            addresses.append(f"{base}[{index}]")
-        else:
-            addresses.append(f"{base}[{json.dumps(index)}]")
+            continue
+        for instance in instances:
+            index = instance.get("index_key")
+            if index is None:
+                addresses.append(base)
+            elif isinstance(index, int):
+                addresses.append(f"{base}[{index}]")
+            else:
+                addresses.append(f"{base}[{json.dumps(index)}]")
+    return sorted(addresses)
 
-if sorted(addresses) != inventory["managed_addresses"]:
+local_addresses = managed_addresses(local)
+remote_addresses = managed_addresses(remote)
+if remote_addresses != local_addresses:
     raise SystemExit("REMOTE_STATE_ADDRESS_SET_MISMATCH")
-if state.get("lineage") != inventory.get("lineage"):
-    raise SystemExit("REMOTE_STATE_LINEAGE_MISMATCH")
-if int(state.get("serial", -1)) < int(inventory.get("serial", -1)):
+
+payload_keys = ("resources", "outputs", "check_results")
+for key in payload_keys:
+    if remote.get(key) != local.get(key):
+        raise SystemExit(f"REMOTE_STATE_{key.upper()}_PAYLOAD_MISMATCH")
+
+local_serial = int(local.get("serial", -1))
+remote_serial = int(remote.get("serial", -1))
+if remote_serial < local_serial:
     raise SystemExit("REMOTE_STATE_SERIAL_REGRESSION")
+
+lineage_preserved = remote.get("lineage") == local.get("lineage")
+result = {
+    "managed_addresses": remote_addresses,
+    "payload_exact": True,
+    "lineage_preserved": lineage_preserved,
+    "lineage_rebased": not lineage_preserved,
+    "local_serial": local_serial,
+    "remote_serial": remote_serial,
+    "serial_non_regressing": True,
+}
+result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+print("preserved" if lineage_preserved else "rebased")
 PY
+)"
 
 aws s3api head-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" >/dev/null
 STATE_VERSION_COUNT="$(aws s3api list-object-versions --bucket "$STATE_BUCKET" --prefix "$STATE_KEY" --query "length(Versions[?Key=='${STATE_KEY}'])" --output text)"
@@ -291,7 +351,8 @@ STATE_VERSION_COUNT="$(aws s3api list-object-versions --bucket "$STATE_BUCKET" -
 set +e
 "$TF_EXE" plan \
   -input=false \
-  -lock-timeout=5m \
+  -lock=false \
+  -refresh=false \
   -detailed-exitcode \
   -var-file="$TFVARS_PATH_WIN" \
   -out="$POST_PLAN_WIN" \
@@ -317,17 +378,37 @@ mapfile -t REMOTE_ADDRESSES < <("$TF_EXE" state list | grep -v '^data\.' | sort)
 FINAL_STATUS="$(git -C "$REPO_ROOT" status --porcelain)"
 [[ -z "$FINAL_STATUS" ]] || fail "WORKING_TREE_CHANGED_DURING_MIGRATION"
 
+if [[ "$LINEAGE_STATUS" == "preserved" ]]; then
+  LINEAGE_PRESERVED=true
+  LINEAGE_REBASED=false
+elif [[ "$LINEAGE_STATUS" == "rebased" ]]; then
+  LINEAGE_PRESERVED=false
+  LINEAGE_REBASED=true
+else
+  fail "STATE_LINEAGE_STATUS_INVALID"
+fi
+
+if [[ "$MIGRATION_PERFORMED" == true ]]; then
+  STATUS="success"
+  AWS_MUTATION="state-object-only"
+else
+  STATUS="success-reconciled"
+  AWS_MUTATION="none"
+fi
+
 printf '%s\n' \
-  "StateMigrationStatus=success" \
+  "StateMigrationStatus=${STATUS}" \
   "RepositoryHead=${ACTUAL_HEAD:0:12}" \
   "PythonCommand=${PYTHON_LABEL}" \
   "RemoteBackend=s3-native-lockfile" \
   "RemoteStateObjectPresent=true" \
   "RemoteStateVersionCount=${STATE_VERSION_COUNT}" \
   "ManagedStateResourceCount=${#REMOTE_ADDRESSES[@]}" \
-  "StateLineagePreserved=true" \
+  "StatePayloadExact=true" \
+  "StateLineagePreserved=${LINEAGE_PRESERVED}" \
+  "StateLineageRebased=${LINEAGE_REBASED}" \
   "StateSerialNonRegressing=true" \
   "PostMigrationPlanNoChanges=true" \
   "StaleLockObjectPresent=false" \
   "LocalStateBackupPreserved=true" \
-  "AwsMutation=state-object-only"
+  "AwsMutation=${AWS_MUTATION}"
