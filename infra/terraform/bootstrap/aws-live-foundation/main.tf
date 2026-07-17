@@ -1,10 +1,5 @@
 data "aws_caller_identity" "current" {}
 
-data "tls_certificate" "github_actions" {
-  count = var.existing_github_oidc_provider_arn == null ? 1 : 0
-  url   = "https://token.actions.githubusercontent.com"
-}
-
 locals {
   normalized_state_prefix = trim(var.state_prefix, "/")
   create_oidc_provider    = var.existing_github_oidc_provider_arn == null
@@ -91,9 +86,8 @@ resource "aws_s3_bucket_policy" "terraform_state" {
 resource "aws_iam_openid_connect_provider" "github_actions" {
   count = local.create_oidc_provider ? 1 : 0
 
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github_actions[0].certificates[0].sha1_fingerprint]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 
   tags = var.common_tags
 }
