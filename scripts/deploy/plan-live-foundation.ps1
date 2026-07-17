@@ -18,13 +18,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Assert-LastExitCode {
+function Assert-ExitCode {
     param(
+        [Parameter(Mandatory = $true)]
+        [int]$ExitCode,
+
         [Parameter(Mandatory = $true)]
         [string]$Code
     )
 
-    if ($LASTEXITCODE -ne 0) {
+    if ($ExitCode -ne 0) {
         throw $Code
     }
 }
@@ -79,26 +82,33 @@ if ($TfvarsText -match 'replace-|<12-digit|000000000000|state_bucket_name\s*=\s*
 Set-Location $RepoRoot
 
 $WorkingTreeChanges = @(& git status --porcelain)
-Assert-LastExitCode "GIT_STATUS_FAILED"
+$GitStatusExitCode = $LASTEXITCODE
+Assert-ExitCode -ExitCode $GitStatusExitCode -Code "GIT_STATUS_FAILED"
 if ($WorkingTreeChanges.Count -gt 0) {
     $WorkingTreeChanges | ForEach-Object { Write-Host $_ }
     throw "WORKING_TREE_NOT_CLEAN"
 }
 
-$CurrentBranch = (& git branch --show-current).Trim()
-Assert-LastExitCode "GIT_BRANCH_READ_FAILED"
+$CurrentBranchOutput = @(& git branch --show-current)
+$GitBranchExitCode = $LASTEXITCODE
+Assert-ExitCode -ExitCode $GitBranchExitCode -Code "GIT_BRANCH_READ_FAILED"
+$CurrentBranch = ([string]($CurrentBranchOutput | Select-Object -First 1)).Trim()
 if (-not [string]::IsNullOrWhiteSpace($ExpectedBranch) -and $CurrentBranch -ne $ExpectedBranch) {
     throw "BRANCH_MISMATCH"
 }
 
-$CurrentHead = (& git rev-parse HEAD).Trim()
-Assert-LastExitCode "GIT_HEAD_READ_FAILED"
+$CurrentHeadOutput = @(& git rev-parse HEAD)
+$GitHeadExitCode = $LASTEXITCODE
+Assert-ExitCode -ExitCode $GitHeadExitCode -Code "GIT_HEAD_READ_FAILED"
+$CurrentHead = ([string]($CurrentHeadOutput | Select-Object -First 1)).Trim()
 if (-not [string]::IsNullOrWhiteSpace($ExpectedHead) -and $CurrentHead -ne $ExpectedHead) {
     throw "HEAD_MISMATCH"
 }
 
-$TerraformVersionLine = (& $TerraformExe version | Select-Object -First 1)
-Assert-LastExitCode "TERRAFORM_VERSION_READ_FAILED"
+$TerraformVersionOutput = @(& $TerraformExe version 2>&1)
+$TerraformVersionExitCode = $LASTEXITCODE
+Assert-ExitCode -ExitCode $TerraformVersionExitCode -Code "TERRAFORM_VERSION_READ_FAILED"
+$TerraformVersionLine = [string]($TerraformVersionOutput | Select-Object -First 1)
 if ($TerraformVersionLine -ne "Terraform v1.15.8") {
     throw "TERRAFORM_VERSION_MISMATCH"
 }
@@ -109,13 +119,16 @@ $env:TF_IN_AUTOMATION = "1"
 Push-Location $FoundationDir
 try {
     & $TerraformExe init -backend=false -input=false -lockfile=readonly
-    Assert-LastExitCode "LOCKED_TERRAFORM_INIT_FAILED"
+    $TerraformInitExitCode = $LASTEXITCODE
+    Assert-ExitCode -ExitCode $TerraformInitExitCode -Code "LOCKED_TERRAFORM_INIT_FAILED"
 
     & $TerraformExe fmt -check -diff
-    Assert-LastExitCode "TERRAFORM_FMT_FAILED"
+    $TerraformFmtExitCode = $LASTEXITCODE
+    Assert-ExitCode -ExitCode $TerraformFmtExitCode -Code "TERRAFORM_FMT_FAILED"
 
     & $TerraformExe validate
-    Assert-LastExitCode "TERRAFORM_VALIDATE_FAILED"
+    $TerraformValidateExitCode = $LASTEXITCODE
+    Assert-ExitCode -ExitCode $TerraformValidateExitCode -Code "TERRAFORM_VALIDATE_FAILED"
 
     Remove-Item -LiteralPath $PlanFullPath -Force -ErrorAction SilentlyContinue
 
@@ -140,8 +153,10 @@ try {
         throw "FOUNDATION_PLAN_NOT_CREATED"
     }
 
-    $PlanJsonText = (& $TerraformExe show -json $PlanFullPath) -join "`n"
-    Assert-LastExitCode "TERRAFORM_SHOW_FAILED"
+    $PlanJsonOutput = @(& $TerraformExe show -json $PlanFullPath 2>&1)
+    $TerraformShowExitCode = $LASTEXITCODE
+    Assert-ExitCode -ExitCode $TerraformShowExitCode -Code "TERRAFORM_SHOW_FAILED"
+    $PlanJsonText = $PlanJsonOutput -join "`n"
     $PlanObject = $PlanJsonText | ConvertFrom-Json
 
     $Changes = @(
@@ -282,7 +297,8 @@ try {
     } | Format-List
 
     $FinalWorkingTreeChanges = @(& git -C $RepoRoot status --porcelain)
-    Assert-LastExitCode "FINAL_GIT_STATUS_FAILED"
+    $FinalGitStatusExitCode = $LASTEXITCODE
+    Assert-ExitCode -ExitCode $FinalGitStatusExitCode -Code "FINAL_GIT_STATUS_FAILED"
     if ($FinalWorkingTreeChanges.Count -gt 0) {
         $FinalWorkingTreeChanges | ForEach-Object { Write-Host $_ }
         throw "WORKING_TREE_CHANGED_DURING_PLAN"
