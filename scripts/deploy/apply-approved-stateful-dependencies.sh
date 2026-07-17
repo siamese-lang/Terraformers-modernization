@@ -338,6 +338,7 @@ required_strings = (
     "database_security_group_id",
     "database_subnet_group_name",
     "database_instance_id",
+    "database_instance_identifier",
     "database_instance_arn",
     "database_endpoint",
     "database_name",
@@ -365,9 +366,9 @@ if "/.well-known/jwks.json" not in outputs["cognito_jwks_url"]["value"]:
     raise SystemExit("STATEFUL_COGNITO_JWKS_OUTPUT_INVALID")
 PY
 
-DB_ID="$("${PYTHON_CMD[@]}" - "$OUTPUTS_JSON" <<'PY'
+DB_INSTANCE_IDENTIFIER="$("${PYTHON_CMD[@]}" - "$OUTPUTS_JSON" <<'PY'
 import json, sys
-print(json.load(open(sys.argv[1], encoding="utf-8"))["database_instance_id"]["value"])
+print(json.load(open(sys.argv[1], encoding="utf-8"))["database_instance_identifier"]["value"])
 PY
 )"
 SG_ID="$("${PYTHON_CMD[@]}" - "$OUTPUTS_JSON" <<'PY'
@@ -390,9 +391,9 @@ import json, sys
 print(json.load(open(sys.argv[1], encoding="utf-8"))["database_master_user_secret_arn"]["value"])
 PY
 )"
-[[ -n "$DB_ID" && -n "$SG_ID" && -n "$POOL_ID" && -n "$CLIENT_ID" && -n "$MASTER_SECRET_ARN" ]] || fail "STATEFUL_VERIFICATION_IDENTIFIERS_MISSING"
+[[ -n "$DB_INSTANCE_IDENTIFIER" && -n "$SG_ID" && -n "$POOL_ID" && -n "$CLIENT_ID" && -n "$MASTER_SECRET_ARN" ]] || fail "STATEFUL_VERIFICATION_IDENTIFIERS_MISSING"
 
-aws rds describe-db-instances --db-instance-identifier "$DB_ID" --output json > "$RDS_JSON"
+aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_IDENTIFIER" --output json > "$RDS_JSON"
 aws ec2 describe-security-groups --group-ids "$SG_ID" --output json > "$SG_JSON"
 aws cognito-idp describe-user-pool --user-pool-id "$POOL_ID" --output json > "$COGNITO_POOL_JSON"
 aws cognito-idp describe-user-pool-client --user-pool-id "$POOL_ID" --client-id "$CLIENT_ID" --output json > "$COGNITO_CLIENT_JSON"

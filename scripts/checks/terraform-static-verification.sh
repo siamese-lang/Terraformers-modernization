@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EVIDENCE_DIR="${REPO_ROOT}/artifacts/terraform-static-verification"
 SUMMARY="${EVIDENCE_DIR}/verification-summary.txt"
+STATEFUL_IDENTIFIER_CHECK="${REPO_ROOT}/scripts/checks/stateful-dependencies-identifier-contract-verification.sh"
 TERRAFORM_DIRS=(
   "${REPO_ROOT}/infra/terraform/runtime-contract"
   "${REPO_ROOT}/infra/terraform/bootstrap/aws-live-foundation"
@@ -24,10 +25,15 @@ require_command() {
 
 require_command terraform
 require_command tee
+require_command bash
 
 rm -rf "${EVIDENCE_DIR}"
 mkdir -p "${EVIDENCE_DIR}"
 : >"${SUMMARY}"
+
+bash "${STATEFUL_IDENTIFIER_CHECK}" 2>&1 |
+  tee "${EVIDENCE_DIR}/stateful-dependencies-identifier-contract.log"
+printf '%s\n' 'stateful_dependencies_identifier_contract=passed' >>"${SUMMARY}"
 
 for terraform_dir in "${TERRAFORM_DIRS[@]}"; do
   relative_dir="${terraform_dir#${REPO_ROOT}/}"
