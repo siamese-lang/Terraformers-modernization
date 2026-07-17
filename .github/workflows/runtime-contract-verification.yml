@@ -2,6 +2,37 @@ name: Runtime Contract Verification
 
 on:
   workflow_dispatch:
+    inputs:
+      execute_live_plan:
+        description: Run the guarded reusable live Terraform plan in addition to contract verification.
+        required: true
+        type: boolean
+        default: false
+      plan_stage:
+        description: Terraform environment to plan when execute_live_plan=true.
+        required: true
+        type: choice
+        options:
+          - network
+          - runtime-dependencies
+          - stateful-dependencies
+          - eks-runtime
+          - frontend-delivery
+        default: network
+      expected_aws_account_id:
+        description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.
+        required: false
+        default: ''
+      allow_destructive:
+        description: Permit delete or replacement findings. Keep false for normal planning.
+        required: true
+        type: boolean
+        default: false
+      allow_optional_adapters:
+        description: Permit optional adapter resources. Keep false until separately reviewed.
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -151,3 +182,18 @@ jobs:
           name: live-deployment-execution-plan-evidence
           path: artifacts/live-deployment-execution-plan
           if-no-files-found: error
+
+  premerge-live-terraform-plan:
+    name: Pre-merge guarded live Terraform plan
+    if: ${{ inputs.execute_live_plan }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/aws-live-terraform-plan.yml
+    with:
+      execute_live_plan: true
+      plan_stage: ${{ inputs.plan_stage }}
+      expected_aws_account_id: ${{ inputs.expected_aws_account_id }}
+      allow_destructive: ${{ inputs.allow_destructive }}
+      allow_optional_adapters: ${{ inputs.allow_optional_adapters }}
+    secrets: inherit
