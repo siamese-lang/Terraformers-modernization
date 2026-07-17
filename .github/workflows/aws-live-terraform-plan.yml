@@ -150,9 +150,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/aws-live-terraform-plan
-          aws sts get-caller-identity --output json > artifacts/aws-live-terraform-plan/caller-identity.json
-          ACTUAL_ACCOUNT="$(python3 -c 'import json; print(json.load(open("artifacts/aws-live-terraform-plan/caller-identity.json"))["Account"])')"
+          CALLER_IDENTITY="${RUNNER_TEMP}/caller-identity.json"
+          aws sts get-caller-identity --output json > "${CALLER_IDENTITY}"
+          ACTUAL_ACCOUNT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Account"])' "${CALLER_IDENTITY}")"
           test "${ACTUAL_ACCOUNT}" = "${{ inputs.expected_aws_account_id }}"
+          rm -f "${CALLER_IDENTITY}"
           aws s3api head-bucket --bucket "${STATE_BUCKET}"
           VERSIONING="$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)"
           test "${VERSIONING}" = 'Enabled'
@@ -263,7 +265,7 @@ jobs:
             echo 'credential_mode=github-oidc'
             echo 'environment_gate=aws-live-plan'
             echo 'state_locking=s3-native-lockfile'
-            echo 'expected_account_id=${{ inputs.expected_aws_account_id }}'
+            echo 'expected_account_id_verified=true'
             echo 'plan_stage=${{ inputs.plan_stage }}'
             echo 'terraform_apply_executed=false'
             echo 'terraform_destroy_executed=false'
@@ -273,7 +275,7 @@ jobs:
 
       - name: Remove sensitive live-plan material
         if: always()
-        run: rm -f "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl"
+        run: rm -f "${RUNNER_TEMP}/caller-identity.json" "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl"
 
       - name: Upload sanitized live-plan evidence
         if: always()
