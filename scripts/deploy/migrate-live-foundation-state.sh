@@ -14,9 +14,9 @@ Modes:
   --reconcile-existing-remote   Verify an already-created remote state after a
                                 migration that stopped during post-checks.
 
-Reconciliation never overwrites or pushes state. It compares the complete
-resources, outputs, and check-results payload with the preserved local backup,
-checks serial monotonicity, and confirms a no-change plan without refresh.
+Reconciliation never overwrites or pushes state. It requires exact resource and
+output payloads, order-insensitive equivalence of passing check results, valid
+lineage/serial semantics, and a no-change plan without refresh.
 EOF
 }
 
@@ -88,7 +88,7 @@ RECONCILIATION_RESULT="${PRIVATE_DIR}/foundation.state-reconciliation.json"
 POST_PLAN="${PRIVATE_DIR}/foundation.post-migration.tfplan"
 POST_PLAN_LOG="${PRIVATE_DIR}/foundation.post-migration-plan.log"
 
-for command_name in git aws sha256sum cygpath sed sort diff grep awk tr; do
+for command_name in git aws sha256sum cygpath sed sort grep awk tr; do
   command -v "$command_name" >/dev/null 2>&1 || fail "REQUIRED_COMMAND_NOT_FOUND: $command_name"
 done
 
@@ -154,6 +154,7 @@ mkdir -p "$PRIVATE_DIR"
 SOURCE_STATE=""
 if [[ "$RECONCILE_EXISTING_REMOTE" == true ]]; then
   [[ -f "$STATE_BACKUP" ]] || fail "FOUNDATION_STATE_BACKUP_NOT_FOUND"
+  [[ -f "$STATE_BACKUP_DIGEST" ]] || fail "FOUNDATION_STATE_BACKUP_DIGEST_NOT_FOUND"
   SOURCE_STATE="$STATE_BACKUP"
 elif [[ -f "$LOCAL_STATE" ]]; then
   SOURCE_STATE="$LOCAL_STATE"
@@ -163,7 +164,25 @@ else
   fail "FOUNDATION_SOURCE_STATE_NOT_FOUND"
 fi
 
-"${PYTHON_CMD[@]}" - "$SOURCE_STATE" "$LOCAL_INVENTORY" <<'PY'
+SOURCE_DIGEST="$(sha256sum "$SOURCE_STATE" | awk '{print $1}')"
+
+if [[ -f "$STATE_BACKUP" ]]; then
+  BACKUP_DIGEST="$(sha256sum "$STATE_BACKUP" | awk '{print $1}')"
+  [[ "$BACKUP_DIGEST" == "$SOURCE_DIGEST" ]] || fail "LOCAL_STATE_BACKUP_DIGEST_MISMATCH"
+else
+  cp -f "$SOURCE_STATE" "$STATE_BACKUP"
+  BACKUP_DIGEST="$SOURCE_DIGEST"
+fi
+
+if [[ -f "$STATE_BACKUP_DIGEST" ]]; then
+  RECORDED_BACKUP_DIGEST="$(awk 'NR==1 {print $1}' "$STATE_BACKUP_DIGEST")"
+  [[ "$RECORDED_BACKUP_DIGEST" =~ ^[0-9a-fA-F]{64}$ ]] || fail "LOCAL_STATE_BACKUP_RECORDED_DIGEST_INVALID"
+  [[ "${RECORDED_BACKUP_DIGEST,,}" == "${BACKUP_DIGEST,,}" ]] || fail "LOCAL_STATE_BACKUP_RECORDED_DIGEST_MISMATCH"
+else
+  sha256sum "$STATE_BACKUP" > "$STATE_BACKUP_DIGEST"
+fi
+
+"${PYTHON_CMD[@]}" - "$STATE_BACKUP" "$LOCAL_INVENTORY" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -220,16 +239,6 @@ inventory = {
 inventory_path.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
 PY
 
-SOURCE_DIGEST="$(sha256sum "$SOURCE_STATE" | awk '{print $1}')"
-
-if [[ -f "$STATE_BACKUP" ]]; then
-  BACKUP_DIGEST="$(sha256sum "$STATE_BACKUP" | awk '{print $1}')"
-  [[ "$BACKUP_DIGEST" == "$SOURCE_DIGEST" ]] || fail "LOCAL_STATE_BACKUP_DIGEST_MISMATCH"
-else
-  cp -f "$SOURCE_STATE" "$STATE_BACKUP"
-fi
-sha256sum "$STATE_BACKUP" > "$STATE_BACKUP_DIGEST"
-
 cat > "$BACKEND_CONFIG" <<EOF
 bucket       = "${STATE_BUCKET}"
 key          = "${STATE_KEY}"
@@ -276,11 +285,17 @@ if [[ "$EXECUTE_MIGRATION" == true ]]; then
   MIGRATION_PERFORMED=true
 else
   [[ "$REMOTE_STATE_EXISTS" == true ]] || fail "REMOTE_BOOTSTRAP_STATE_NOT_FOUND"
+
+  "$TF_EXE" init \
+    -input=false \
+    -reconfigure \
+    -lockfile=readonly \
+    -backend-config="$BACKEND_CONFIG_WIN"
 fi
 
 "$TF_EXE" state pull > "$REMOTE_STATE"
 
-LINEAGE_STATUS="$(
+RECONCILIATION_STATUS="$(
   "${PYTHON_CMD[@]}" - "$STATE_BACKUP" "$REMOTE_STATE" "$RECONCILIATION_RESULT" <<'PY'
 import json
 import sys
@@ -316,35 +331,102 @@ def managed_addresses(state):
                 addresses.append(f"{base}[{json.dumps(index)}]")
     return sorted(addresses)
 
+
+def canonical_check_items(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SystemExit("REMOTE_STATE_CHECK_RESULTS_KIND_MISMATCH")
+    return sorted(
+        json.dumps(item, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        for item in value
+    )
+
+
+def collect_statuses(value):
+    statuses = []
+
+    def walk(item):
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if key == "status" and isinstance(child, str):
+                    statuses.append(child.lower())
+                walk(child)
+        elif isinstance(item, list):
+            for child in item:
+                walk(child)
+
+    walk(value)
+    return sorted(set(statuses))
+
+
 local_addresses = managed_addresses(local)
 remote_addresses = managed_addresses(remote)
 if remote_addresses != local_addresses:
     raise SystemExit("REMOTE_STATE_ADDRESS_SET_MISMATCH")
 
-payload_keys = ("resources", "outputs", "check_results")
-for key in payload_keys:
-    if remote.get(key) != local.get(key):
-        raise SystemExit(f"REMOTE_STATE_{key.upper()}_PAYLOAD_MISMATCH")
+if remote.get("resources") != local.get("resources"):
+    raise SystemExit("REMOTE_STATE_RESOURCES_PAYLOAD_MISMATCH")
+if remote.get("outputs") != local.get("outputs"):
+    raise SystemExit("REMOTE_STATE_OUTPUTS_PAYLOAD_MISMATCH")
+
+local_checks = local.get("check_results")
+remote_checks = remote.get("check_results")
+local_canonical_checks = canonical_check_items(local_checks)
+remote_canonical_checks = canonical_check_items(remote_checks)
+if remote_canonical_checks != local_canonical_checks:
+    raise SystemExit("REMOTE_STATE_CHECK_RESULTS_SEMANTIC_MISMATCH")
+
+check_statuses = collect_statuses(remote_checks)
+if check_statuses and check_statuses != ["pass"]:
+    raise SystemExit("REMOTE_STATE_CHECK_RESULTS_NOT_ALL_PASSING")
+
+check_results_exact = remote_checks == local_checks
+check_results_status = "exact" if check_results_exact else "order-only"
 
 local_serial = int(local.get("serial", -1))
 remote_serial = int(remote.get("serial", -1))
-if remote_serial < local_serial:
-    raise SystemExit("REMOTE_STATE_SERIAL_REGRESSION")
+if local_serial < 0:
+    raise SystemExit("LOCAL_STATE_SERIAL_INVALID")
 
 lineage_preserved = remote.get("lineage") == local.get("lineage")
+if lineage_preserved:
+    if remote_serial < local_serial:
+        raise SystemExit("REMOTE_STATE_SERIAL_REGRESSION")
+    serial_status = "non-regressing"
+else:
+    if remote_serial < 1:
+        raise SystemExit("REMOTE_STATE_REBASED_SERIAL_INVALID")
+    serial_status = "reset-valid"
+
 result = {
     "managed_addresses": remote_addresses,
-    "payload_exact": True,
+    "resources_exact": True,
+    "outputs_exact": True,
+    "check_results_exact": check_results_exact,
+    "check_results_order_only": not check_results_exact,
+    "check_statuses": check_statuses,
+    "payload_semantically_equivalent": True,
     "lineage_preserved": lineage_preserved,
     "lineage_rebased": not lineage_preserved,
     "local_serial": local_serial,
     "remote_serial": remote_serial,
-    "serial_non_regressing": True,
+    "serial_status": serial_status,
 }
 result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-print("preserved" if lineage_preserved else "rebased")
+print(
+    "|".join(
+        [
+            "preserved" if lineage_preserved else "rebased",
+            serial_status,
+            check_results_status,
+        ]
+    )
+)
 PY
 )"
+
+IFS='|' read -r LINEAGE_STATUS SERIAL_STATUS CHECK_RESULTS_STATUS <<< "$RECONCILIATION_STATUS"
 
 aws s3api head-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" >/dev/null
 STATE_VERSION_COUNT="$(aws s3api list-object-versions --bucket "$STATE_BUCKET" --prefix "$STATE_KEY" --query "length(Versions[?Key=='${STATE_KEY}'])" --output text)"
@@ -381,15 +463,47 @@ mapfile -t REMOTE_ADDRESSES < <("$TF_EXE" state list | grep -v '^data\.' | sort)
 FINAL_STATUS="$(git -C "$REPO_ROOT" status --porcelain)"
 [[ -z "$FINAL_STATUS" ]] || fail "WORKING_TREE_CHANGED_DURING_MIGRATION"
 
-if [[ "$LINEAGE_STATUS" == "preserved" ]]; then
-  LINEAGE_PRESERVED=true
-  LINEAGE_REBASED=false
-elif [[ "$LINEAGE_STATUS" == "rebased" ]]; then
-  LINEAGE_PRESERVED=false
-  LINEAGE_REBASED=true
-else
-  fail "STATE_LINEAGE_STATUS_INVALID"
-fi
+case "$LINEAGE_STATUS" in
+  preserved)
+    LINEAGE_PRESERVED=true
+    LINEAGE_REBASED=false
+    ;;
+  rebased)
+    LINEAGE_PRESERVED=false
+    LINEAGE_REBASED=true
+    ;;
+  *)
+    fail "STATE_LINEAGE_STATUS_INVALID"
+    ;;
+esac
+
+case "$SERIAL_STATUS" in
+  non-regressing)
+    SERIAL_NON_REGRESSING=true
+    SERIAL_RESET_VALID=false
+    ;;
+  reset-valid)
+    SERIAL_NON_REGRESSING=false
+    SERIAL_RESET_VALID=true
+    ;;
+  *)
+    fail "STATE_SERIAL_STATUS_INVALID"
+    ;;
+esac
+
+case "$CHECK_RESULTS_STATUS" in
+  exact)
+    CHECK_RESULTS_EXACT=true
+    CHECK_RESULTS_ORDER_ONLY=false
+    ;;
+  order-only)
+    CHECK_RESULTS_EXACT=false
+    CHECK_RESULTS_ORDER_ONLY=true
+    ;;
+  *)
+    fail "STATE_CHECK_RESULTS_STATUS_INVALID"
+    ;;
+esac
 
 if [[ "$MIGRATION_PERFORMED" == true ]]; then
   STATUS="success"
@@ -407,10 +521,16 @@ printf '%s\n' \
   "RemoteStateObjectPresent=true" \
   "RemoteStateVersionCount=${STATE_VERSION_COUNT}" \
   "ManagedStateResourceCount=${#REMOTE_ADDRESSES[@]}" \
-  "StatePayloadExact=true" \
+  "StateResourcesExact=true" \
+  "StateOutputsExact=true" \
+  "StateCheckResultsExact=${CHECK_RESULTS_EXACT}" \
+  "StateCheckResultsOrderOnly=${CHECK_RESULTS_ORDER_ONLY}" \
+  "StateCheckStatuses=pass" \
+  "StatePayloadSemanticallyEquivalent=true" \
   "StateLineagePreserved=${LINEAGE_PRESERVED}" \
   "StateLineageRebased=${LINEAGE_REBASED}" \
-  "StateSerialNonRegressing=true" \
+  "StateSerialNonRegressing=${SERIAL_NON_REGRESSING}" \
+  "StateSerialResetValid=${SERIAL_RESET_VALID}" \
   "PostMigrationPlanNoChanges=true" \
   "StaleLockObjectPresent=false" \
   "LocalStateBackupPreserved=true" \
