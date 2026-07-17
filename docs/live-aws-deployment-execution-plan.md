@@ -72,7 +72,7 @@ AWS_LIVE_EKS_TFVARS_B64
 AWS_LIVE_FRONTEND_TFVARS_B64
 ```
 
-`AWS_TERRAFORM_LOCK_TABLE`은 사용하지 않는다. Backend init은 `use_lockfile=true`를 사용한다.
+별도 lock table 변수는 사용하지 않는다. Backend init은 `use_lockfile=true`를 사용한다.
 
 Stage state key 규칙:
 
@@ -293,7 +293,7 @@ Cost-bearing resource는 별도로 표시한다.
 
 ## 12. Sensitive evidence boundary
 
-다음을 artifact로 업로드하지 않는다.
+다음 raw plan material을 artifact로 업로드하지 않는다.
 
 ```text
 private tfvars
