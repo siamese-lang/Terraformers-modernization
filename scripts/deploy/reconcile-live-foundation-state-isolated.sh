@@ -40,7 +40,7 @@ done
 
 [[ -n "$EXPECTED_HEAD" ]] || fail "EXPECTED_HEAD_REQUIRED"
 
-for command_name in git cygpath rm mkdir grep; do
+for command_name in git cygpath rm mkdir grep sed; do
   command -v "$command_name" >/dev/null 2>&1 || fail "REQUIRED_COMMAND_NOT_FOUND: $command_name"
 done
 
@@ -82,13 +82,15 @@ EOF
 
 rm -f "$SCHEMA_OUTPUT" "$SCHEMA_LOG"
 
-export TF_DATA_DIR="$ISOLATED_TF_DATA_DIR"
-export TF_CLI_CONFIG_FILE="$ISOLATED_CLI_CONFIG"
+BACKEND_CONFIG_WIN="$(cygpath -am "$BACKEND_CONFIG")"
+ISOLATED_TF_DATA_DIR_WIN="$(cygpath -am "$ISOLATED_TF_DATA_DIR")"
+ISOLATED_CLI_CONFIG_WIN="$(cygpath -am "$ISOLATED_CLI_CONFIG")"
+SCHEMA_LOG_WIN="$(cygpath -am "$SCHEMA_LOG")"
+
+export TF_DATA_DIR="$ISOLATED_TF_DATA_DIR_WIN"
+export TF_CLI_CONFIG_FILE="$ISOLATED_CLI_CONFIG_WIN"
 export TF_IN_AUTOMATION=1
 unset TF_PLUGIN_CACHE_DIR || true
-
-BACKEND_CONFIG_WIN="$(cygpath -aw "$BACKEND_CONFIG")"
-SCHEMA_OUTPUT_WIN="$(cygpath -aw "$SCHEMA_OUTPUT")"
 
 cd "$FOUNDATION_DIR"
 
@@ -99,8 +101,8 @@ cd "$FOUNDATION_DIR"
   -backend-config="$BACKEND_CONFIG_WIN"
 
 set +e
-TF_LOG=DEBUG TF_LOG_PATH="$SCHEMA_LOG" \
-  "$TF_EXE" providers schema -json > "$SCHEMA_OUTPUT_WIN" 2>/dev/null
+TF_LOG=DEBUG TF_LOG_PATH="$SCHEMA_LOG_WIN" \
+  "$TF_EXE" providers schema -json > "$SCHEMA_OUTPUT" 2>/dev/null
 SCHEMA_EXIT_CODE=$?
 set -e
 
