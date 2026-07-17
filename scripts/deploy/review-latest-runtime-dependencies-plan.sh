@@ -5,12 +5,13 @@ usage() {
   cat <<'EOF'
 Usage:
   bash scripts/deploy/review-latest-runtime-dependencies-plan.sh \
-    --expected-head SHA
+    --expected-head CURRENT_SHA \
+    --plan-head PLAN_SHA
 
-Locate the successful runtime-dependencies plan for the current head, download
-only its sanitized artifact into a private directory, verify the exact approved
-13-resource create set, and print the risk summary. No AWS or GitHub mutation is
-performed.
+Locate the successful runtime-dependencies plan for PLAN_SHA, download only its
+sanitized artifact into a private directory, verify the exact approved
+13-resource create set, and print the risk summary. CURRENT_SHA protects the
+local review code. No AWS or GitHub mutation is performed.
 EOF
 }
 
@@ -26,11 +27,17 @@ python_is_usable() {
 }
 
 EXPECTED_HEAD=""
+PLAN_HEAD=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --expected-head)
       [[ $# -ge 2 ]] || fail "EXPECTED_HEAD_VALUE_MISSING"
       EXPECTED_HEAD="$2"
+      shift 2
+      ;;
+    --plan-head)
+      [[ $# -ge 2 ]] || fail "PLAN_HEAD_VALUE_MISSING"
+      PLAN_HEAD="$2"
       shift 2
       ;;
     -h|--help)
@@ -44,6 +51,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]] || fail "EXPECTED_HEAD_INVALID"
+[[ "$PLAN_HEAD" =~ ^[0-9a-f]{40}$ ]] || fail "PLAN_HEAD_INVALID"
 
 for command_name in git gh cygpath rm mkdir find grep sed head cp; do
   command -v "$command_name" >/dev/null 2>&1 || fail "REQUIRED_COMMAND_NOT_FOUND: $command_name"
@@ -72,9 +80,9 @@ ARTIFACT_NAME="aws-live-terraform-plan-${STAGE}-evidence"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "NOT_INSIDE_GIT_REPOSITORY"
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
 PRIVATE_DIR="$(cygpath -u "${LOCALAPPDATA:?LOCALAPPDATA_NOT_SET}")/Terraformers/live-foundation"
-HEAD_SHORT="${EXPECTED_HEAD:0:12}"
-SOURCE_DIR="$PRIVATE_DIR/${STAGE}-plan-source-${HEAD_SHORT}"
-REVIEW_DIR="$PRIVATE_DIR/${STAGE}-plan-review-${HEAD_SHORT}"
+PLAN_SHORT="${PLAN_HEAD:0:12}"
+SOURCE_DIR="$PRIVATE_DIR/${STAGE}-plan-source-${PLAN_SHORT}"
+REVIEW_DIR="$PRIVATE_DIR/${STAGE}-plan-review-${PLAN_SHORT}"
 
 cd "$REPO_ROOT"
 [[ "$(git branch --show-current)" == "$BRANCH" ]] || fail "UNEXPECTED_CURRENT_BRANCH"
@@ -84,11 +92,15 @@ cd "$REPO_ROOT"
 }
 ACTUAL_HEAD="$(git rev-parse HEAD)"
 [[ "$ACTUAL_HEAD" == "$EXPECTED_HEAD" ]] || fail "HEAD_MISMATCH: $ACTUAL_HEAD"
+git cat-file -e "${PLAN_HEAD}^{commit}" 2>/dev/null || fail "PLAN_HEAD_COMMIT_NOT_FOUND"
+if ! git diff --quiet "$PLAN_HEAD" "$ACTUAL_HEAD" -- infra/terraform/envs/backend-runtime-dependencies; then
+  fail "RUNTIME_DEPENDENCIES_CONFIGURATION_CHANGED_SINCE_PLAN"
+fi
 gh auth status --hostname github.com >/dev/null 2>&1 || fail "GITHUB_AUTH_UNAVAILABLE"
 
 RUN_RECORD="$(gh api \
   "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&event=workflow_dispatch&status=completed&per_page=50" \
-  --jq ".workflow_runs[] | select(.head_sha == \"${EXPECTED_HEAD}\" and .conclusion == \"success\") | [.id, .html_url] | @tsv" \
+  --jq ".workflow_runs[] | select(.head_sha == \"${PLAN_HEAD}\" and .conclusion == \"success\") | [.id, .html_url] | @tsv" \
   | head -n 1)"
 [[ -n "$RUN_RECORD" ]] || fail "SUCCESSFUL_RUNTIME_DEPENDENCIES_PLAN_RUN_NOT_FOUND"
 IFS=$'\t' read -r RUN_ID RUN_URL <<< "$RUN_RECORD"
@@ -181,6 +193,7 @@ rm -rf "$SOURCE_DIR"
 printf '%s\n' \
   "RuntimeDependenciesPlanReview=passed" \
   "RepositoryHead=${ACTUAL_HEAD:0:12}" \
+  "PlanSourceHead=${PLAN_SHORT}" \
   "PlanRunId=${RUN_ID}" \
   "PlanStage=${STAGE}" \
   "ResourceChangeCount=13" \
