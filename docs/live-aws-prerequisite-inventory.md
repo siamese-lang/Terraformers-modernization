@@ -11,7 +11,13 @@
 - Terraform state S3 bucket 접근 및 versioning
 - GitHub OIDC plan role의 provider, audience, environment subject
 
-이 검사는 AWS 리소스를 생성·수정·삭제하지 않는다. private tfvars Secret 값은 읽거나 출력하지 않고 이름의 존재 여부만 확인한다.
+이 검사는 AWS 리소스를 생성·수정·삭제하지 않는다. Private tfvars Secret 값은 읽거나 출력하지 않고 이름의 존재 여부만 확인한다.
+
+AWS foundation apply와 bootstrap state migration은 완료됐다. 상세 evidence는 다음 문서에 기록한다.
+
+```text
+docs/live-foundation-state-migration.md
+```
 
 ## 기준 계약
 
@@ -33,6 +39,12 @@ DynamoDB locking은 사용하지 않는다. 각 stage state는 다음 경로와 
 ```text
 <state-prefix>/<stage>/terraform.tfstate
 <state-prefix>/<stage>/terraform.tfstate.tflock
+```
+
+Bootstrap canonical state:
+
+```text
+<state-prefix>/bootstrap/terraform.tfstate
 ```
 
 ## 단계 입력 계약
@@ -98,7 +110,7 @@ aws_mutation=none
 
 ## 2. GitHub 설정만 검사
 
-AWS foundation을 아직 생성하지 않았다면 다음처럼 실행한다.
+GitHub environment 구성을 시작하기 전 또는 구성 중에는 다음처럼 실행한다.
 
 ```powershell
 python scripts/deploy/live-aws-prerequisite-inventory.py --skip-aws
@@ -186,4 +198,4 @@ python scripts/deploy/live-aws-prerequisite-inventory.py `
 - `oidc-role-trust-mismatch`: provider, audience 또는 exact environment subject가 계약과 다르다.
 - `source-output-missing:<stage>:<source>`: Terraform 단계 output/input 연결이 끊겼다.
 
-AWS foundation 생성 전에는 `incomplete`가 정상이다. 이 결과를 우회해서 local credential로 live stage를 apply하지 않는다.
+Foundation과 bootstrap state가 이미 완료됐으므로 현재 단계에서 `incomplete`가 나온다면 주로 GitHub environment, variable 또는 Secret 이름이 누락된 것이다. 이 결과를 우회해서 local credential로 live stage를 apply하지 않는다.
