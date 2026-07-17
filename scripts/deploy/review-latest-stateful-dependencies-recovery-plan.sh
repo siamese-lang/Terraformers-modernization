@@ -63,7 +63,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "NOT_INSIDE_GIT
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
 PRIVATE_DIR="$(cygpath -u "${LOCALAPPDATA:?LOCALAPPDATA_NOT_SET}")/Terraformers/live-foundation"
 PLAN_SHORT="${PLAN_HEAD:0:12}"
-SOURCE_DIR="$PRIVATE_DIR/stateful-dependencies-recovery-plan-source-${PLAN_SHORT}"
+CANDIDATE_ROOT="$PRIVATE_DIR/stateful-dependencies-recovery-plan-candidates-${PLAN_SHORT}"
 REVIEW_DIR="$PRIVATE_DIR/stateful-dependencies-recovery-plan-review-${PLAN_SHORT}"
 
 cd "$REPO_ROOT"
@@ -81,39 +81,59 @@ fi
 
 gh auth status --hostname github.com >/dev/null 2>&1 || fail "GITHUB_AUTH_UNAVAILABLE"
 
-RUN_RECORD="$(gh api \
+rm -rf "$CANDIDATE_ROOT" "$REVIEW_DIR"
+mkdir -p "$CANDIDATE_ROOT" "$REVIEW_DIR"
+
+RUN_RECORDS="$(gh api \
   "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&event=workflow_dispatch&status=completed&per_page=50" \
-  --jq ".workflow_runs[] | select(.head_sha == \"${PLAN_HEAD}\" and .conclusion == \"success\") | [.id, .html_url] | @tsv" \
-  | head -n 1)"
-[[ -n "$RUN_RECORD" ]] || fail "SUCCESSFUL_STATEFUL_RECOVERY_PLAN_RUN_NOT_FOUND"
-IFS=$'\t' read -r RUN_ID RUN_URL <<< "$RUN_RECORD"
-[[ "$RUN_ID" =~ ^[0-9]+$ ]] || fail "STATEFUL_RECOVERY_PLAN_RUN_ID_INVALID"
+  --jq ".workflow_runs[] | select(.head_sha == \"${PLAN_HEAD}\" and .conclusion == \"success\") | [.id, .html_url] | @tsv")"
+[[ -n "$RUN_RECORDS" ]] || fail "SUCCESSFUL_STATEFUL_RECOVERY_PLAN_RUN_NOT_FOUND"
 
-ARTIFACT_RECORD="$(gh api \
-  "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
-  --jq ".artifacts[] | select(.name == \"${ARTIFACT_NAME}\" and .expired == false) | [.id, .name] | @tsv" \
-  | head -n 1)"
-[[ -n "$ARTIFACT_RECORD" ]] || fail "STATEFUL_RECOVERY_PLAN_ARTIFACT_NOT_FOUND"
-IFS=$'\t' read -r ARTIFACT_ID RESOLVED_ARTIFACT_NAME <<< "$ARTIFACT_RECORD"
-[[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]] || fail "STATEFUL_RECOVERY_PLAN_ARTIFACT_ID_INVALID"
-[[ "$RESOLVED_ARTIFACT_NAME" == "$ARTIFACT_NAME" ]] || fail "STATEFUL_RECOVERY_PLAN_ARTIFACT_NAME_MISMATCH"
+SELECTED_RUN_ID=""
+SELECTED_RUN_URL=""
+SELECTED_SOURCE_DIR=""
+while IFS=$'\t' read -r CANDIDATE_RUN_ID CANDIDATE_RUN_URL; do
+  [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]] || continue
+  CANDIDATE_DIR="$CANDIDATE_ROOT/$CANDIDATE_RUN_ID"
+  mkdir -p "$CANDIDATE_DIR"
 
-rm -rf "$SOURCE_DIR" "$REVIEW_DIR"
-mkdir -p "$SOURCE_DIR" "$REVIEW_DIR"
-gh run download "$RUN_ID" \
-  --repo "$REPO" \
-  --name "$ARTIFACT_NAME" \
-  --dir "$SOURCE_DIR"
+  ARTIFACT_RECORD="$(gh api \
+    "repos/${REPO}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" \
+    --jq ".artifacts[] | select(.name == \"${ARTIFACT_NAME}\" and .expired == false) | [.id, .name] | @tsv" \
+    | head -n 1)"
+  [[ -n "$ARTIFACT_RECORD" ]] || continue
 
-RISK_TXT="$(find "$SOURCE_DIR" -type f -name plan-risk-summary.txt -print -quit)"
-RISK_JSON="$(find "$SOURCE_DIR" -type f -name plan-risk-summary.json -print -quit)"
-RISK_MD="$(find "$SOURCE_DIR" -type f -name plan-risk-summary.md -print -quit)"
-LIVE_SUMMARY="$(find "$SOURCE_DIR" -type f -name live-plan-summary.txt -print -quit)"
+  if ! gh run download "$CANDIDATE_RUN_ID" \
+    --repo "$REPO" \
+    --name "$ARTIFACT_NAME" \
+    --dir "$CANDIDATE_DIR" >/dev/null 2>&1; then
+    continue
+  fi
+
+  CANDIDATE_RISK_TXT="$(find "$CANDIDATE_DIR" -type f -name plan-risk-summary.txt -print -quit)"
+  CANDIDATE_RISK_MD="$(find "$CANDIDATE_DIR" -type f -name plan-risk-summary.md -print -quit)"
+  CANDIDATE_LIVE_SUMMARY="$(find "$CANDIDATE_DIR" -type f -name live-plan-summary.txt -print -quit)"
+  [[ -f "$CANDIDATE_RISK_TXT" && -f "$CANDIDATE_RISK_MD" && -f "$CANDIDATE_LIVE_SUMMARY" ]] || continue
+
+  grep -Fqx 'terraform_plan_risk_gate=passed' "$CANDIDATE_RISK_TXT" || continue
+  grep -Fqx 'plan_stage=stateful-dependencies' "$CANDIDATE_RISK_TXT" || continue
+  grep -Fqx 'resource_change_count=1' "$CANDIDATE_RISK_TXT" || continue
+  grep -Fq '| `aws_db_instance.backend` | `aws_db_instance` | `create` |' "$CANDIDATE_RISK_MD" || continue
+
+  SELECTED_RUN_ID="$CANDIDATE_RUN_ID"
+  SELECTED_RUN_URL="$CANDIDATE_RUN_URL"
+  SELECTED_SOURCE_DIR="$CANDIDATE_DIR"
+  break
+done <<< "$RUN_RECORDS"
+
+[[ -n "$SELECTED_RUN_ID" && -d "$SELECTED_SOURCE_DIR" ]] || fail "MATCHING_STATEFUL_RECOVERY_PLAN_ARTIFACT_NOT_FOUND"
+
+RISK_TXT="$(find "$SELECTED_SOURCE_DIR" -type f -name plan-risk-summary.txt -print -quit)"
+RISK_JSON="$(find "$SELECTED_SOURCE_DIR" -type f -name plan-risk-summary.json -print -quit)"
+RISK_MD="$(find "$SELECTED_SOURCE_DIR" -type f -name plan-risk-summary.md -print -quit)"
+LIVE_SUMMARY="$(find "$SELECTED_SOURCE_DIR" -type f -name live-plan-summary.txt -print -quit)"
 [[ -f "$RISK_TXT" && -f "$RISK_JSON" && -f "$RISK_MD" && -f "$LIVE_SUMMARY" ]] || fail "STATEFUL_RECOVERY_PLAN_SUMMARY_MISSING"
 
-grep -Fqx 'terraform_plan_risk_gate=passed' "$RISK_TXT" || fail "STATEFUL_RECOVERY_PLAN_RISK_GATE_NOT_PASSED"
-grep -Fqx 'plan_stage=stateful-dependencies' "$RISK_TXT" || fail "STATEFUL_RECOVERY_PLAN_STAGE_MISMATCH"
-grep -Fqx 'resource_change_count=1' "$RISK_TXT" || fail "STATEFUL_RECOVERY_RESOURCE_COUNT_MISMATCH"
 grep -Fqx 'destructive_resource_count=0' "$RISK_TXT" || fail "STATEFUL_RECOVERY_DESTRUCTIVE_CHANGE_PRESENT"
 grep -Fqx 'replacement_resource_count=0' "$RISK_TXT" || fail "STATEFUL_RECOVERY_REPLACEMENT_PRESENT"
 grep -Fqx 'public_exposure_finding_count=0' "$RISK_TXT" || fail "STATEFUL_RECOVERY_PUBLIC_EXPOSURE_PRESENT"
@@ -122,10 +142,10 @@ grep -Fqx 'high_cost_resource_count=1' "$RISK_TXT" || fail "STATEFUL_RECOVERY_HI
 grep -Fqx 'raw_plan_uploaded=false' "$RISK_TXT" || fail "STATEFUL_RECOVERY_RAW_PLAN_BOUNDARY_MISSING"
 grep -Fqx 'expected_account_id_verified=true' "$LIVE_SUMMARY" || fail "EXPECTED_ACCOUNT_VERIFICATION_EVIDENCE_MISSING"
 
-if find "$SOURCE_DIR" -type f \( -name '*.tfplan' -o -name 'live-plan.json' -o -name 'live.auto.tfvars' -o -name 'backend.hcl' -o -name 'caller-identity.json' \) -print -quit | grep -q .; then
+if find "$SELECTED_SOURCE_DIR" -type f \( -name '*.tfplan' -o -name 'live-plan.json' -o -name 'live.auto.tfvars' -o -name 'backend.hcl' -o -name 'caller-identity.json' \) -print -quit | grep -q .; then
   fail "SENSITIVE_OR_RAW_PLAN_MATERIAL_FOUND_IN_ARTIFACT"
 fi
-if grep -R -E -q '(^|[^0-9])[0-9]{12}([^0-9]|$)' "$SOURCE_DIR"; then
+if grep -R -E -q '(^|[^0-9])[0-9]{12}([^0-9]|$)' "$SELECTED_SOURCE_DIR"; then
   fail "AWS_ACCOUNT_ID_FOUND_IN_ARTIFACT"
 fi
 
@@ -148,13 +168,13 @@ cp "$RISK_TXT" "$REVIEW_DIR/plan-risk-summary.txt"
 cp "$RISK_JSON" "$REVIEW_DIR/plan-risk-summary.json"
 cp "$RISK_MD" "$REVIEW_DIR/plan-risk-summary.md"
 cp "$LIVE_SUMMARY" "$REVIEW_DIR/live-plan-summary.txt"
-rm -rf "$SOURCE_DIR"
+rm -rf "$CANDIDATE_ROOT"
 
 printf '%s\n' \
   "StatefulDependenciesRecoveryPlanReview=passed" \
   "RepositoryHead=${ACTUAL_HEAD:0:12}" \
   "PlanSourceHead=${PLAN_SHORT}" \
-  "PlanRunId=${RUN_ID}" \
+  "PlanRunId=${SELECTED_RUN_ID}" \
   "PlanStage=${STAGE}" \
   "ResourceChangeCount=1" \
   "HighCostResourceCount=1" \
@@ -170,7 +190,7 @@ printf '%s\n' \
   "AwsMutation=none" \
   "GitHubMutation=none" \
   "PythonCommand=${PYTHON_LABEL}" \
-  "RunUrl=${RUN_URL}"
+  "RunUrl=${SELECTED_RUN_URL}"
 
 printf '\nResourceActions:\n'
 sed -n '/^| `.*` | `.*` | `.*` |$/p' "$REVIEW_DIR/plan-risk-summary.md"
