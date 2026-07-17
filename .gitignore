@@ -74,3 +74,6 @@ artifacts/
 .tmp/
 tmp/
 .cache/
+
+# Pin providers used by the live AWS foundation bootstrap
+!infra/terraform/bootstrap/aws-live-foundation/.terraform.lock.hcl
