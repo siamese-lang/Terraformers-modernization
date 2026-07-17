@@ -195,7 +195,7 @@ Generator handoff:
 
 ```text
 network -> stateful-dependencies
-network + runtime-dependencies + operator /32 -> eks-runtime
+network + runtime-dependencies + stateful-dependencies + operator /32 -> eks-runtime
 verified internal ALB ARN -> frontend-delivery
 ```
 

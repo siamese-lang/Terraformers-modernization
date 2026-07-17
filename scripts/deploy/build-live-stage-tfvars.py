@@ -130,7 +130,12 @@ def build_stateful(network: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_eks(network: dict[str, Any], runtime: dict[str, Any], operator_cidr: str) -> str:
+def build_eks(
+    network: dict[str, Any],
+    runtime: dict[str, Any],
+    stateful: dict[str, Any],
+    operator_cidr: str,
+) -> str:
     cidr = validate_operator_cidr(operator_cidr)
     lines = common_header("eks-runtime") + [
         'project_name = "terraformers"',
@@ -156,6 +161,7 @@ def build_eks(network: dict[str, Any], runtime: dict[str, Any], operator_cidr: s
         f"ai_log_queue_arn           = {hcl_string(scalar(runtime, 'ai_log_queue_arn'))}",
         f"terraform_log_queue_arn    = {hcl_string(scalar(runtime, 'terraform_log_queue_arn'))}",
         f"backend_runtime_secret_arn = {hcl_string(scalar(runtime, 'backend_runtime_secret_arn'))}",
+        f"database_master_user_secret_arn = {hcl_string(scalar(stateful, 'database_master_user_secret_arn'))}",
         "",
         "bedrock_model_resource_arns = []",
         "",
@@ -189,6 +195,7 @@ def main() -> int:
     parser.add_argument("--stage", choices=["stateful-dependencies", "eks-runtime", "frontend-delivery"], required=True)
     parser.add_argument("--network-outputs-json")
     parser.add_argument("--runtime-outputs-json")
+    parser.add_argument("--stateful-outputs-json")
     parser.add_argument("--operator-cidr")
     parser.add_argument("--frontend-bucket-name")
     parser.add_argument("--api-origin-load-balancer-arn")
@@ -201,11 +208,19 @@ def main() -> int:
                 raise TfvarsError("--network-outputs-json is required")
             content = build_stateful(load_outputs(args.network_outputs_json))
         elif args.stage == "eks-runtime":
-            if not args.network_outputs_json or not args.runtime_outputs_json or not args.operator_cidr:
-                raise TfvarsError("EKS generation requires network outputs, runtime outputs, and operator CIDR")
+            if (
+                not args.network_outputs_json
+                or not args.runtime_outputs_json
+                or not args.stateful_outputs_json
+                or not args.operator_cidr
+            ):
+                raise TfvarsError(
+                    "EKS generation requires network outputs, runtime outputs, stateful outputs, and operator CIDR"
+                )
             content = build_eks(
                 load_outputs(args.network_outputs_json),
                 load_outputs(args.runtime_outputs_json),
+                load_outputs(args.stateful_outputs_json),
                 args.operator_cidr,
             )
         else:

@@ -49,6 +49,7 @@ def main() -> int:
 
     network = FIXTURES / "network.json"
     runtime = FIXTURES / "runtime.json"
+    stateful_outputs = FIXTURES / "stateful.json"
     write_json(network, {
         "vpc_id": {"value": "vpc-0123456789abcdef0"},
         "vpc_cidr_block": {"value": "10.40.0.0/16"},
@@ -62,13 +63,18 @@ def main() -> int:
         "terraform_log_queue_arn": {"value": "arn:aws:sqs:ap-northeast-2:123456789012:terraformers-terraform-log"},
         "backend_runtime_secret_arn": {"value": "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-runtime-AbCdEf"},
     })
+    write_json(stateful_outputs, {
+        "database_master_user_secret_arn": {
+            "value": "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-rds-master-AbCdEf"
+        },
+    })
 
     stateful = GENERATED / "stateful.tfvars"
     eks = GENERATED / "eks.tfvars"
     frontend = GENERATED / "frontend.tfvars"
 
     run(sys.executable, str(BUILDER), "--stage", "stateful-dependencies", "--network-outputs-json", str(network), "--output", str(stateful))
-    run(sys.executable, str(BUILDER), "--stage", "eks-runtime", "--network-outputs-json", str(network), "--runtime-outputs-json", str(runtime), "--operator-cidr", "8.8.8.8/32", "--output", str(eks))
+    run(sys.executable, str(BUILDER), "--stage", "eks-runtime", "--network-outputs-json", str(network), "--runtime-outputs-json", str(runtime), "--stateful-outputs-json", str(stateful_outputs), "--operator-cidr", "8.8.8.8/32", "--output", str(eks))
     run(sys.executable, str(BUILDER), "--stage", "frontend-delivery", "--frontend-bucket-name", "terraformers-test-frontend-123456789012", "--api-origin-load-balancer-arn", "arn:aws:elasticloadbalancing:ap-northeast-2:123456789012:loadbalancer/app/terraformers-internal/0123456789abcdef", "--output", str(frontend))
 
     assert_contains(stateful, 'vpc_id = "vpc-0123456789abcdef0"')
@@ -77,6 +83,7 @@ def main() -> int:
     assert_contains(eks, 'kubernetes_version = "1.35"')
     assert_contains(eks, '"8.8.8.8/32"')
     assert_contains(eks, 'upload_bucket_arn          = "arn:aws:s3:::terraformers-test-uploads"')
+    assert_contains(eks, 'database_master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-rds-master-AbCdEf"')
     assert_contains(eks, "bedrock_model_resource_arns = []")
     assert_contains(frontend, "frontend_bucket_force_destroy = false")
     assert_contains(frontend, "loadbalancer/app/terraformers-internal/0123456789abcdef")
@@ -95,6 +102,8 @@ def main() -> int:
         str(network),
         "--runtime-outputs-json",
         str(runtime),
+        "--stateful-outputs-json",
+        str(stateful_outputs),
         "--operator-cidr",
         "0.0.0.0/0",
         "--output",
@@ -104,10 +113,29 @@ def main() -> int:
     if "exact public IPv4 /32" not in rejected.stderr:
         raise RuntimeError("Unsafe operator CIDR rejection was not explicit.")
 
+    missing_stateful = run(
+        sys.executable,
+        str(BUILDER),
+        "--stage",
+        "eks-runtime",
+        "--network-outputs-json",
+        str(network),
+        "--runtime-outputs-json",
+        str(runtime),
+        "--operator-cidr",
+        "8.8.8.8/32",
+        "--output",
+        str(GENERATED / "missing-stateful.tfvars"),
+        expected=1,
+    )
+    if "stateful outputs" not in missing_stateful.stderr:
+        raise RuntimeError("Missing stateful outputs rejection was not explicit.")
+
     summary = [
         "live_stage_tfvars_builder_verification=passed",
         "generated_stage_count=3",
         "unsafe_operator_cidr_rejected=true",
+        "missing_stateful_outputs_rejected=true",
         "secret_values_read=false",
         "aws_authentication=none",
         "aws_mutation=none",

@@ -150,6 +150,8 @@ def main() -> int:
     require(errors, "provider-auth ServiceAccount: terraformers-runtime/terraformers-external-secrets" in managed_secret_doc, "external-secrets-provider-auth-doc-drift")
 
     require(errors, 'choices=["stateful-dependencies", "eks-runtime", "frontend-delivery"]' in tfvars_builder, "tfvars-builder-stage-contract-drift")
+    require(errors, 'parser.add_argument("--stateful-outputs-json")' in tfvars_builder, "tfvars-builder-stateful-output-input-missing")
+    require(errors, "scalar(stateful, 'database_master_user_secret_arn')" in tfvars_builder, "tfvars-builder-database-secret-handoff-missing")
     require(errors, "Operator CIDR must be an exact public IPv4 /32." in tfvars_builder, "tfvars-builder-operator-cidr-guard-missing")
     require(errors, "database_publicly_accessible      = false" in tfvars_builder, "tfvars-builder-public-database-guard-missing")
     require(errors, "bedrock_model_resource_arns = []" in tfvars_builder, "tfvars-builder-optional-adapter-guard-missing")

@@ -46,6 +46,10 @@ ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:000000000000:replace-ai
 terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:000000000000:replace-terraform-log"
 backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:000000000000:secret:replace-runtime-secret"
 
+# Replace with the database_master_user_secret_arn output from backend-stateful-dependencies.
+# This passes RDS-managed Secret ARN metadata, not the Secret value.
+database_master_user_secret_arn = "replace-from-stateful-database-master-user-secret-arn-output"
+
 # Optional Bedrock access remains disabled until model access and application
 # adapter behavior are separately approved.
 bedrock_model_resource_arns = []

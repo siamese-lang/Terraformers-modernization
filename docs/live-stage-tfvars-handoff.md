@@ -16,7 +16,7 @@ scripts/deploy/build-live-stage-tfvars.py
 network outputs
   -> stateful-dependencies tfvars
 
-network outputs + runtime-dependencies outputs + operator /32
+network outputs + runtime-dependencies outputs + stateful-dependencies outputs + operator /32
   -> eks-runtime tfvars
 
 verified internal ALB ARN + private frontend bucket name
@@ -39,6 +39,9 @@ terraform -chdir=infra\terraform\envs\aws-runtime-network output -json `
 
 terraform -chdir=infra\terraform\envs\backend-runtime-dependencies output -json `
   | Set-Content -Encoding utf8 artifacts\terraform\runtime-dependencies.json
+
+terraform -chdir=infra\terraform\envs\backend-stateful-dependencies output -json `
+  | Set-Content -Encoding utf8 artifacts\terraform\stateful-dependencies.json
 ```
 
 `artifacts/`는 Git에서 제외된다.
@@ -87,6 +90,7 @@ python scripts\deploy\build-live-stage-tfvars.py `
   --stage eks-runtime `
   --network-outputs-json artifacts\terraform\network.json `
   --runtime-outputs-json artifacts\terraform\runtime-dependencies.json `
+  --stateful-outputs-json artifacts\terraform\stateful-dependencies.json `
   --operator-cidr $OperatorCidr `
   --output infra\terraform\envs\eks-runtime\live.tfvars
 ```
@@ -112,7 +116,10 @@ result_bucket_arn
 ai_log_queue_arn
 terraform_log_queue_arn
 backend_runtime_secret_arn
+database_master_user_secret_arn
 ```
+
+`database_master_user_secret_arn`은 실제 Secret 값이 아니라 RDS-managed Secret의 ARN metadata만 전달한다.
 
 고정 안전값:
 
@@ -193,6 +200,7 @@ python scripts\checks\live-stage-tfvars-builder-verification.py
 live_stage_tfvars_builder_verification=passed
 generated_stage_count=3
 unsafe_operator_cidr_rejected=true
+missing_stateful_outputs_rejected=true
 secret_values_read=false
 aws_authentication=none
 aws_mutation=none

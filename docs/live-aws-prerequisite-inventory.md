@@ -103,7 +103,7 @@ live private origin
   -> api_origin_load_balancer_arn
 ```
 
-`stateful-dependencies`와 `eks-runtime` tfvars는 선행 state output을 받아 generator로 만든다.
+`stateful-dependencies`와 `eks-runtime` tfvars는 선행 state output을 받아 generator로 만든다. EKS에는 network, runtime-dependencies, stateful-dependencies output이 필요하다.
 
 ```text
 scripts/deploy/build-live-stage-tfvars.py
