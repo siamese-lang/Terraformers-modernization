@@ -117,8 +117,28 @@ while IFS=$'\t' read -r CANDIDATE_RUN_ID CANDIDATE_RUN_URL; do
 
   grep -Fqx 'terraform_plan_risk_gate=passed' "$CANDIDATE_RISK_TXT" || continue
   grep -Fqx 'plan_stage=stateful-dependencies' "$CANDIDATE_RISK_TXT" || continue
-  grep -Fqx 'resource_change_count=1' "$CANDIDATE_RISK_TXT" || continue
-  grep -Fq '| `aws_db_instance.backend` | `aws_db_instance` | `create` |' "$CANDIDATE_RISK_MD" || continue
+  grep -Fqx 'resource_change_count=5' "$CANDIDATE_RISK_TXT" || continue
+
+  if ! "${PYTHON_CMD[@]}" - "$CANDIDATE_RISK_MD" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+rows = re.findall(r'^\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$', text, re.MULTILINE)
+actual = {(address, resource_type, tuple(actions.split(","))) for address, resource_type, actions in rows}
+expected = {
+    ("aws_cognito_user_pool.backend", "aws_cognito_user_pool", ("no-op",)),
+    ("aws_cognito_user_pool_client.backend", "aws_cognito_user_pool_client", ("no-op",)),
+    ("aws_db_instance.backend", "aws_db_instance", ("create",)),
+    ("aws_db_subnet_group.backend", "aws_db_subnet_group", ("no-op",)),
+    ("aws_security_group.backend_database", "aws_security_group", ("no-op",)),
+}
+raise SystemExit(0 if actual == expected else 1)
+PY
+  then
+    continue
+  fi
 
   SELECTED_RUN_ID="$CANDIDATE_RUN_ID"
   SELECTED_RUN_URL="$CANDIDATE_RUN_URL"
@@ -157,11 +177,18 @@ from pathlib import Path
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 rows = re.findall(r'^\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$', text, re.MULTILINE)
 actual = {(address, resource_type, tuple(actions.split(","))) for address, resource_type, actions in rows}
-expected = {("aws_db_instance.backend", "aws_db_instance", ("create",))}
+expected = {
+    ("aws_cognito_user_pool.backend", "aws_cognito_user_pool", ("no-op",)),
+    ("aws_cognito_user_pool_client.backend", "aws_cognito_user_pool_client", ("no-op",)),
+    ("aws_db_instance.backend", "aws_db_instance", ("create",)),
+    ("aws_db_subnet_group.backend", "aws_db_subnet_group", ("no-op",)),
+    ("aws_security_group.backend_database", "aws_security_group", ("no-op",)),
+}
 if actual != expected:
     raise SystemExit("STATEFUL_RECOVERY_RESOURCE_ACTION_SET_MISMATCH")
 print("ExpectedRecoveryResourceActionMatch=true")
 print("ExpectedRecoveryResourceCount=1")
+print("ExpectedNoOpResourceCount=4")
 PY
 
 cp "$RISK_TXT" "$REVIEW_DIR/plan-risk-summary.txt"
@@ -176,7 +203,9 @@ printf '%s\n' \
   "PlanSourceHead=${PLAN_SHORT}" \
   "PlanRunId=${SELECTED_RUN_ID}" \
   "PlanStage=${STAGE}" \
-  "ResourceChangeCount=1" \
+  "ResourceChangeCount=5" \
+  "ActionableResourceCount=1" \
+  "NoOpResourceCount=4" \
   "HighCostResourceCount=1" \
   "DestructiveResourceCount=0" \
   "ReplacementResourceCount=0" \
