@@ -45,6 +45,10 @@ assert_contains '^[[:space:]]+workflow_dispatch:' "${REUSABLE_LIVE_PLAN}" 'Live 
 assert_contains '^[[:space:]]+workflow_call:' "${REUSABLE_LIVE_PLAN}" 'Live plan must be reusable before merge.'
 assert_contains 'environment:[[:space:]]*aws-live-plan' "${REUSABLE_LIVE_PLAN}" 'Reusable live plan must retain the protected environment.'
 assert_not_contains '(^|[[:space:]])terraform[[:space:]]+(apply|destroy)([[:space:]]|$)' "${REUSABLE_LIVE_PLAN}" 'Pre-merge plan path must not contain Terraform apply/destroy.'
+assert_contains 'CALLER_IDENTITY="\$\{RUNNER_TEMP\}/caller-identity\.json"' "${REUSABLE_LIVE_PLAN}" 'Caller identity must remain in the ephemeral runner directory.'
+assert_not_contains 'artifacts/aws-live-terraform-plan/caller-identity\.json' "${REUSABLE_LIVE_PLAN}" 'Caller identity must not be written to uploaded artifacts.'
+assert_contains 'expected_account_id_verified=true' "${REUSABLE_LIVE_PLAN}" 'Uploaded evidence must record verification without exposing the account ID.'
+assert_not_contains "echo 'expected_account_id=\$\{\{ inputs\.expected_aws_account_id \}\}'" "${REUSABLE_LIVE_PLAN}" 'Raw expected account ID must not be written to uploaded evidence.'
 
 assert_contains 'inventory-live-aws-prerequisites\.sh' "${DISPATCH_SCRIPT}" 'Dispatch must run strict prerequisites first.'
 assert_contains '--stage network' "${DISPATCH_SCRIPT}" 'Dispatch must be limited to the network stage.'
@@ -63,6 +67,8 @@ printf '%s\n' \
   'same_commit_reusable_workflow=true' \
   'network_prerequisite_strict=true' \
   'environment_gate=aws-live-plan' \
+  'caller_identity_artifact=false' \
+  'expected_account_id_artifact=false' \
   'destructive_action_default=blocked' \
   'optional_adapter_default=blocked' \
   'terraform_apply_automated=false' \
