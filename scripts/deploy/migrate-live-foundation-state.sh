@@ -152,7 +152,10 @@ ENCRYPTION="$(aws s3api get-bucket-encryption --bucket "$STATE_BUCKET" --query '
 mkdir -p "$PRIVATE_DIR"
 
 SOURCE_STATE=""
-if [[ -f "$LOCAL_STATE" ]]; then
+if [[ "$RECONCILE_EXISTING_REMOTE" == true ]]; then
+  [[ -f "$STATE_BACKUP" ]] || fail "FOUNDATION_STATE_BACKUP_NOT_FOUND"
+  SOURCE_STATE="$STATE_BACKUP"
+elif [[ -f "$LOCAL_STATE" ]]; then
   SOURCE_STATE="$LOCAL_STATE"
 elif [[ -f "$STATE_BACKUP" ]]; then
   SOURCE_STATE="$STATE_BACKUP"
