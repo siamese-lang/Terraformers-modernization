@@ -41,6 +41,28 @@ printf '%s\n' "$DATABASE_IDENTIFIER_BLOCK" |
   fail "DATABASE_INSTANCE_IDENTIFIER_OUTPUT_INVALID"
 
 for apply_script in "$NORMAL_APPLY" "$RECOVERY_APPLY"; do
+  grep -Fq 'strip_trailing_carriage_return()' "$apply_script" ||
+    fail "PYTHON_OUTPUT_CR_NORMALIZER_MISSING"
+  grep -Fq "\${value%\$'\\r'}" "$apply_script" ||
+    fail "PYTHON_OUTPUT_CR_NORMALIZER_INVALID"
+  NORMALIZATION_BLOCK="$(awk '
+    /for shell_value_name in/ { capture = 1 }
+    capture { print }
+    capture && /^[[:space:]]*done[[:space:]]*$/ { exit }
+  ' "$apply_script")"
+  printf '%s\n' "$NORMALIZATION_BLOCK" |
+    grep -Fq 'strip_trailing_carriage_return "${!shell_value_name}"' ||
+    fail "PYTHON_OUTPUT_CR_NORMALIZER_NOT_APPLIED"
+  for shell_value_name in \
+    DB_INSTANCE_IDENTIFIER \
+    SG_ID \
+    POOL_ID \
+    CLIENT_ID \
+    MASTER_SECRET_ARN; do
+    printf '%s\n' "$NORMALIZATION_BLOCK" |
+      grep -Eq "(^|[[:space:]\\\\])${shell_value_name}([[:space:]\\\\;]|$)" ||
+      fail "PYTHON_OUTPUT_CR_NORMALIZER_VALUE_MISSING: $shell_value_name"
+  done
   grep -Fq '"database_instance_id",' "$apply_script" ||
     fail "DATABASE_INSTANCE_ID_COMPATIBILITY_OUTPUT_NOT_VALIDATED"
   grep -Fq '"database_instance_identifier",' "$apply_script" ||
@@ -61,6 +83,10 @@ grep -Fq '"database_instance_identifier",' "$APPLIED_VERIFY" ||
   fail "APPLIED_VERIFY_IDENTIFIER_OUTPUT_NOT_PARSED"
 grep -Fq 'database_instance_identifier) DB_INSTANCE_IDENTIFIER="$value" ;;' "$APPLIED_VERIFY" ||
   fail "APPLIED_VERIFY_IDENTIFIER_OUTPUT_NOT_USED"
+grep -Fq 'value="$(strip_trailing_carriage_return "$value")"' "$APPLIED_VERIFY" ||
+  fail "APPLIED_VERIFY_OUTPUT_RECORD_CR_NOT_NORMALIZED"
+grep -Fq 'PLAN_CHANGE_COUNT_VALUES[$index]="$(strip_trailing_carriage_return "${PLAN_CHANGE_COUNT_VALUES[$index]}")"' "$APPLIED_VERIFY" ||
+  fail "APPLIED_VERIFY_PLAN_CHANGE_COUNT_CR_NOT_NORMALIZED"
 grep -Fq -- '--db-instance-identifier "$DB_INSTANCE_IDENTIFIER"' "$APPLIED_VERIFY" ||
   fail "APPLIED_VERIFY_RDS_DESCRIBE_IDENTIFIER_INVALID"
 grep -Fq -- '-detailed-exitcode' "$APPLIED_VERIFY" ||
@@ -103,5 +129,6 @@ printf '%s\n' \
   'database_instance_id_semantics=dbi-resource-id' \
   'database_instance_identifier_semantics=db-instance-identifier' \
   'rds_describe_identifier_source=database_instance_identifier' \
+  'python_output_cr_normalization=passed' \
   'applied_verification_mode=read-only' \
   'applied_verification_state_locking=normal'

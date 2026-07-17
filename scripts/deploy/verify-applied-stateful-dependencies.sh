@@ -28,6 +28,11 @@ python_is_usable() {
   [[ "$output" =~ ^3\.[0-9]+$ ]]
 }
 
+strip_trailing_carriage_return() {
+  local value="$1"
+  printf '%s' "${value%$'\r'}"
+}
+
 read_tfvar_string() {
   local name="$1"
   sed -nE \
@@ -280,6 +285,7 @@ POOL_ID=""
 CLIENT_ID=""
 MASTER_SECRET_ARN=""
 while IFS=$'\t' read -r name value; do
+  value="$(strip_trailing_carriage_return "$value")"
   case "$name" in
     database_instance_identifier) DB_INSTANCE_IDENTIFIER="$value" ;;
     database_security_group_id) SG_ID="$value" ;;
@@ -413,6 +419,9 @@ print(output_count)
 PY
 )"
   mapfile -t PLAN_CHANGE_COUNT_VALUES <<<"$PLAN_CHANGE_COUNTS"
+  for index in "${!PLAN_CHANGE_COUNT_VALUES[@]}"; do
+    PLAN_CHANGE_COUNT_VALUES[$index]="$(strip_trailing_carriage_return "${PLAN_CHANGE_COUNT_VALUES[$index]}")"
+  done
   [[ "${#PLAN_CHANGE_COUNT_VALUES[@]}" -eq 2 ]] || fail "STATEFUL_VERIFICATION_PLAN_CHANGE_COUNT_INVALID"
   printf '%s\n' 'TerraformNoChangePlanStatus=changes-detected' >&2
   printf 'managed_resource_change_count=%s\n' "${PLAN_CHANGE_COUNT_VALUES[0]}" >&2

@@ -26,6 +26,11 @@ python_is_usable() {
   [[ "$output" =~ ^3\.[0-9]+$ ]]
 }
 
+strip_trailing_carriage_return() {
+  local value="$1"
+  printf '%s' "${value%$'\r'}"
+}
+
 read_tfvar_string() {
   local name="$1"
   sed -nE \
@@ -391,6 +396,14 @@ import json, sys
 print(json.load(open(sys.argv[1], encoding="utf-8"))["database_master_user_secret_arn"]["value"])
 PY
 )"
+for shell_value_name in \
+  DB_INSTANCE_IDENTIFIER \
+  SG_ID \
+  POOL_ID \
+  CLIENT_ID \
+  MASTER_SECRET_ARN; do
+  printf -v "$shell_value_name" '%s' "$(strip_trailing_carriage_return "${!shell_value_name}")"
+done
 [[ -n "$DB_INSTANCE_IDENTIFIER" && -n "$SG_ID" && -n "$POOL_ID" && -n "$CLIENT_ID" && -n "$MASTER_SECRET_ARN" ]] || fail "STATEFUL_VERIFICATION_IDENTIFIERS_MISSING"
 
 aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_IDENTIFIER" --output json > "$RDS_JSON"
