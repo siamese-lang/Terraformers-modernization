@@ -17,6 +17,12 @@ fail() {
   exit 1
 }
 
+python_is_usable() {
+  local output
+  output="$("$@" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)" || return 1
+  [[ "$output" =~ ^3\.[0-9]+$ ]]
+}
+
 EXPECTED_HEAD=""
 
 while [[ $# -gt 0 ]]; do
@@ -46,9 +52,25 @@ STATE_BACKUP="${PRIVATE_DIR}/foundation.local-pre-migration.tfstate"
 STATE_BACKUP_DIGEST="${STATE_BACKUP}.sha256"
 TFVARS_PATH="${PRIVATE_DIR}/foundation.tfvars"
 
-for command_name in git aws python3 sha256sum cygpath; do
+for command_name in git aws sha256sum cygpath; do
   command -v "$command_name" >/dev/null 2>&1 || fail "REQUIRED_COMMAND_NOT_FOUND: $command_name"
 done
+
+PYTHON_CMD=()
+PYTHON_LABEL=""
+
+if command -v py >/dev/null 2>&1 && python_is_usable py -3; then
+  PYTHON_CMD=(py -3)
+  PYTHON_LABEL="py -3"
+elif command -v python >/dev/null 2>&1 && python_is_usable python; then
+  PYTHON_CMD=(python)
+  PYTHON_LABEL="python"
+elif command -v python3 >/dev/null 2>&1 && python_is_usable python3; then
+  PYTHON_CMD=(python3)
+  PYTHON_LABEL="python3"
+else
+  fail "USABLE_PYTHON3_NOT_FOUND"
+fi
 
 [[ -x "$TF_EXE" ]] || fail "TERRAFORM_1_15_8_NOT_FOUND"
 [[ -f "$TFVARS_PATH" ]] || fail "PRIVATE_FOUNDATION_TFVARS_NOT_FOUND"
@@ -128,7 +150,7 @@ STATE_POLICY_JSON="$(aws iam get-role-policy --role-name "$PLAN_ROLE_NAME" --pol
 
 export PUBLIC_BLOCK_JSON POLICY_STATUS_JSON BUCKET_POLICY_JSON ATTACHED_POLICIES_JSON INLINE_POLICIES_JSON ROLE_JSON STATE_POLICY_JSON EXPECTED_SUBJECT EXPECTED_ACCOUNT
 
-python3 - <<'PY'
+"${PYTHON_CMD[@]}" - <<'PY'
 import json
 import os
 import sys
@@ -264,6 +286,7 @@ FINAL_STATUS="$(git -C "$REPO_ROOT" status --porcelain)"
 printf '%s\n' \
   "FoundationApplyStatus=success" \
   "RepositoryHead=${ACTUAL_HEAD:0:12}" \
+  "PythonCommand=${PYTHON_LABEL}" \
   "ManagedStateResourceCount=${#MANAGED_STATE_ADDRESSES[@]}" \
   "DataStateEntryCount=${DATA_STATE_COUNT}" \
   "VersioningEnabled=true" \
