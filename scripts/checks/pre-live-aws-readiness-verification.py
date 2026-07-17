@@ -37,6 +37,7 @@ def main() -> int:
     bootstrap_variables = read("infra/terraform/bootstrap/aws-live-foundation/variables.tf")
     bootstrap_versions = read("infra/terraform/bootstrap/aws-live-foundation/versions.tf")
     bootstrap_tfvars_example = read("infra/terraform/bootstrap/aws-live-foundation/terraform.tfvars.example")
+    execution_plan_doc = read("docs/live-aws-deployment-execution-plan.md")
     backend_origin_doc = read("docs/backend-origin-delivery.md")
     managed_secret_doc = read("docs/managed-secret-delivery.md")
     tfvars_builder = read("scripts/deploy/build-live-stage-tfvars.py")
@@ -58,6 +59,12 @@ def main() -> int:
     require(errors, "dynamodb_table" not in live_workflow, "deprecated-dynamodb-locking-present")
     require(errors, "AWS_TERRAFORM_LOCK_TABLE" not in live_workflow, "deprecated-lock-table-variable-present")
     require(errors, "AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}" in live_workflow, "oidc-role-not-environment-variable")
+
+    require(errors, "state locking             S3 native .tflock" in execution_plan_doc, "execution-plan-s3-native-locking-missing")
+    require(errors, "DynamoDB lock table       not used" in execution_plan_doc, "execution-plan-dynamodb-deprecation-missing")
+    require(errors, "AWS_TERRAFORM_LOCK_TABLE" not in execution_plan_doc, "execution-plan-deprecated-lock-table-variable-present")
+    require(errors, "use_lockfile=true" in execution_plan_doc, "execution-plan-native-lockfile-backend-missing")
+    require(errors, "terraform init -migrate-state" in execution_plan_doc, "execution-plan-bootstrap-state-migration-missing")
 
     require(errors, 'default     = "1.35"' in eks_variables, "eks-default-version-not-1.35")
     require(errors, '["1.34", "1.35", "1.36"]' in eks_variables, "eks-standard-support-allowlist-missing")
@@ -117,7 +124,7 @@ def main() -> int:
     require(errors, eso.get("helm_install_crds") is False, "external-secrets-helm-crd-install-enabled")
     require(errors, eso.get("crd_installation") == "pinned-server-side-apply-before-helm", "external-secrets-crd-strategy-drift")
     require(errors, "/v2.7.0/deploy/crds/bundle.yaml" in str(eso.get("crd_bundle_url", "")), "external-secrets-crd-url-drift")
-    require(errors, "External Secrets Operator chart: 2.7.0" in managed_secret_doc, "external-secrets-doc-version-missing")
+    require(errors, "External Secrets Operator chart: 2.7.0" in managed_secret_doc, "external-secrets-version-missing")
     require(errors, "controller ServiceAccount: external-secrets" in managed_secret_doc, "external-secrets-controller-doc-drift")
     require(errors, "provider-auth ServiceAccount: terraformers-runtime/terraformers-external-secrets" in managed_secret_doc, "external-secrets-provider-auth-doc-drift")
 
@@ -131,6 +138,7 @@ def main() -> int:
         "pre_live_aws_readiness": "passed" if not errors else "failed",
         "terraform_cli_version": contract.get("terraform_cli_version"),
         "state_locking": contract.get("state_locking"),
+        "execution_plan_locking_aligned": not any(error.startswith("execution-plan-") for error in errors),
         "eks_default_version": "1.35",
         "eks_endpoint_default": "private",
         "live_egress_baseline": "single-nat-gateway",
@@ -152,6 +160,7 @@ def main() -> int:
         f"pre_live_aws_readiness={report['pre_live_aws_readiness']}",
         f"terraform_cli_version={report['terraform_cli_version']}",
         f"state_locking={report['state_locking']}",
+        f"execution_plan_locking_aligned={str(report['execution_plan_locking_aligned']).lower()}",
         f"eks_default_version={report['eks_default_version']}",
         f"eks_endpoint_default={report['eks_endpoint_default']}",
         f"live_egress_baseline={report['live_egress_baseline']}",
