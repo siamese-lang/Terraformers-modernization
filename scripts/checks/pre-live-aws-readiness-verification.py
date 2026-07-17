@@ -40,9 +40,12 @@ def main() -> int:
     execution_plan_doc = read("docs/live-aws-deployment-execution-plan.md")
     backend_origin_doc = read("docs/backend-origin-delivery.md")
     managed_secret_doc = read("docs/managed-secret-delivery.md")
+    live_kubernetes_addons_doc = read("docs/live-kubernetes-addons.md")
     tfvars_builder = read("scripts/deploy/build-live-stage-tfvars.py")
     prerequisite_inventory = read("scripts/deploy/live-aws-prerequisite-inventory.py")
     prerequisite_wrapper = read("scripts/deploy/inventory-live-aws-prerequisites.sh")
+    load_balancer_controller_values = read("infra/kubernetes/aws-runtime-origin/aws-load-balancer-controller-values.yaml")
+    external_secrets_values = read("infra/kubernetes/external-secrets/external-secrets-values.yaml")
 
     examples = {
         "network": read("infra/terraform/envs/aws-runtime-network/live.tfvars.example"),
@@ -135,6 +138,7 @@ def main() -> int:
     require(errors, lbc.get("service_account_create") is False, "load-balancer-controller-service-account-create-enabled")
     require(errors, lbc.get("iam_policy_file") == "infra/terraform/envs/eks-runtime/policies/aws-load-balancer-controller-v3.4.2.json", "load-balancer-controller-policy-drift")
     require(errors, "chart: eks/aws-load-balancer-controller 3.4.2" in backend_origin_doc, "load-balancer-controller-doc-drift")
+    require(errors, re.search(r"(?ms)^replicaCount:\s*1\s*$\s*^resources:\s*\n\s+requests:\s*\n\s+cpu:\s*100m\s*\n\s+memory:\s*128Mi\s*\n\s+limits:\s*\n\s+cpu:\s*500m\s*\n\s+memory:\s*256Mi\s*$", load_balancer_controller_values) is not None, "load-balancer-controller-resource-budget-drift")
 
     require(errors, eso.get("chart_version") == "2.7.0", "external-secrets-version-drift")
     require(errors, eso.get("controller_service_account") == "external-secrets", "external-secrets-controller-service-account-drift")
@@ -148,6 +152,11 @@ def main() -> int:
     require(errors, "External Secrets Operator chart: 2.7.0" in managed_secret_doc, "external-secrets-version-missing")
     require(errors, "controller ServiceAccount: external-secrets" in managed_secret_doc, "external-secrets-controller-doc-drift")
     require(errors, "provider-auth ServiceAccount: terraformers-runtime/terraformers-external-secrets" in managed_secret_doc, "external-secrets-provider-auth-doc-drift")
+    require(errors, re.search(r"(?ms)^installCRDs:\s*false\s*$\s*^replicaCount:\s*1\s*$\s*^resources:\s*\n\s+requests:\s*\n\s+cpu:\s*10m\s*\n\s+memory:\s*32Mi\s*\n\s+limits:\s*\n\s+cpu:\s*100m\s*\n\s+memory:\s*128Mi\s*$", external_secrets_values) is not None, "external-secrets-controller-resource-budget-drift")
+    for component in ("webhook", "certController"):
+        require(errors, re.search(rf"(?ms)^{component}:\s*$\s+replicaCount:\s*1\s*$\s+resources:\s*\n\s+requests:\s*\n\s+cpu:\s*10m\s*\n\s+memory:\s*32Mi\s*\n\s+limits:\s*\n\s+cpu:\s*100m\s*\n\s+memory:\s*128Mi\s*$", external_secrets_values) is not None, f"external-secrets-{component}-resource-budget-drift")
+    require(errors, "infra/kubernetes/aws-runtime-origin/aws-load-balancer-controller-values.yaml" in live_kubernetes_addons_doc, "load-balancer-controller-values-path-missing")
+    require(errors, "infra/kubernetes/external-secrets/external-secrets-values.yaml" in live_kubernetes_addons_doc, "external-secrets-values-path-missing")
 
     require(errors, 'choices=["stateful-dependencies", "eks-runtime", "frontend-delivery"]' in tfvars_builder, "tfvars-builder-stage-contract-drift")
     require(errors, 'parser.add_argument("--stateful-outputs-json")' in tfvars_builder, "tfvars-builder-stateful-output-input-missing")

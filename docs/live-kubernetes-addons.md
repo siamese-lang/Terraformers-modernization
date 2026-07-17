@@ -18,6 +18,31 @@ External Secrets Operator chart   2.7.0
 
 No chart installation or Kubernetes mutation has been performed.
 
+## Single-node resource baseline
+
+The current baseline is one `t3.small` worker. This is a validation baseline,
+not a production sizing decision. The repository values files pin the rendered
+requests and limits before a future install:
+
+```text
+AWS Load Balancer Controller values
+infra/kubernetes/aws-runtime-origin/aws-load-balancer-controller-values.yaml
+  request: 100m CPU / 128Mi memory
+  limit:   500m CPU / 256Mi memory
+
+External Secrets values
+infra/kubernetes/external-secrets/external-secrets-values.yaml
+  controller, webhook, cert-controller (one replica each)
+  per Deployment request: 10m CPU / 32Mi memory
+  per Deployment limit:   100m CPU / 128Mi memory
+```
+
+Together the add-ons request 130m CPU, 224Mi memory, and four Pods. With the
+current system baseline and one backend replica, the expected remaining
+allocatable capacity is about 1200m CPU, 556.2Mi memory, and two Pod slots.
+During a backend rolling update, the memory headroom is about 44.2Mi and needs
+a separate production-sizing decision before production use.
+
 ## AWS Load Balancer Controller
 
 ```text
@@ -51,7 +76,7 @@ helm upgrade --install aws-load-balancer-controller `
   eks/aws-load-balancer-controller `
   --version 3.4.2 `
   --namespace kube-system `
-  --values artifacts\backend-origin-package\aws-load-balancer-controller-values.yaml `
+  --values infra\kubernetes\aws-runtime-origin\aws-load-balancer-controller-values.yaml `
   --wait `
   --timeout 10m
 ```
@@ -101,7 +126,7 @@ helm upgrade --install external-secrets `
   --version 2.7.0 `
   --namespace external-secrets `
   --create-namespace `
-  --set installCRDs=false `
+  --values infra\kubernetes\external-secrets\external-secrets-values.yaml `
   --wait `
   --timeout 10m
 ```
@@ -113,7 +138,7 @@ These commands are documentation only until explicit approval.
 Before any install:
 
 ```text
-1. kubeconfig points to the expected account and cluster.
+1. Use a compatible `kubectl` 1.35.x client and a kubeconfig that points to the expected account and cluster.
 2. kubectl auth can-i output is reviewed.
 3. controller/provider ServiceAccount identity is not shared.
 4. chart versions match config/live-kubernetes-addons.json.
