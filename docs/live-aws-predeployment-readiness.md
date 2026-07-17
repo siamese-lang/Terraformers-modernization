@@ -1,8 +1,6 @@
 # Live AWS Predeployment Readiness
 
-## 오늘 확정한 배포 기준
-
-실제 AWS 생성 전 저장소 기준을 다음으로 고정한다.
+## 확정된 배포 기준
 
 ```text
 Terraform CLI                       1.15.8
@@ -29,11 +27,31 @@ config/live-kubernetes-addons.json
 Detailed procedures:
 
 ```text
+docs/live-foundation-state-migration.md
+docs/live-aws-prerequisite-inventory.md
 docs/live-kubernetes-addons.md
 docs/live-stage-tfvars-handoff.md
 ```
 
 이 기준을 바꾸려면 live plan 전에 PR에서 계약과 evidence를 함께 수정한다.
+
+## 현재 완료 상태
+
+2026-07-17 기준:
+
+```text
+AWS foundation apply                complete
+bootstrap managed resources         9
+bootstrap state backend             S3
+bootstrap state version             1
+state payload                       semantically equivalent
+post-migration plan                 no changes
+provider schema                     verified in isolated TF_DATA_DIR
+network/runtime/RDS/EKS apply        not started
+GitHub environment mutation         not started
+```
+
+Foundation migration 상세 evidence는 `docs/live-foundation-state-migration.md`에 기록한다.
 
 ## Agent Toolkit for AWS 사용 위치
 
@@ -56,8 +74,6 @@ terraform apply        인간이 검토한 terminal에서만
 kubectl/helm mutation  인간이 검토한 terminal에서만
 CloudTrail/CloudWatch  agent action audit 활성화
 ```
-
-현재 웹 대화에 도구가 자동 연결되는 것은 아니다. Codex CLI, Claude Code, Kiro 또는 MCP-compatible 환경에 별도로 설치하고 전용 read-only identity를 연결한 경우에만 사용한다.
 
 ## 1. 자동 사전 검증
 
@@ -89,7 +105,7 @@ aws_authentication=none
 aws_mutation=none
 ```
 
-## 2. AWS foundation bootstrap
+## 2. AWS foundation bootstrap — 완료
 
 코드:
 
@@ -97,29 +113,33 @@ aws_mutation=none
 infra/terraform/bootstrap/aws-live-foundation
 ```
 
-생성 대상:
+생성·검증 완료 대상:
 
 - versioning이 활성화된 private S3 state bucket
 - public access block과 TLS-only bucket policy
 - S3 native state lockfile 권한
-- GitHub Actions IAM OIDC provider 또는 기존 provider 재사용
+- 기존 GitHub Actions IAM OIDC provider 재사용
 - `aws-live-plan` environment subject만 신뢰하는 plan role
 - AWS `ReadOnlyAccess`와 state/lock object에 한정한 write 권한
 
-주의:
+완료 evidence:
 
-- bootstrap 자체는 최초 1회 local state로 시작한다.
-- bucket과 role plan을 먼저 검토하고 명시적으로 승인한 뒤 apply한다.
-- apply 성공 후 `backend.hcl.example`을 복사·수정하고 bootstrap state를 생성된 S3 backend로 migrate한다.
-- state bucket에는 `prevent_destroy=true`가 적용되어 있다.
-- AWS 계정에 GitHub OIDC provider가 이미 있으면 `existing_github_oidc_provider_arn`을 설정해 중복 생성을 막는다.
-- GitHub immutable OIDC subject를 사용하도록 전환한 저장소라면 실제 subject를 확인한 뒤 `github_oidc_subjects`를 교체한다.
+```text
+ManagedStateResourceCount=9
+StateResourcesExact=true
+StateOutputsExact=true
+StateCheckStatuses=pass
+StatePayloadSemanticallyEquivalent=true
+PostMigrationPlanNoChanges=true
+StaleLockObjectPresent=false
+LocalStateBackupPreserved=true
+```
 
-오늘은 bootstrap plan/apply를 실행하지 않는다.
+Bootstrap state와 private backup 원문은 저장소 또는 GitHub artifact에 업로드하지 않는다. State bucket과 bootstrap role은 다른 live resource cleanup 과정에서 임의 삭제하지 않는다.
 
-## 3. GitHub protected environment
+## 3. GitHub protected environment — 다음 단계
 
-AWS foundation output이 확정된 뒤에 다음 environment를 생성한다.
+다음 environment를 생성한다.
 
 ```text
 aws-live-plan
@@ -151,7 +171,7 @@ AWS_LIVE_EKS_TFVARS_B64
 AWS_LIVE_FRONTEND_TFVARS_B64
 ```
 
-Role ARN은 credential이 아니므로 Secret이 아니라 variable로 저장한다.
+Role ARN은 credential이 아니므로 Secret이 아니라 variable로 저장한다. GitHub 설정 mutation은 누락 목록을 확인하고 별도 승인한 뒤 수행한다.
 
 ## 4. Private tfvars 준비
 
@@ -195,7 +215,33 @@ gh secret set AWS_LIVE_NETWORK_TFVARS_B64 `
 
 다른 네 stage도 같은 방식으로 등록한다. plaintext와 base64 값을 console output, workflow artifact, issue, PR에 붙이지 않는다.
 
-## 5. EKS operator access와 egress
+## 5. Strict prerequisite inventory
+
+GitHub environment/variable/Secret 설정 후 실행한다.
+
+```powershell
+$ExpectedAccountId = "<12-digit-account-id>"
+
+python scripts/deploy/live-aws-prerequisite-inventory.py `
+  --expected-account-id $ExpectedAccountId `
+  --fail-on-missing
+```
+
+성공 조건:
+
+```text
+github_status=ready
+missing_github_variable_count=0
+missing_github_secret_count=0
+aws_status=ready
+oidc_role_trust_status=ready
+secret_values_read=false
+aws_mutation=none
+```
+
+Strict inventory를 우회해 local static credential로 live stage를 apply하지 않는다.
+
+## 6. EKS operator access와 egress
 
 Terraform module 기본값은 private endpoint다.
 
@@ -214,9 +260,9 @@ cluster_endpoint_public_access_cidrs = ["<current-public-ip>/32"]
 GitHub-hosted runner 전체 IP 대역 허용
 ```
 
-초기 private node egress는 single NAT gateway를 사용한다. 이유는 EKS bootstrap 과정에서 ECR, STS, EKS, CloudWatch 등 여러 AWS endpoint와 외부 package source가 필요하기 때문이다. endpoint-only 최적화는 첫 성공 evidence 이후 별도 계획으로 수행한다.
+초기 private node egress는 single NAT gateway를 사용한다. Endpoint-only 최적화는 첫 성공 evidence 이후 별도 계획으로 수행한다.
 
-## 6. Kubernetes add-on 설치 경계
+## 7. Kubernetes add-on 설치 경계
 
 Pinned versions:
 
@@ -234,33 +280,30 @@ provider-auth ServiceAccount  terraformers-runtime/terraformers-external-secrets
 
 External Secrets CRD는 pinned v2.7.0 bundle을 server-side apply하고 Helm에는 `installCRDs=false`를 설정한다. 모든 kubectl/Helm 작업은 별도 승인 후 수행한다.
 
-## 7. 실제 실행 순서
-
-다음 대화에서는 한꺼번에 생성하지 않는다.
+## 8. 실제 실행 순서
 
 ```text
-A. AWS foundation plan
-B. foundation plan 검토와 명시적 apply 승인
-C. state migrate
-D. GitHub environment/variables/secrets 설정
-E. prerequisite strict inventory
-F. network live plan
-G. network apply 승인
-H. runtime-dependencies plan/apply
-I. stateful-dependencies plan/apply
-J. eks-runtime plan/apply
-K. image publish
-L. pinned controller/External Secrets 설치
-M. backend rollout 및 internal ALB 확인
-N. frontend-delivery plan/apply
-O. frontend publish
-P. E2E, failure/recovery, rollback evidence
-Q. cleanup 또는 유지 결정
+A. AWS foundation plan/apply                         완료
+B. bootstrap state migrate/reconciliation            완료
+C. GitHub environment/variables/secrets 설정          다음 단계
+D. prerequisite strict inventory
+E. network live plan
+F. network apply 승인
+G. runtime-dependencies plan/apply
+H. stateful-dependencies plan/apply
+I. eks-runtime plan/apply
+J. image publish
+K. pinned controller/External Secrets 설치
+L. backend rollout 및 internal ALB 확인
+M. frontend-delivery plan/apply
+N. frontend publish
+O. E2E, failure/recovery, rollback evidence
+P. cleanup 또는 유지 결정
 ```
 
 각 단계는 이전 단계 output과 evidence를 확인한 뒤 진행한다.
 
-## 8. 비용·중단·정리 기준
+## 9. 비용·중단·정리 기준
 
 비용 발생 핵심 자원:
 
@@ -275,7 +318,7 @@ public IPv4 where applicable
 CloudWatch logs
 ```
 
-apply 전 반드시 기록:
+Apply 전 반드시 기록:
 
 ```text
 maximum validation window
@@ -298,6 +341,6 @@ RDS snapshot decision
 - unpinned Helm chart
 - External Secrets controller/provider identity 공유
 - optional Bedrock/OpenSearch adapter 활성화
-- 실제 tfvars 또는 raw plan이 artifact에 포함됨
+- 실제 tfvars 또는 raw plan/state가 artifact에 포함됨
 
-cleanup은 application traffic부터 역순으로 수행한다. state bucket과 bootstrap role은 다른 live resource와 함께 임의 삭제하지 않는다.
+Cleanup은 application traffic부터 역순으로 수행한다. State bucket과 bootstrap role은 다른 live resource와 함께 임의 삭제하지 않는다.
