@@ -33,6 +33,33 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      execute_live_plan:
+        description: Authenticate to AWS and generate a live Terraform plan.
+        required: false
+        type: boolean
+        default: false
+      plan_stage:
+        description: Terraform environment to plan.
+        required: false
+        type: string
+        default: network
+      expected_aws_account_id:
+        description: Required account ID when execute_live_plan=true.
+        required: false
+        type: string
+        default: ''
+      allow_destructive:
+        description: Permit delete or replacement findings in the risk summary.
+        required: false
+        type: boolean
+        default: false
+      allow_optional_adapters:
+        description: Permit Bedrock/OpenSearch adapter resources in the plan.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
