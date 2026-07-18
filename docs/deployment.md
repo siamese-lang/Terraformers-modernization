@@ -239,9 +239,9 @@ Frontend production build에는 다음 공개 값만 전달한다.
 - `REACT_APP_COGNITO_USER_POOL_ID`
 - `REACT_APP_COGNITO_USER_POOL_CLIENT_ID`
 
-생성기 `build-frontend-delivery-input-bundle.py`는 Cognito와 frontend Terraform output을 결합해 build env, GitHub Environment variable 요약(`FRONTEND_AWS_ROLE_TO_ASSUME`, `FRONTEND_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID`), delivery source map, S3 sync·CloudFront invalidation의 수동 순서를 만든다. AWS mutation은 수행하지 않는다.
+생성기 `build-frontend-delivery-input-bundle.py`는 foundation, Cognito, frontend Terraform output을 결합해 build env, GitHub Environment variable 요약(`FRONTEND_AWS_ROLE_TO_ASSUME`, `FRONTEND_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID`, `EXPECTED_AWS_ACCOUNT_ID`, `AWS_REGION`), delivery source map, S3 sync·CloudFront invalidation의 수동 순서를 만든다. Foundation output의 account/region이 frontend role ARN과 Cognito region에 맞지 않으면 bundle 생성을 거부하며, AWS mutation은 수행하지 않는다.
 
-Frontend delivery Terraform은 새 OIDC provider를 만들지 않고 live foundation의 `github_oidc_provider_arn` output을 입력으로 재사용한다. Trust subject는 `repo:siamese-lang/Terraformers-modernization:environment:frontend-delivery`로 고정하며, role policy는 frontend bucket ARN/object ARN과 해당 CloudFront distribution ARN의 sync/invalidation 권한만 허용한다. 현재 inventory에서 output group은 source 기준으로 모두 해소된다. 다만 실제 IAM role apply, GitHub variable 설정, ALB ARN, VPC origin, distribution과 browser E2E가 검증되기 전에는 live service가 완성된 것으로 표현하지 않는다.
+Frontend delivery Terraform과 live tfvars builder는 새 OIDC provider를 만들지 않고 live foundation의 `github_oidc_provider_arn`, `aws_account_id`, `aws_region` output을 입력으로 재사용한다. Trust subject는 `repo:siamese-lang/Terraformers-modernization:environment:frontend-delivery`로 고정하며, role policy는 frontend bucket ARN/object ARN과 해당 CloudFront distribution ARN의 sync/invalidation 권한만 허용한다. 현재 inventory에서 output group은 source 기준으로 모두 해소된다. 다만 실제 IAM role apply, GitHub variable 설정, ALB ARN, VPC origin, distribution과 browser E2E가 검증되기 전에는 live service가 완성된 것으로 표현하지 않는다.
 
 세부 계약과 smoke 기준은 `docs/frontend-delivery.md`를 따른다.
 

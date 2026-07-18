@@ -9,15 +9,15 @@ on:
         type: boolean
         default: false
       frontend_bucket:
-        description: Optional frontend bucket override. Defaults to variable FRONTEND_BUCKET_NAME.
+        description: Assertion-only frontend bucket input. If provided, it must match variable FRONTEND_BUCKET_NAME.
         required: false
         default: ''
       cloudfront_distribution_id:
-        description: Optional distribution override. Defaults to variable CLOUDFRONT_DISTRIBUTION_ID.
+        description: Assertion-only distribution input. If provided, it must match variable CLOUDFRONT_DISTRIBUTION_ID.
         required: false
         default: ''
       aws_region:
-        description: Optional AWS region override. Defaults to variable AWS_REGION, then ap-northeast-2.
+        description: Assertion-only AWS region input. If provided, it must match variable AWS_REGION.
         required: false
         default: ''
       react_app_aws_region:

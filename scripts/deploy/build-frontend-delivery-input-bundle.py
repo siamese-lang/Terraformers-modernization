@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--stateful-outputs-json", required=True)
     parser.add_argument("--frontend-outputs-json", required=True)
+    parser.add_argument("--foundation-outputs-json", required=True)
     parser.add_argument(
         "--output-dir",
         default="artifacts/frontend-delivery-input-bundle",
@@ -50,6 +52,31 @@ def output_value(outputs: dict[str, Any], name: str) -> str:
     return text
 
 
+def arn_account_id(value: str, name: str) -> str:
+    parts = value.split(":", 5)
+    if len(parts) < 6 or not re.fullmatch(r"[0-9]{12}", parts[4]):
+        raise BundleError(f"{name} must contain a 12-digit AWS account ID")
+    return parts[4]
+
+
+def validate_aws_account_id(value: str) -> str:
+    if not re.fullmatch(r"[0-9]{12}", value) or value == "123456789012" or set(value) == {"0"}:
+        raise BundleError("foundation aws_account_id must be a real 12-digit AWS account ID")
+    return value
+
+
+def validate_aws_region(value: str) -> str:
+    if not re.fullmatch(r"[a-z]{2}-[a-z]+-[0-9]", value):
+        raise BundleError("foundation aws_region is malformed")
+    return value
+
+
+def validate_frontend_role_account(role_arn: str, expected_account_id: str) -> None:
+    if not re.fullmatch(r"arn:aws[a-zA-Z-]*:iam::[0-9]{12}:role/.+", role_arn):
+        raise BundleError("frontend_delivery_role_arn must be an IAM role ARN")
+    if arn_account_id(role_arn, "frontend_delivery_role_arn") != expected_account_id:
+        raise BundleError("frontend_delivery_role_arn account does not match foundation aws_account_id")
+
 def write_env(path: Path, values: dict[str, str]) -> None:
     lines: list[str] = []
     for key, value in values.items():
@@ -64,11 +91,15 @@ def main() -> int:
     args = parse_args()
     stateful = load_outputs(args.stateful_outputs_json)
     frontend = load_outputs(args.frontend_outputs_json)
+    foundation = load_outputs(args.foundation_outputs_json)
 
     cloudfront_domain = output_value(frontend, "cloudfront_distribution_domain_name")
     bucket_name = output_value(frontend, "frontend_bucket_name")
     distribution_id = output_value(frontend, "cloudfront_distribution_id")
     role_arn = output_value(frontend, "frontend_delivery_role_arn")
+    expected_account_id = validate_aws_account_id(output_value(foundation, "aws_account_id"))
+    foundation_region = validate_aws_region(output_value(foundation, "aws_region"))
+    validate_frontend_role_account(role_arn, expected_account_id)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -84,12 +115,17 @@ def main() -> int:
             stateful, "cognito_user_pool_client_id"
         ),
     }
+    if build_env["REACT_APP_AWS_REGION"] != foundation_region:
+        raise BundleError("cognito_region must match foundation aws_region")
+
     write_env(output_dir / "frontend-build.env", build_env)
 
     github_environment_variables = {
         "FRONTEND_AWS_ROLE_TO_ASSUME": role_arn,
         "FRONTEND_BUCKET_NAME": bucket_name,
         "CLOUDFRONT_DISTRIBUTION_ID": distribution_id,
+        "EXPECTED_AWS_ACCOUNT_ID": expected_account_id,
+        "AWS_REGION": foundation_region,
     }
     write_env(output_dir / "github-environment-variables.env", github_environment_variables)
 
@@ -98,6 +134,8 @@ def main() -> int:
         "frontend_bucket_name": bucket_name,
         "cloudfront_distribution_id": distribution_id,
         "cloudfront_distribution_domain_name": cloudfront_domain,
+        "expected_aws_account_id": expected_account_id,
+        "aws_region": foundation_region,
         "frontend_base_url": f"https://{cloudfront_domain}",
         "api_base_mode": "same-origin-relative",
         "api_path_prefix": "/api/",
