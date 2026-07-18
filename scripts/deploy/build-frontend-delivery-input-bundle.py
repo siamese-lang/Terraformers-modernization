@@ -68,6 +68,7 @@ def main() -> int:
     cloudfront_domain = output_value(frontend, "cloudfront_distribution_domain_name")
     bucket_name = output_value(frontend, "frontend_bucket_name")
     distribution_id = output_value(frontend, "cloudfront_distribution_id")
+    role_arn = output_value(frontend, "frontend_delivery_role_arn")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +86,15 @@ def main() -> int:
     }
     write_env(output_dir / "frontend-build.env", build_env)
 
+    github_environment_variables = {
+        "FRONTEND_AWS_ROLE_TO_ASSUME": role_arn,
+        "FRONTEND_BUCKET_NAME": bucket_name,
+        "CLOUDFRONT_DISTRIBUTION_ID": distribution_id,
+    }
+    write_env(output_dir / "github-environment-variables.env", github_environment_variables)
+
     source_map = {
+        "frontend_delivery_role_arn": role_arn,
         "frontend_bucket_name": bucket_name,
         "cloudfront_distribution_id": distribution_id,
         "cloudfront_distribution_domain_name": cloudfront_domain,
@@ -109,6 +118,7 @@ def main() -> int:
         "api_base_mode=same-origin-relative",
         "api_path_prefix=/api/*",
         "cognito_source=terraform-output",
+        "frontend_delivery_role_source=terraform-output",
         "frontend_bucket_source=terraform-output",
         "cloudfront_distribution_source=terraform-output",
         "mutable_cache_control=no-cache",
@@ -124,6 +134,7 @@ def main() -> int:
     invalidation_file = output_dir / "frontend-invalidation.json"
     apply_order = f"""# Generated frontend delivery sequence
 # This file is a manual deployment boundary. The bundle generator did not run these commands.
+# Configure GitHub Environment variables from github-environment-variables.env before live delivery.
 
 set -a
 . {output_dir / 'frontend-build.env'}

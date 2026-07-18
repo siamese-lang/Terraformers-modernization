@@ -20,10 +20,6 @@ on:
         description: Optional AWS region override. Defaults to variable AWS_REGION, then ap-northeast-2.
         required: false
         default: ''
-      aws_role_to_assume:
-        description: Optional OIDC role override. Defaults to secret AWS_ROLE_TO_ASSUME.
-        required: false
-        default: ''
       react_app_aws_region:
         description: Public AWS region embedded in the React build.
         required: false
@@ -42,10 +38,11 @@ permissions:
   id-token: write
 
 env:
-  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'ap-northeast-2' }}
-  AWS_ROLE_TO_ASSUME: ${{ inputs.aws_role_to_assume || secrets.AWS_ROLE_TO_ASSUME }}
-  FRONTEND_BUCKET_NAME: ${{ inputs.frontend_bucket || vars.FRONTEND_BUCKET_NAME }}
-  CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id || vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  FRONTEND_AWS_ROLE_TO_ASSUME: ${{ vars.FRONTEND_AWS_ROLE_TO_ASSUME }}
+  FRONTEND_BUCKET_NAME: ${{ vars.FRONTEND_BUCKET_NAME }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  EXPECTED_AWS_ACCOUNT_ID: ${{ vars.EXPECTED_AWS_ACCOUNT_ID }}
   REACT_APP_API_BASE_URL: ''
   REACT_APP_AWS_REGION: ${{ inputs.react_app_aws_region || vars.REACT_APP_AWS_REGION || vars.AWS_REGION || 'ap-northeast-2' }}
   REACT_APP_COGNITO_USER_POOL_ID: ${{ inputs.react_app_cognito_user_pool_id || vars.REACT_APP_COGNITO_USER_POOL_ID }}
@@ -56,6 +53,7 @@ jobs:
     name: Build and optionally deliver frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: frontend-delivery
 
     steps:
       - name: Checkout
@@ -105,24 +103,44 @@ jobs:
         if: ${{ inputs.deploy_frontend }}
         run: |
           set -euo pipefail
-          for variable_name in AWS_ROLE_TO_ASSUME FRONTEND_BUCKET_NAME CLOUDFRONT_DISTRIBUTION_ID; do
+          for variable_name in FRONTEND_AWS_ROLE_TO_ASSUME FRONTEND_BUCKET_NAME CLOUDFRONT_DISTRIBUTION_ID EXPECTED_AWS_ACCOUNT_ID; do
             if [[ -z "${!variable_name:-}" ]]; then
               echo "${variable_name} is required when deploy_frontend=true." >&2
               exit 1
             fi
           done
+          if [[ -n "${{ inputs.aws_region }}" && "${{ inputs.aws_region }}" != "${AWS_REGION}" ]]; then
+            echo "aws_region input must match canonical AWS_REGION variable." >&2
+            exit 1
+          fi
+          if [[ -n "${{ inputs.frontend_bucket }}" && "${{ inputs.frontend_bucket }}" != "${FRONTEND_BUCKET_NAME}" ]]; then
+            echo "frontend_bucket input must match canonical FRONTEND_BUCKET_NAME variable." >&2
+            exit 1
+          fi
+          if [[ -n "${{ inputs.cloudfront_distribution_id }}" && "${{ inputs.cloudfront_distribution_id }}" != "${CLOUDFRONT_DISTRIBUTION_ID}" ]]; then
+            echo "cloudfront_distribution_id input must match canonical CLOUDFRONT_DISTRIBUTION_ID variable." >&2
+            exit 1
+          fi
 
       - name: Configure AWS credentials through OIDC
         if: ${{ inputs.deploy_frontend }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ env.FRONTEND_AWS_ROLE_TO_ASSUME }}
           role-session-name: TerraformersFrontendDelivery
           aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
 
       - name: Verify AWS caller identity
         if: ${{ inputs.deploy_frontend }}
-        run: aws sts get-caller-identity --region "${AWS_REGION}"
+        run: |
+          set -euo pipefail
+          CALLER_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")"
+          if [[ "${CALLER_ACCOUNT_ID}" != "${EXPECTED_AWS_ACCOUNT_ID}" ]]; then
+            echo "AWS caller account ${CALLER_ACCOUNT_ID} does not match EXPECTED_AWS_ACCOUNT_ID." >&2
+            exit 1
+          fi
+          echo "caller_account_id=${CALLER_ACCOUNT_ID}"
 
       - name: Sync frontend with explicit cache policy
         if: ${{ inputs.deploy_frontend }}

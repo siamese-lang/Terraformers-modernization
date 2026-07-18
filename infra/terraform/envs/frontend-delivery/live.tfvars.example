@@ -10,6 +10,11 @@ noncurrent_version_expiration_days = 30
 # Balancer Controller and the internal ALB is verified healthy.
 api_origin_load_balancer_arn = "arn:aws:elasticloadbalancing:ap-northeast-2:000000000000:loadbalancer/app/replace-internal-alb/replace-id"
 
+# Reuse the GitHub OIDC provider ARN output by aws-live-foundation; do not create a second provider.
+github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+github_repository        = "siamese-lang/Terraformers-modernization"
+github_environment       = "frontend-delivery"
+
 aliases             = []
 acm_certificate_arn = null
 price_class         = "PriceClass_200"

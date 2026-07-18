@@ -60,6 +60,7 @@ infra/terraform/envs/frontend-delivery
 - CloudFront VPC origin
 - internal Application Load Balancer ARN validation
 - S3 bucket policy의 CloudFront service principal + distribution SourceArn 제한
+- GitHub Actions frontend delivery 전용 IAM role
 
 Backend origin 입력:
 
@@ -87,6 +88,9 @@ CloudFront-to-ALB 구간은 private HTTP 80 listener를 사용한다. Viewer 구
 - `backend_vpc_origin_id`
 - `backend_origin_load_balancer_arn`
 - `backend_origin_load_balancer_dns_name`
+- `frontend_delivery_role_arn`
+- `frontend_delivery_role_name`
+- `github_environment_name`
 
 ## 4. API 전달 규칙
 
@@ -113,7 +117,7 @@ scripts/deploy/build-frontend-delivery-input-bundle.py
 입력:
 
 - stateful Terraform output의 Cognito region, pool ID, client ID
-- frontend Terraform output의 S3 bucket, CloudFront distribution ID/domain
+- frontend Terraform output의 frontend delivery role ARN, S3 bucket, CloudFront distribution ID/domain
 
 생성:
 
@@ -122,6 +126,7 @@ frontend-build.env
 delivery-source-map.json
 bundle-summary.txt
 apply-order.txt
+github-environment-variables.env
 ```
 
 브라우저 build variable은 네 개뿐이다.
@@ -131,7 +136,7 @@ apply-order.txt
 - `REACT_APP_COGNITO_USER_POOL_ID`
 - `REACT_APP_COGNITO_USER_POOL_CLIENT_ID`
 
-Password, AWS credential, bucket write credential, internal ALB ARN/DNS는 frontend bundle에 포함하지 않는다.
+Password, AWS access key, secret, JWT, Authorization header, bucket write credential, internal ALB ARN/DNS는 frontend bundle에 포함하지 않는다. `github-environment-variables.env`에는 secret이 아닌 `FRONTEND_AWS_ROLE_TO_ASSUME`, `FRONTEND_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID` 설정값만 포함한다.
 
 ## 6. 배포와 롤백 경계
 
@@ -143,9 +148,11 @@ Guarded workflow:
 
 기본값은 `deploy_frontend=false`다. 기본 실행은 production build와 digest evidence만 만들고 AWS credential을 구성하지 않는다.
 
+명시적으로 승인한 배포에서는 `allowed-account-ids`와 `EXPECTED_AWS_ACCOUNT_ID` caller 확인을 통과해야 한다. `aws_role_to_assume` 임의 input과 장기 AWS access key secret은 사용하지 않는다.
+
 명시적으로 승인한 배포에서는:
 
-1. GitHub OIDC role 확인
+1. GitHub Environment `frontend-delivery`에서 foundation의 기존 `token.actions.githubusercontent.com` provider를 신뢰하는 `FRONTEND_AWS_ROLE_TO_ASSUME` role 확인
 2. reproducible frontend build
 3. mutable entrypoint sync
 4. immutable hashed asset sync
@@ -217,6 +224,8 @@ GET /actuator/health          -> public CloudFront route로 사용하지 않음
 - same-origin `/api/*`와 API cache-disabled contract
 - frontend input bundle
 - guarded OIDC delivery workflow
+- Terraform-managed frontend delivery OIDC role contract
+- foundation GitHub OIDC provider ARN input reuse contract
 - split cache policy와 limited invalidation
 - cluster/AWS mutation 없는 CI evidence
 
@@ -224,6 +233,8 @@ GET /actuator/health          -> public CloudFront route로 사용하지 않음
 
 - internal ALB 실제 생성
 - CloudFront VPC origin 실제 생성
+- Terraform apply로 frontend delivery IAM role 실제 생성
+- GitHub Environment variable 실제 설정
 - S3 frontend sync
 - CloudFront invalidation live evidence
 - browser/API E2E

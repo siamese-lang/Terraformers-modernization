@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TERRAFORM_DIR="${REPO_ROOT}/infra/terraform/envs/frontend-delivery"
 MAIN_TF="${TERRAFORM_DIR}/main.tf"
 OUTPUTS_TF="${TERRAFORM_DIR}/outputs.tf"
+VARIABLES_TF="${TERRAFORM_DIR}/variables.tf"
 VERSIONS_TF="${TERRAFORM_DIR}/versions.tf"
 FRONTEND_API="${REPO_ROOT}/frontend/src/utils/api.js"
 FRONTEND_ENV="${REPO_ROOT}/frontend/.env.example"
@@ -42,6 +43,7 @@ done
 for required_file in \
   "${MAIN_TF}" \
   "${OUTPUTS_TF}" \
+  "${VARIABLES_TF}" \
   "${VERSIONS_TF}" \
   "${FRONTEND_API}" \
   "${FRONTEND_ENV}" \
@@ -87,6 +89,26 @@ assert_not_contains '/actuator/\*' "${MAIN_TF}" "Actuator must not be a public C
 assert_contains 'identifiers = \["cloudfront.amazonaws.com"\]' "${MAIN_TF}" "Bucket policy must trust the CloudFront service principal."
 assert_contains 'variable = "AWS:SourceArn"' "${MAIN_TF}" "Bucket policy must restrict the distribution SourceArn."
 
+assert_contains 'resource "aws_iam_role" "frontend_delivery"' "${MAIN_TF}" "Missing frontend delivery IAM role."
+assert_contains 'var.github_oidc_provider_arn' "${MAIN_TF}" "Frontend role must reuse the existing GitHub OIDC provider ARN input."
+assert_not_contains 'resource "aws_iam_openid_connect_provider"' "${MAIN_TF}" "Frontend delivery must not create a duplicate GitHub OIDC provider."
+assert_contains '"token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"' "${MAIN_TF}" "Frontend delivery trust must restrict OIDC audience."
+assert_contains '"token.actions.githubusercontent.com:sub" = local.frontend_delivery_github_subject' "${MAIN_TF}" "Frontend delivery trust must use the exact environment subject."
+assert_contains 'repo:\${var.github_repository}:environment:\${var.github_environment}' "${MAIN_TF}" "Frontend delivery subject must be repository plus GitHub Environment."
+assert_contains 'default[[:space:]]*=[[:space:]]*"siamese-lang/Terraformers-modernization"' "${VARIABLES_TF}" "GitHub repository default must be the current repo."
+assert_contains 'default[[:space:]]*=[[:space:]]*"frontend-delivery"' "${VARIABLES_TF}" "GitHub environment default must be frontend-delivery."
+assert_contains 'github_oidc_provider_arn must identify the existing token.actions.githubusercontent.com provider' "${VARIABLES_TF}" "Provider ARN validation must require GitHub Actions OIDC."
+assert_contains 's3:ListBucket' "${MAIN_TF}" "Frontend role must list only the frontend bucket."
+assert_contains 's3:PutObject' "${MAIN_TF}" "Frontend role must upload frontend bundle objects."
+assert_contains 's3:DeleteObject' "${MAIN_TF}" "Frontend role must allow sync --delete for frontend bundle objects."
+assert_contains 's3:AbortMultipartUpload' "${MAIN_TF}" "Frontend role must include minimum multipart cleanup permission."
+assert_contains 'Resource = aws_s3_bucket.frontend.arn' "${MAIN_TF}" "Bucket-level permissions must target only the frontend bucket ARN."
+assert_contains 'Resource = "\${aws_s3_bucket.frontend.arn}/\*"' "${MAIN_TF}" "Object permissions must target only frontend bucket objects."
+assert_contains 'cloudfront:CreateInvalidation' "${MAIN_TF}" "Frontend role must create CloudFront invalidations."
+assert_contains 'cloudfront:GetInvalidation' "${MAIN_TF}" "Frontend role must read invalidation status."
+assert_contains 'Resource = aws_cloudfront_distribution.frontend.arn' "${MAIN_TF}" "CloudFront permissions must target only the frontend distribution ARN."
+assert_not_contains 'secretsmanager:|iam:|eks:|rds:|sqs:' "${MAIN_TF}" "Frontend delivery role must not grant unrelated service permissions."
+
 for output_name in \
   frontend_bucket_name \
   cloudfront_distribution_id \
@@ -95,7 +117,10 @@ for output_name in \
   frontend_api_base_url \
   backend_vpc_origin_id \
   backend_origin_load_balancer_arn \
-  backend_origin_load_balancer_dns_name; do
+  backend_origin_load_balancer_dns_name \
+  frontend_delivery_role_arn \
+  frontend_delivery_role_name \
+  github_environment_name; do
   assert_contains "output \"${output_name}\"" "${OUTPUTS_TF}" "Missing frontend output: ${output_name}."
 done
 
@@ -106,10 +131,15 @@ assert_not_contains 'Set the deployed backend origin when the frontend is served
 assert_contains 'deploy_frontend:' "${FRONTEND_WORKFLOW}" "Frontend workflow needs an explicit deployment switch."
 assert_contains 'default: false' "${FRONTEND_WORKFLOW}" "Frontend delivery must default to build-only."
 assert_contains 'aws-actions/configure-aws-credentials@v4' "${FRONTEND_WORKFLOW}" "Frontend delivery must use GitHub OIDC."
-assert_contains 'role-to-assume:.*AWS_ROLE_TO_ASSUME' "${FRONTEND_WORKFLOW}" "Frontend delivery must require an OIDC role."
-assert_not_contains 'secrets\.AWS_ACCESS_KEY_ID|secrets\.AWS_SECRET_ACCESS_KEY' "${FRONTEND_WORKFLOW}" "Long-lived AWS keys are forbidden."
+assert_contains 'environment: frontend-delivery' "${FRONTEND_WORKFLOW}" "Frontend job must use the frontend-delivery GitHub Environment."
+assert_contains 'FRONTEND_AWS_ROLE_TO_ASSUME:.*vars.FRONTEND_AWS_ROLE_TO_ASSUME' "${FRONTEND_WORKFLOW}" "Frontend workflow must use the canonical OIDC role variable."
+assert_contains 'role-to-assume:.*FRONTEND_AWS_ROLE_TO_ASSUME' "${FRONTEND_WORKFLOW}" "Frontend delivery must require an OIDC role."
+assert_not_contains 'aws_role_to_assume' "${FRONTEND_WORKFLOW}" "Arbitrary OIDC role workflow input must be removed."
+assert_not_contains 'secrets\.AWS_ACCESS_KEY_ID|secrets\.AWS_SECRET_ACCESS_KEY|secrets\.AWS_ROLE_TO_ASSUME' "${FRONTEND_WORKFLOW}" "Long-lived AWS keys are forbidden."
 assert_contains "--cache-control 'no-cache,no-store,must-revalidate'" "${FRONTEND_WORKFLOW}" "Mutable frontend files need no-cache metadata."
 assert_contains "--cache-control 'public,max-age=31536000,immutable'" "${FRONTEND_WORKFLOW}" "Hashed assets need immutable caching."
+assert_contains 'allowed-account-ids:.*EXPECTED_AWS_ACCOUNT_ID' "${FRONTEND_WORKFLOW}" "AWS credential configuration must restrict allowed account IDs."
+assert_contains 'CALLER_ACCOUNT_ID=' "${FRONTEND_WORKFLOW}" "Workflow must verify the post-OIDC caller account."
 assert_contains 'aws cloudfront wait invalidation-completed' "${FRONTEND_WORKFLOW}" "Delivery must wait for invalidation completion."
 assert_not_contains "--paths '/\*'" "${FRONTEND_WORKFLOW}" "Do not invalidate immutable assets globally."
 assert_contains "--paths '/' '/index.html' '/asset-manifest.json' '/manifest.json'" "${FRONTEND_WORKFLOW}" "Only mutable entrypoints should be invalidated."
@@ -125,7 +155,8 @@ cat >"${FIXTURE_DIR}/frontend.json" <<'JSON'
 {
   "frontend_bucket_name": {"value": "terraformers-dev-frontend-fixture"},
   "cloudfront_distribution_id": {"value": "E123456789FIXTURE"},
-  "cloudfront_distribution_domain_name": {"value": "d111111abcdef8.cloudfront.net"}
+  "cloudfront_distribution_domain_name": {"value": "d111111abcdef8.cloudfront.net"},
+  "frontend_delivery_role_arn": {"value": "arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery"}
 }
 JSON
 
@@ -138,7 +169,8 @@ BUILD_ENV="${BUNDLE_DIR}/frontend-build.env"
 SOURCE_MAP="${BUNDLE_DIR}/delivery-source-map.json"
 BUNDLE_SUMMARY="${BUNDLE_DIR}/bundle-summary.txt"
 APPLY_ORDER="${BUNDLE_DIR}/apply-order.txt"
-for generated_file in "${BUILD_ENV}" "${SOURCE_MAP}" "${BUNDLE_SUMMARY}" "${APPLY_ORDER}"; do
+GITHUB_ENV_VARS="${BUNDLE_DIR}/github-environment-variables.env"
+for generated_file in "${BUILD_ENV}" "${SOURCE_MAP}" "${BUNDLE_SUMMARY}" "${APPLY_ORDER}" "${GITHUB_ENV_VARS}"; do
   test -s "${generated_file}"
 done
 
@@ -146,7 +178,12 @@ grep -qx 'REACT_APP_API_BASE_URL=' "${BUILD_ENV}"
 grep -qx 'REACT_APP_AWS_REGION=ap-northeast-2' "${BUILD_ENV}"
 grep -qx 'REACT_APP_COGNITO_USER_POOL_ID=ap-northeast-2_fixture' "${BUILD_ENV}"
 grep -qx 'REACT_APP_COGNITO_USER_POOL_CLIENT_ID=fixture-client-id' "${BUILD_ENV}"
-assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY' "${BUILD_ENV}" "Frontend build bundle must contain public values only."
+assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|JWT|Authorization' "${BUILD_ENV}" "Frontend build bundle must contain public values only."
+grep -qx 'FRONTEND_AWS_ROLE_TO_ASSUME=arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery' "${GITHUB_ENV_VARS}"
+grep -qx 'FRONTEND_BUCKET_NAME=terraformers-dev-frontend-fixture' "${GITHUB_ENV_VARS}"
+grep -qx 'CLOUDFRONT_DISTRIBUTION_ID=E123456789FIXTURE' "${GITHUB_ENV_VARS}"
+assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|JWT|Authorization' "${GITHUB_ENV_VARS}" "GitHub variable bundle must not contain secrets."
+assert_contains '"frontend_delivery_role_arn": "arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery"' "${SOURCE_MAP}" "Source map must record the frontend delivery role ARN."
 assert_contains '"api_base_mode": "same-origin-relative"' "${SOURCE_MAP}" "Source map must record same-origin API mode."
 assert_contains '"invalidation_scope": "mutable-entrypoints-only"' "${SOURCE_MAP}" "Source map must record the limited invalidation scope."
 assert_contains '^frontend_build_variable_count=4$' "${BUNDLE_SUMMARY}" "Frontend build variable count must remain four."
@@ -166,6 +203,9 @@ printf '%s\n' \
   'frontend_delivery_contract=passed' \
   'frontend_delivery_input_bundle=generated' \
   'frontend_delivery_workflow=guarded-oidc' \
+  'frontend_delivery_role=terraform-managed' \
+  'github_oidc_provider=reused-foundation-provider' \
+  'github_oidc_subject=repo:siamese-lang/Terraformers-modernization:environment:frontend-delivery' \
   'frontend_build_variable_count=4' \
   'frontend_bucket_access=private' \
   'frontend_bucket_versioning=enabled' \
@@ -181,6 +221,7 @@ printf '%s\n' \
   'static_cache_control=immutable-one-year' \
   'invalidation_scope=mutable-entrypoints-only' \
   'invalidation_wait=required' \
+  'frontend_delivery_github_variables=generated' \
   'frontend_output_groups=resolved' \
   'cluster_contact=none' \
   'aws_mutation=none' \

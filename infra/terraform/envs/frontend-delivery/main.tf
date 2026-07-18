@@ -1,7 +1,9 @@
 locals {
-  resource_prefix = lower(replace("${var.name_prefix}-${var.environment}", "_", "-"))
-  s3_origin_id    = "${local.resource_prefix}-frontend-s3"
-  api_origin_id   = "${local.resource_prefix}-backend-api"
+  resource_prefix                  = lower(replace("${var.name_prefix}-${var.environment}", "_", "-"))
+  s3_origin_id                     = "${local.resource_prefix}-frontend-s3"
+  api_origin_id                    = "${local.resource_prefix}-backend-api"
+  frontend_delivery_role_name      = coalesce(var.frontend_delivery_role_name, "${local.resource_prefix}-frontend-delivery")
+  frontend_delivery_github_subject = "repo:${var.github_repository}:environment:${var.github_environment}"
 }
 
 data "aws_cloudfront_cache_policy" "static_optimized" {
@@ -212,6 +214,80 @@ resource "aws_cloudfront_distribution" "frontend" {
       error_message = "acm_certificate_arn is required when aliases are configured."
     }
   }
+}
+
+resource "aws_iam_role" "frontend_delivery" {
+  name = local.frontend_delivery_role_name
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = var.github_oidc_provider_arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:sub" = local.frontend_delivery_github_subject
+          }
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_policy" "frontend_delivery" {
+  name        = local.frontend_delivery_role_name
+  description = "Allows GitHub Actions to deploy only the Terraform-managed Terraformers frontend bundle."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "FrontendBucketReadList"
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucketLocation",
+          "s3:ListBucket",
+          "s3:ListBucketMultipartUploads",
+        ]
+        Resource = aws_s3_bucket.frontend.arn
+      },
+      {
+        Sid    = "FrontendBundleObjectSync"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts",
+        ]
+        Resource = "${aws_s3_bucket.frontend.arn}/*"
+      },
+      {
+        Sid    = "FrontendDistributionInvalidation"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
+        ]
+        Resource = aws_cloudfront_distribution.frontend.arn
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "frontend_delivery" {
+  role       = aws_iam_role.frontend_delivery.name
+  policy_arn = aws_iam_policy.frontend_delivery.arn
 }
 
 data "aws_iam_policy_document" "frontend_bucket" {

@@ -71,6 +71,7 @@ Completed:
 - CloudFront same-origin API delivery
 - upload of the previously failing 1,440,971-byte image with HTTP 201
 - source-object persistence
+- sidebar navigation, account menu, logout, and routed page separation source implementation
 - project and analysis-job creation
 - analysis polling and project-tree persistence
 
@@ -78,13 +79,9 @@ Known incomplete behavior:
 
 - the current analysis provider is a stub
 - provider-only Terraform output can be marked successful
-- the sidebar is not interactive
-- unrelated generate, project, community, and comment panels share one screen
-- no account menu or user-initiated logout exists
-- routed application shell implemented
 - auth/navigation tests implemented
-- live browser E2E pending
-- frontend OIDC deployment repair pending
+- live browser E2E pending before Phase 1 completion
+- frontend OIDC Terraform/workflow contract added, but actual Terraform apply, GitHub variable configuration, and live delivery evidence remain pending
 
 ## Current implementation boundary
 

@@ -86,3 +86,42 @@ variable "price_class" {
     error_message = "price_class must be a valid CloudFront price class."
   }
 }
+
+variable "github_oidc_provider_arn" {
+  description = "Existing GitHub Actions token.actions.githubusercontent.com IAM OIDC provider ARN from the live foundation state. This environment reuses it and never creates a duplicate provider."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$", var.github_oidc_provider_arn))
+    error_message = "github_oidc_provider_arn must identify the existing token.actions.githubusercontent.com provider."
+  }
+}
+
+variable "github_repository" {
+  description = "GitHub owner/repository allowed to assume the frontend delivery role."
+  type        = string
+  default     = "siamese-lang/Terraformers-modernization"
+
+  validation {
+    condition     = var.github_repository == "siamese-lang/Terraformers-modernization"
+    error_message = "github_repository must remain the exact Terraformers-modernization repository unless this contract is intentionally updated."
+  }
+}
+
+variable "github_environment" {
+  description = "GitHub Environment name allowed in the frontend delivery OIDC subject."
+  type        = string
+  default     = "frontend-delivery"
+
+  validation {
+    condition     = var.github_environment == "frontend-delivery"
+    error_message = "github_environment must remain frontend-delivery for the guarded delivery workflow."
+  }
+}
+
+variable "frontend_delivery_role_name" {
+  description = "Optional explicit IAM role name for GitHub OIDC frontend delivery. Defaults to the frontend delivery resource prefix."
+  type        = string
+  default     = null
+  nullable    = true
+}

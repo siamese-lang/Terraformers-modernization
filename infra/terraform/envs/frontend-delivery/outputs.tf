@@ -52,3 +52,18 @@ output "backend_origin_load_balancer_dns_name" {
   description = "Private DNS name of the backend Application Load Balancer."
   value       = data.aws_lb.backend_origin.dns_name
 }
+
+output "frontend_delivery_role_arn" {
+  description = "Non-sensitive IAM role ARN for GitHub Actions frontend delivery OIDC. Configure it as FRONTEND_AWS_ROLE_TO_ASSUME."
+  value       = aws_iam_role.frontend_delivery.arn
+}
+
+output "frontend_delivery_role_name" {
+  description = "IAM role name for GitHub Actions frontend delivery OIDC."
+  value       = aws_iam_role.frontend_delivery.name
+}
+
+output "github_environment_name" {
+  description = "GitHub Environment whose OIDC subject may assume the frontend delivery role."
+  value       = var.github_environment
+}
