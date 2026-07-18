@@ -31,30 +31,39 @@ public class AnalysisJobOrchestrator {
     public void run(AnalysisJobEntity entity) {
         try {
             markRunning(entity);
-            AnalysisResult result = analysisProvider.analyze(toContext(entity));
-            TerraformDraftValidation validation = terraformDraftValidator.validate(result.terraformCode());
-            if (!validation.valid()) {
-                throw new IllegalStateException(validation.reason());
-            }
-            AnalysisResult sanitizedResult = result.withTerraformCode(validation.sanitizedContent());
-            ObjectWriteResult writeResult = resultStorage.storeTerraformDraft(entity, sanitizedResult);
-            ProjectFileEntity resultFile = projectArtifactService.registerGeneratedTerraform(
-                    entity.getProjectId(),
-                    sanitizedResult.terraformCode(),
-                    writeResult
-            );
-            markSucceeded(entity, sanitizedResult, writeResult, resultFile);
+            AnalysisJobExecution execution = executeProviderAndStoreDraft(entity);
+            ProjectFileEntity resultFile = registerGeneratedTerraform(entity.getProjectId(), execution);
+            markSucceeded(entity, execution.result(), execution.writeResult(), resultFile);
         } catch (RuntimeException exception) {
             markFailed(entity, exception);
         }
     }
 
-    private void markRunning(AnalysisJobEntity entity) {
+    public AnalysisJobExecution executeProviderAndStoreDraft(AnalysisJobEntity entity) {
+        AnalysisResult result = analysisProvider.analyze(toContext(entity));
+        TerraformDraftValidation validation = terraformDraftValidator.validate(result.terraformCode());
+        if (!validation.valid()) {
+            throw new IllegalStateException(validation.reason());
+        }
+        AnalysisResult sanitizedResult = result.withTerraformCode(validation.sanitizedContent());
+        ObjectWriteResult writeResult = resultStorage.storeTerraformDraft(entity, sanitizedResult);
+        return new AnalysisJobExecution(sanitizedResult, writeResult);
+    }
+
+    public ProjectFileEntity registerGeneratedTerraform(Long projectId, AnalysisJobExecution execution) {
+        return projectArtifactService.registerGeneratedTerraform(
+                projectId,
+                execution.result().terraformCode(),
+                execution.writeResult()
+        );
+    }
+
+    public void markRunning(AnalysisJobEntity entity) {
         entity.setStatus(AnalysisJobStatus.RUNNING);
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.RUNNING, "analysis job started"));
     }
 
-    private void markSucceeded(
+    public void markSucceeded(
             AnalysisJobEntity entity,
             AnalysisResult result,
             ObjectWriteResult writeResult,
@@ -72,10 +81,21 @@ public class AnalysisJobOrchestrator {
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.SUCCEEDED, "analysis job completed"));
     }
 
-    private void markFailed(AnalysisJobEntity entity, RuntimeException exception) {
+    public void markFailed(AnalysisJobEntity entity, RuntimeException exception) {
+        markFailed(entity, exception.getMessage());
+    }
+
+    public void markFailed(AnalysisJobEntity entity, String failureReason) {
         entity.setStatus(AnalysisJobStatus.FAILED);
-        entity.setFailureReason(exception.getMessage());
+        entity.setFailureReason(safeFailureReason(failureReason));
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.FAILED, "analysis job failed"));
+    }
+
+    private String safeFailureReason(String failureReason) {
+        String reason = failureReason == null || failureReason.isBlank()
+                ? "analysis job failed"
+                : failureReason.strip();
+        return reason.length() <= 2000 ? reason : reason.substring(0, 2000);
     }
 
     private AnalysisRequestContext toContext(AnalysisJobEntity entity) {

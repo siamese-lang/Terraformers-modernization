@@ -74,3 +74,53 @@ test('existing-project upload sends projectId and emits persisted source image b
 
   eventBus.off('bedrock:image', onImage);
 });
+
+test('polling timeout emits pending event without fetching final artifacts or success result', async () => {
+  const pendingEvents = [];
+  const resultEvents = [];
+  const imageEvents = [];
+  const closeModal = jest.fn();
+  const onPending = (event) => pendingEvents.push(event);
+  const onResult = (event) => resultEvents.push(event);
+  const onImage = (event) => imageEvents.push(event);
+  eventBus.on('bedrock:pending', onPending);
+  eventBus.on('bedrock:result', onResult);
+  eventBus.on('bedrock:image', onImage);
+  api.post.mockResolvedValueOnce({
+    data: {
+      analysisJobId: 'job-timeout',
+      projectId: 9,
+      sourceFileId: 12,
+      status: 'PENDING',
+    },
+  });
+  api.get.mockImplementation((url) => {
+    if (url === '/api/projects') {
+      return Promise.resolve({ data: [] });
+    }
+    if (url === '/api/analysis/jobs/job-timeout') {
+      return Promise.resolve({ data: { id: 'job-timeout', projectId: 9, status: 'RUNNING' } });
+    }
+    return Promise.reject(new Error(`unexpected GET ${url}`));
+  });
+
+  render(<Dropzone closeModal={closeModal} setDataMain={jest.fn()} pollingOptions={{ attempts: 1, delayMs: 0 }} />);
+  await userEvent.type(screen.getByLabelText(/Project name/i), 'Timeout Project');
+  const file = new File(['image-bytes'], 'timeout.png', { type: 'image/png' });
+  await userEvent.upload(screen.getByLabelText(/PNG\/JPEG/i), file);
+  const uploadButton = screen.getByRole('button', { name: /업로드 분석 요청/ });
+  await waitFor(() => expect(uploadButton).not.toBeDisabled());
+  await userEvent.click(uploadButton);
+
+  await waitFor(() => expect(pendingEvents).toHaveLength(1));
+  expect(pendingEvents[0]).toMatchObject({ projectId: 9, jobId: 'job-timeout', status: 'RUNNING' });
+  expect(resultEvents).toHaveLength(0);
+  expect(imageEvents).toHaveLength(0);
+  expect(api.get).not.toHaveBeenCalledWith('/api/projects/9/source-image', { responseType: 'blob' });
+  expect(api.get).not.toHaveBeenCalledWith('/api/projects/9/terraform/main.tf');
+  expect(closeModal).toHaveBeenCalled();
+
+  eventBus.off('bedrock:pending', onPending);
+  eventBus.off('bedrock:result', onResult);
+  eventBus.off('bedrock:image', onImage);
+});

@@ -5,6 +5,7 @@ import { eventBus } from '../utils/eventBus';
 
 const maxFileSize = 10 * 1024 * 1024;
 const maxFileSizeLabel = '10 MB';
+const terminalStatuses = new Set(['SUCCEEDED', 'FAILED']);
 
 const baseStyle = {
   flex: 1,
@@ -44,18 +45,18 @@ function buildErrorMessage(error) {
   return error?.message || 'Upload analysis request failed.';
 }
 
-async function waitForJob(jobId) {
+async function waitForJob(jobId, { attempts = 30, delayMs = 2000 } = {}) {
   let latest = null;
 
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await api.get(`/api/analysis/jobs/${encodeURIComponent(jobId)}`);
     latest = response.data;
 
-    if (latest.status === 'SUCCEEDED' || latest.status === 'FAILED') {
+    if (terminalStatuses.has(latest.status)) {
       return latest;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   return latest;
@@ -86,7 +87,7 @@ function normalizeUploadResponse(uploadResponse) {
   };
 }
 
-function Dropzone({ closeModal, setDataMain }) {
+function Dropzone({ closeModal, setDataMain, pollingOptions }) {
   const [files, setFiles] = useState([]);
   const [fileError, setFileError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -182,15 +183,26 @@ function Dropzone({ closeModal, setDataMain }) {
         'Source image stored privately and will be fetched through /api/projects/{projectId}/source-image',
       ]);
 
-      const completed = created.status === 'SUCCEEDED' || created.status === 'FAILED'
+      const completed = terminalStatuses.has(created.status)
         ? created
-        : await waitForJob(created.id);
+        : await waitForJob(created.id, pollingOptions);
 
-      if (completed?.status === 'FAILED') {
+      if (!terminalStatuses.has(completed?.status)) {
+        eventBus.emit('bedrock:pending', {
+          projectId: created.projectId,
+          jobId: created.id,
+          status: completed?.status || created.status || 'PENDING',
+        });
+        eventBus.emit('bedrock:complete');
+        closeModal();
+        return;
+      }
+
+      if (completed.status === 'FAILED') {
         throw new Error(completed.failureReason || 'Analysis job failed.');
       }
 
-      const finalProjectId = completed?.projectId || created.projectId;
+      const finalProjectId = completed.projectId || created.projectId;
       try {
         const imageResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/source-image`, { responseType: 'blob' });
         eventBus.emit('bedrock:image', {
@@ -207,7 +219,7 @@ function Dropzone({ closeModal, setDataMain }) {
         const draftResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/terraform/main.tf`);
         terraformCode = draftResponse.data?.content || '';
       } catch {
-        terraformCode = completed?.resultPreview || '';
+        terraformCode = completed.resultPreview || '';
       }
       eventBus.emit('bedrock:result', {
         projectId: finalProjectId,

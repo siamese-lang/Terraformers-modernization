@@ -134,6 +134,29 @@ function AiChat() {
       setIsRunning(false);
     };
 
+    const onPending = (pending) => {
+      setIsRunning(false);
+      setLogs((previous) => [
+        ...previous,
+        `Analysis still in progress for project ${pending.projectId}, job ${pending.jobId} (${pending.status}).`,
+      ]);
+      setMessages((previous) => previous.map((item) => {
+        if (
+          item.type === 'terraform_result'
+          && item.explanation === 'AI가 답변을 생성 중입니다...'
+        ) {
+          return {
+            ...item,
+            explanation: `분석 작업이 아직 완료되지 않았습니다. 프로젝트 #${pending.projectId}에서 나중에 다시 확인하세요. Job ID: ${pending.jobId}`,
+            terraformCode: '',
+            projectId: pending.projectId,
+          };
+        }
+
+        return item;
+      }));
+    };
+
     const onError = (error) => {
       setIsRunning(false);
       setLogs((previous) => [...previous, `Error: ${error}`]);
@@ -157,6 +180,7 @@ function AiChat() {
     eventBus.on('bedrock:logs', onLogs);
     eventBus.on('bedrock:image', onImage);
     eventBus.on('bedrock:result', onResult);
+    eventBus.on('bedrock:pending', onPending);
     eventBus.on('bedrock:complete', onComplete);
     eventBus.on('bedrock:error', onError);
 
@@ -165,6 +189,7 @@ function AiChat() {
       eventBus.off('bedrock:logs', onLogs);
       eventBus.off('bedrock:image', onImage);
       eventBus.off('bedrock:result', onResult);
+      eventBus.off('bedrock:pending', onPending);
       eventBus.off('bedrock:complete', onComplete);
       eventBus.off('bedrock:error', onError);
     };
