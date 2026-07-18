@@ -24,6 +24,18 @@ on:
         description: Optional OIDC role override. Defaults to secret AWS_ROLE_TO_ASSUME.
         required: false
         default: ''
+      react_app_aws_region:
+        description: Public AWS region embedded in the React build.
+        required: false
+        default: ''
+      react_app_cognito_user_pool_id:
+        description: Public Cognito user pool ID embedded in the React build.
+        required: false
+        default: ''
+      react_app_cognito_user_pool_client_id:
+        description: Public Cognito app client ID embedded in the React build.
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -35,9 +47,9 @@ env:
   FRONTEND_BUCKET_NAME: ${{ inputs.frontend_bucket || vars.FRONTEND_BUCKET_NAME }}
   CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.cloudfront_distribution_id || vars.CLOUDFRONT_DISTRIBUTION_ID }}
   REACT_APP_API_BASE_URL: ''
-  REACT_APP_AWS_REGION: ${{ vars.REACT_APP_AWS_REGION || vars.AWS_REGION || 'ap-northeast-2' }}
-  REACT_APP_COGNITO_USER_POOL_ID: ${{ vars.REACT_APP_COGNITO_USER_POOL_ID }}
-  REACT_APP_COGNITO_USER_POOL_CLIENT_ID: ${{ vars.REACT_APP_COGNITO_USER_POOL_CLIENT_ID }}
+  REACT_APP_AWS_REGION: ${{ inputs.react_app_aws_region || vars.REACT_APP_AWS_REGION || vars.AWS_REGION || 'ap-northeast-2' }}
+  REACT_APP_COGNITO_USER_POOL_ID: ${{ inputs.react_app_cognito_user_pool_id || vars.REACT_APP_COGNITO_USER_POOL_ID }}
+  REACT_APP_COGNITO_USER_POOL_CLIENT_ID: ${{ inputs.react_app_cognito_user_pool_client_id || vars.REACT_APP_COGNITO_USER_POOL_CLIENT_ID }}
 
 jobs:
   frontend-delivery:
@@ -80,6 +92,14 @@ jobs:
           find frontend/build -type f -print0 \
             | sort -z \
             | xargs -0 sha256sum > frontend-build-sha256.txt
+
+      - name: Upload production build
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-production-build
+          path: frontend/build
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Validate guarded AWS delivery inputs
         if: ${{ inputs.deploy_frontend }}
