@@ -74,11 +74,13 @@ require_command kubectl
 require_command terraform
 require_command mvn
 require_command grep
+require_command python3
 
 cd "${REPO_ROOT}"
 
 echo "[runtime-contract] verifying persistence guardrails"
 bash scripts/checks/flyway-migration-uniqueness.sh
+python3 scripts/checks/terraform-plan-public-cidr-regression-verification.py
 assert_repository_not_contains \
   'project_metadata_compat|project_comments' \
   "${BACKEND_MAIN_DIR}" \
