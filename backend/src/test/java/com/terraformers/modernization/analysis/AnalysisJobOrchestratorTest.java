@@ -23,8 +23,11 @@ class AnalysisJobOrchestratorTest {
     void storesResultObjectKeyAndFileIdWhenAnalysisSucceeds() {
         AnalysisProvider provider = context -> new AnalysisResult(
                 "test-provider",
-                "provider \"aws\" {}",
+                "resource \"aws_s3_bucket\" \"accepted\" { bucket_prefix = \"accepted-\" }",
                 "test explanation",
+                List.of("S3"),
+                List.of("upload artifacts are stored in S3"),
+                List.of(),
                 List.of("reference-1")
         );
         CapturingProgressPublisher progressPublisher = new CapturingProgressPublisher();
@@ -41,7 +44,8 @@ class AnalysisJobOrchestratorTest {
                 provider,
                 progressPublisher,
                 resultStorage,
-                artifactService
+                artifactService,
+                new TerraformDraftValidator()
         );
 
         AnalysisJobEntity job = sampleEntity(101L);
@@ -53,10 +57,10 @@ class AnalysisJobOrchestratorTest {
         assertThat(job.getResultFileId()).isEqualTo(301L);
         assertThat(job.getResultObjectKey()).startsWith("test-results/101/");
         assertThat(job.getResultObjectKey()).endsWith("/" + job.getId() + "/main.tf");
-        assertThat(job.getResultPreview()).contains("provider \"aws\"");
+        assertThat(job.getResultPreview()).contains("resource \"aws_s3_bucket\"");
         verify(artifactService).registerGeneratedTerraform(
                 101L,
-                "provider \"aws\" {}",
+                "resource \"aws_s3_bucket\" \"accepted\" { bucket_prefix = \"accepted-\" }",
                 new ObjectWriteResult("result-bucket", job.getResultObjectKey(), "stub-etag")
         );
         assertThat(progressPublisher.statuses()).containsExactly(
@@ -77,7 +81,8 @@ class AnalysisJobOrchestratorTest {
                 provider,
                 progressPublisher,
                 resultStorage,
-                artifactService
+                artifactService,
+                new TerraformDraftValidator()
         );
 
         AnalysisJobEntity job = sampleEntity(102L);
@@ -93,6 +98,38 @@ class AnalysisJobOrchestratorTest {
                 AnalysisJobStatus.RUNNING,
                 AnalysisJobStatus.FAILED
         );
+    }
+
+    @Test
+    void marksFailedAndDoesNotRegisterTerraformWhenProviderReturnsProviderOnlyCode() {
+        AnalysisProvider provider = context -> new AnalysisResult(
+                "test-provider",
+                "provider \"aws\" { region = var.aws_region }",
+                "provider only",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+        CapturingProgressPublisher progressPublisher = new CapturingProgressPublisher();
+        AnalysisResultStorage resultStorage = new AnalysisResultStorage(new StubObjectWriter(), new AnalysisRuntimeProperties());
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        AnalysisJobOrchestrator orchestrator = new AnalysisJobOrchestrator(
+                provider,
+                progressPublisher,
+                resultStorage,
+                artifactService,
+                new TerraformDraftValidator()
+        );
+
+        AnalysisJobEntity job = sampleEntity(103L);
+
+        orchestrator.run(job);
+
+        assertThat(job.getStatus()).isEqualTo(AnalysisJobStatus.FAILED);
+        assertThat(job.getFailureReason()).contains("resource or module");
+        assertThat(job.getResultObjectKey()).isNull();
+        verify(artifactService, never()).registerGeneratedTerraform(anyLong(), anyString(), any(ObjectWriteResult.class));
     }
 
     private AnalysisJobEntity sampleEntity(Long projectId) {

@@ -18,7 +18,9 @@ function ChatItem({ item }) {
   if (item.type === 'user_image') {
     return (
       <article className="chat-item chat-item-user">
-        <div className="chat-bubble" dangerouslySetInnerHTML={{ __html: item.text }} />
+        <div className="chat-bubble">
+          <img src={item.imageUrl} alt={item.alt || 'uploaded architecture'} className="chat-upload-preview" />
+        </div>
       </article>
     );
   }
@@ -29,6 +31,9 @@ function ChatItem({ item }) {
         <div className="chat-avatar">T</div>
         <div className="chat-bubble">
           <p>{item.explanation}</p>
+          {item.components?.length > 0 && <p><strong>Components:</strong> {item.components.join(', ')}</p>}
+          {item.relationships?.length > 0 && <p><strong>Relationships:</strong> {item.relationships.join('; ')}</p>}
+          {item.warnings?.length > 0 && <p><strong>Warnings:</strong> {item.warnings.join('; ')}</p>}
           {item.projectId && (
             <p className="result-project-reference">
               프로젝트 #{item.projectId}가 내 프로젝트에 저장되었습니다.
@@ -76,6 +81,7 @@ function AiChat() {
   const [isRunning, setIsRunning] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const chatEndRef = useRef(null);
+  const objectUrlsRef = useRef(new Set());
 
   useEffect(() => {
     const onStart = () => {
@@ -85,6 +91,22 @@ function AiChat() {
 
     const onLogs = (nextLogs = []) => {
       setLogs((previous) => [...previous, ...nextLogs]);
+    };
+
+    const onImage = (image) => {
+      if (image.imageUrl) {
+        objectUrlsRef.current.add(image.imageUrl);
+      }
+      setMessages((previous) => [
+        ...previous,
+        {
+          key: `persisted-image-${image.projectId}-${Date.now()}`,
+          type: 'user_image',
+          imageUrl: image.imageUrl,
+          alt: image.alt || 'uploaded architecture',
+          isUser: true,
+        },
+      ]);
     };
 
     const onResult = (result) => {
@@ -98,6 +120,9 @@ function AiChat() {
             explanation: result.explanation,
             terraformCode: result.terraformCode,
             projectId: result.projectId,
+            components: result.components || [],
+            relationships: result.relationships || [],
+            warnings: result.warnings || [],
           };
         }
 
@@ -107,6 +132,29 @@ function AiChat() {
 
     const onComplete = () => {
       setIsRunning(false);
+    };
+
+    const onPending = (pending) => {
+      setIsRunning(false);
+      setLogs((previous) => [
+        ...previous,
+        `Analysis still in progress for project ${pending.projectId}, job ${pending.jobId} (${pending.status}).`,
+      ]);
+      setMessages((previous) => previous.map((item) => {
+        if (
+          item.type === 'terraform_result'
+          && item.explanation === 'AI가 답변을 생성 중입니다...'
+        ) {
+          return {
+            ...item,
+            explanation: `분석 작업이 아직 완료되지 않았습니다. 프로젝트 #${pending.projectId}에서 나중에 다시 확인하세요. Job ID: ${pending.jobId}`,
+            terraformCode: '',
+            projectId: pending.projectId,
+          };
+        }
+
+        return item;
+      }));
     };
 
     const onError = (error) => {
@@ -130,17 +178,26 @@ function AiChat() {
 
     eventBus.on('bedrock:start', onStart);
     eventBus.on('bedrock:logs', onLogs);
+    eventBus.on('bedrock:image', onImage);
     eventBus.on('bedrock:result', onResult);
+    eventBus.on('bedrock:pending', onPending);
     eventBus.on('bedrock:complete', onComplete);
     eventBus.on('bedrock:error', onError);
 
     return () => {
       eventBus.off('bedrock:start', onStart);
       eventBus.off('bedrock:logs', onLogs);
+      eventBus.off('bedrock:image', onImage);
       eventBus.off('bedrock:result', onResult);
+      eventBus.off('bedrock:pending', onPending);
       eventBus.off('bedrock:complete', onComplete);
       eventBus.off('bedrock:error', onError);
     };
+  }, []);
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrlsRef.current.clear();
   }, []);
 
   useEffect(() => {

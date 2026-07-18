@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import api from '../utils/api';
 import { eventBus } from '../utils/eventBus';
 
 const maxFileSize = 10 * 1024 * 1024;
 const maxFileSizeLabel = '10 MB';
+const terminalStatuses = new Set(['SUCCEEDED', 'FAILED']);
 
 const baseStyle = {
   flex: 1,
@@ -44,18 +45,18 @@ function buildErrorMessage(error) {
   return error?.message || 'Upload analysis request failed.';
 }
 
-async function waitForJob(jobId) {
+async function waitForJob(jobId, { attempts = 30, delayMs = 2000 } = {}) {
   let latest = null;
 
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await api.get(`/api/analysis/jobs/${encodeURIComponent(jobId)}`);
     latest = response.data;
 
-    if (latest.status === 'SUCCEEDED' || latest.status === 'FAILED') {
+    if (terminalStatuses.has(latest.status)) {
       return latest;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   return latest;
@@ -78,14 +79,32 @@ function normalizeUploadResponse(uploadResponse) {
     provider: uploadResponse.provider,
     resultObjectKey: uploadResponse.resultObjectKey,
     resultPreview: uploadResponse.resultPreview,
+    analysisSummary: uploadResponse.analysisSummary,
+    detectedComponents: uploadResponse.detectedComponents || [],
+    detectedRelationships: uploadResponse.detectedRelationships || [],
+    warnings: uploadResponse.warnings || [],
     failureReason: uploadResponse.failureReason,
   };
 }
 
-function Dropzone({ closeModal, setDataMain }) {
+function Dropzone({ closeModal, setDataMain, pollingOptions }) {
   const [files, setFiles] = useState([]);
   const [fileError, setFileError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState('new');
+  const [projectName, setProjectName] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [projects, setProjects] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    api.get('/api/projects').then((response) => { if (mounted) setProjects(response.data || []); }).catch(() => { if (mounted) setProjects([]); });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => () => {
+    files.forEach((file) => { if (file.preview) URL.revokeObjectURL(file.preview); });
+  }, [files]);
 
   const onDrop = useCallback((acceptedFiles, fileRejections) => {
     if (fileRejections.length > 0) {
@@ -123,25 +142,22 @@ function Dropzone({ closeModal, setDataMain }) {
     }
 
     const file = files[0];
+    if (uploadMode === 'new' && !projectName.trim()) { setFileError('새 프로젝트 이름을 입력하세요.'); return; }
+    if (uploadMode === 'existing' && !projectId) { setFileError('기존 프로젝트를 선택하세요.'); return; }
     const formData = new FormData();
     formData.append('file', file);
+    if (uploadMode === 'new') { formData.append('projectName', projectName.trim()); } else { formData.append('projectId', projectId); }
 
     setIsUploading(true);
     eventBus.emit('bedrock:start');
     eventBus.emit('bedrock:logs', [
       `Selected image: ${file.name}`,
       'Uploading as the signed-in Cognito user: POST /api/upload',
-      'The backend creates an owned numeric project, persists source and generated artifacts, and starts an analysis job.',
+      uploadMode === 'new' ? `Creating new project: ${projectName.trim()}` : `Adding image to existing project: ${projectId}`,
     ]);
 
     setDataMain((previous) => [
       ...previous,
-      {
-        key: `image-${Date.now()}`,
-        type: 'user_image',
-        text: `<img src="${file.preview}" alt="uploaded architecture" class="chat-upload-preview" />`,
-        isUser: true,
-      },
       {
         key: `pending-${Date.now()}`,
         type: 'terraform_result',
@@ -160,26 +176,59 @@ function Dropzone({ closeModal, setDataMain }) {
 
       const created = normalizeUploadResponse(response.data);
       eventBus.emit('bedrock:logs', [
-        `Project created or selected: ${created.projectId}`,
+        `Project ${uploadMode === 'new' ? 'created' : 'selected'}: ${created.projectId}`,
         `Source file registered: ${created.sourceFileId}`,
         `Terraform result file registered: ${created.resultFileId}`,
         `Analysis job created: ${created.id}`,
-        `Source reference: s3://${created.sourceBucket}/${created.sourceKey}`,
+        'Source image stored privately and will be fetched through /api/projects/{projectId}/source-image',
       ]);
 
-      const completed = created.status === 'SUCCEEDED' || created.status === 'FAILED'
+      const completed = terminalStatuses.has(created.status)
         ? created
-        : await waitForJob(created.id);
+        : await waitForJob(created.id, pollingOptions);
 
-      if (completed?.status === 'FAILED') {
+      if (!terminalStatuses.has(completed?.status)) {
+        eventBus.emit('bedrock:pending', {
+          projectId: created.projectId,
+          jobId: created.id,
+          status: completed?.status || created.status || 'PENDING',
+        });
+        eventBus.emit('bedrock:complete');
+        closeModal();
+        return;
+      }
+
+      if (completed.status === 'FAILED') {
         throw new Error(completed.failureReason || 'Analysis job failed.');
       }
 
+      const finalProjectId = completed.projectId || created.projectId;
+      try {
+        const imageResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/source-image`, { responseType: 'blob' });
+        eventBus.emit('bedrock:image', {
+          projectId: finalProjectId,
+          imageUrl: URL.createObjectURL(imageResponse.data),
+          alt: file.name,
+        });
+      } catch {
+        // The result remains usable even if the persisted source image is temporarily unavailable.
+      }
+
+      let terraformCode = '';
+      try {
+        const draftResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/terraform/main.tf`);
+        terraformCode = draftResponse.data?.content || '';
+      } catch {
+        terraformCode = completed.resultPreview || '';
+      }
       eventBus.emit('bedrock:result', {
-        projectId: completed?.projectId || created.projectId,
+        projectId: finalProjectId,
         resultFileId: completed?.resultFileId || created.resultFileId,
-        terraformCode: completed?.resultPreview || '',
-        explanation: `분석 작업이 완료되었습니다. provider=${completed?.provider || '-'}, resultObjectKey=${completed?.resultObjectKey || '-'}`,
+        terraformCode,
+        explanation: completed?.analysisSummary || '분석 작업이 완료되었습니다.',
+        components: completed?.detectedComponents || [],
+        relationships: completed?.detectedRelationships || [],
+        warnings: completed?.warnings || [],
       });
       eventBus.emit('bedrock:complete');
       closeModal();
@@ -196,8 +245,19 @@ function Dropzone({ closeModal, setDataMain }) {
       <p className="muted-copy">
         로그인한 사용자 소유의 프로젝트에 원본 이미지와 생성된 <code>main.tf</code> 아티팩트를 등록합니다.
       </p>
+      <fieldset className="upload-mode-fieldset">
+        <legend>Upload mode</legend>
+        <label><input type="radio" name="uploadMode" value="new" checked={uploadMode === 'new'} onChange={() => setUploadMode('new')} /> Create a new project</label>
+        <label><input type="radio" name="uploadMode" value="existing" checked={uploadMode === 'existing'} onChange={() => setUploadMode('existing')} /> Add an image to an existing owned project</label>
+      </fieldset>
+      {uploadMode === 'new' ? (
+        <label className="upload-field">Project name<input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Architecture project name" /></label>
+      ) : (
+        <label className="upload-field">Owned project<select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">Select a project</option>{projects.map((project) => <option key={project.projectId} value={project.projectId}>{project.name || project.displayName || `Project ${project.projectId}`}</option>)}</select></label>
+      )}
+
       <div {...getRootProps({ style })}>
-        <input {...getInputProps()} />
+        <input {...getInputProps({ "aria-label": "PNG/JPEG architecture image" })} />
         <p>PNG/JPEG 아키텍처 이미지를 드래그하거나 클릭해 선택하세요.</p>
         <p>파일 크기는 최대 {maxFileSizeLabel}입니다.</p>
       </div>
@@ -208,7 +268,7 @@ function Dropzone({ closeModal, setDataMain }) {
         <aside className="dropzone-preview-list">
           {files.map((file) => (
             <div className="dropzone-preview" key={file.name}>
-              <img src={file.preview} alt={file.name} onLoad={() => URL.revokeObjectURL(file.preview)} />
+              <img src={file.preview} alt={file.name} />
               <span>{file.name}</span>
             </div>
           ))}
@@ -216,7 +276,7 @@ function Dropzone({ closeModal, setDataMain }) {
       )}
 
       <div className="modal-actions">
-        <button type="button" className="primary-button" disabled={files.length === 0 || isUploading} onClick={handleUpload}>
+        <button type="button" className="primary-button" disabled={files.length === 0 || isUploading || (uploadMode === 'new' && !projectName.trim()) || (uploadMode === 'existing' && !projectId)} onClick={handleUpload}>
           {isUploading ? '업로드 분석 요청 중...' : '업로드 분석 요청'}
         </button>
         <button type="button" className="secondary-button" onClick={closeModal}>닫기</button>

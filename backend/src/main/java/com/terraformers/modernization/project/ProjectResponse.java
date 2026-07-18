@@ -13,6 +13,11 @@ public record ProjectResponse(
         String latestAnalysisJobId,
         Long latestResultFileId,
         String latestResultObjectKey,
+        String analysisStatus,
+        String analysisSummary,
+        java.util.List<String> detectedComponents,
+        java.util.List<String> detectedRelationships,
+        java.util.List<String> warnings,
         Instant terraformDraftUpdatedAt,
         Long sourceFileId,
         String sourceBucket,
@@ -40,6 +45,11 @@ public record ProjectResponse(
                 latestJob == null ? null : latestJob.getId(),
                 terraformFile == null ? null : terraformFile.getFileId(),
                 terraformFile == null ? null : terraformFile.getS3Key(),
+                latestJob == null ? null : latestJob.getStatus().name(),
+                latestJob == null ? null : latestJob.getAnalysisSummary(),
+                splitLines(latestJob == null ? null : latestJob.getDetectedComponents()),
+                splitLines(latestJob == null ? null : latestJob.getDetectedRelationships()),
+                splitLines(latestJob == null ? null : latestJob.getAnalysisWarnings()),
                 terraformFile == null ? null : terraformFile.getUpdatedAt(),
                 sourceFile == null ? null : sourceFile.getFileId(),
                 sourceFile == null ? null : sourceFile.getS3Bucket(),
@@ -53,5 +63,12 @@ public record ProjectResponse(
                 project.getCreatedAt(),
                 project.getUpdatedAt()
         );
+    }
+
+    private static java.util.List<String> splitLines(String value) {
+        if (value == null || value.isBlank()) {
+            return java.util.List.of();
+        }
+        return java.util.Arrays.stream(value.split("\\R")).map(String::strip).filter(line -> !line.isBlank()).toList();
     }
 }

@@ -52,70 +52,74 @@ public class AnalysisUploadService {
         OwnedProjectEntity project = resolveProject(
                 requestedProjectId,
                 requestedProjectName,
-                originalFilename,
                 currentUser
         );
+        boolean createdProject = requestedProjectId == null;
 
-        StoredUploadObject storedUpload = uploadObjectStorageService.store(
-                file,
-                String.valueOf(project.getProjectId()),
-                originalFilename
-        );
-        String contentType = resolveContentType(file);
+        try {
+            StoredUploadObject storedUpload = uploadObjectStorageService.store(
+                    file,
+                    String.valueOf(project.getProjectId()),
+                    originalFilename
+            );
+            String contentType = resolveContentType(file);
 
-        ProjectFileEntity sourceFile = projectArtifactService.registerSourceImage(
-                project,
-                currentUser,
-                storedUpload,
-                originalFilename,
-                contentType,
-                file.getSize()
-        );
+            ProjectFileEntity sourceFile = projectArtifactService.registerSourceImage(
+                    project,
+                    currentUser,
+                    storedUpload,
+                    originalFilename,
+                    contentType,
+                    file.getSize()
+            );
 
-        AnalysisJobResponse job = analysisJobService.create(
-                new AnalysisJobRequest(
-                        project.getProjectId(),
-                        sourceFile.getFileId(),
-                        "upload-" + UUID.randomUUID()
-                ),
-                currentUser
-        );
+            AnalysisJobResponse job = analysisJobService.create(
+                    new AnalysisJobRequest(
+                            project.getProjectId(),
+                            sourceFile.getFileId(),
+                            "upload-" + UUID.randomUUID()
+                    ),
+                    currentUser
+            );
 
-        return AnalysisUploadResponse.from(
-                job,
-                originalFilename,
-                contentType,
-                file.getSize(),
-                storedUpload
-        );
+            return AnalysisUploadResponse.from(
+                    job,
+                    originalFilename,
+                    contentType,
+                    file.getSize(),
+                    storedUpload
+            );
+        } catch (RuntimeException exception) {
+            if (createdProject) {
+                projectDomainService.softDelete(project.getProjectId(), currentUser);
+            }
+            throw exception;
+        }
     }
 
     private OwnedProjectEntity resolveProject(
             Long requestedProjectId,
             String requestedProjectName,
-            String originalFilename,
             UserEntity currentUser
     ) {
-        if (requestedProjectId != null) {
+        boolean hasProjectId = requestedProjectId != null;
+        boolean hasProjectName = requestedProjectName != null && !requestedProjectName.isBlank();
+        if (hasProjectId == hasProjectName) {
+            throw new IllegalArgumentException("upload must specify exactly one mode: projectId for an existing project or nonblank projectName for a new project");
+        }
+        if (hasProjectId) {
             return projectDomainService.requireModifiableProject(requestedProjectId, currentUser);
         }
         return projectDomainService.createProject(
                 currentUser,
-                resolveProjectName(requestedProjectName, originalFilename),
+                normalizeProjectName(requestedProjectName),
                 null,
                 ProjectVisibility.PRIVATE
         );
     }
 
-    private String resolveProjectName(String requestedProjectName, String originalFilename) {
-        String candidate = requestedProjectName;
-        if (candidate == null || candidate.isBlank()) {
-            candidate = stripExtension(originalFilename);
-        }
-        candidate = candidate.strip();
-        if (candidate.isBlank()) {
-            candidate = "Untitled Project";
-        }
+    private String normalizeProjectName(String requestedProjectName) {
+        String candidate = requestedProjectName.strip();
         return candidate.length() <= 200 ? candidate : candidate.substring(0, 200);
     }
 
@@ -126,11 +130,6 @@ public class AnalysisUploadService {
         }
         String normalized = originalFilename.replace('\\', '/');
         return normalized.substring(normalized.lastIndexOf('/') + 1);
-    }
-
-    private String stripExtension(String filename) {
-        int dotIndex = filename.lastIndexOf('.');
-        return dotIndex <= 0 ? filename : filename.substring(0, dotIndex);
     }
 
     private String resolveContentType(MultipartFile file) {

@@ -40,14 +40,28 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 terraform {
                   required_providers {
                     aws = {
-                      source  = \"hashicorp/aws\"
-                      version = \"~> 5.0\"
+                      source  = "hashicorp/aws"
+                      version = "~> 5.0"
                     }
                   }
                 }
 
-                provider \"aws\" {
+                provider "aws" {
                   region = var.aws_region
+                }
+
+                variable "aws_region" {
+                  type        = string
+                  description = "AWS region for local verification drafts."
+                  default     = "us-east-1"
+                }
+
+                resource "aws_s3_bucket" "architecture_artifacts" {
+                  bucket_prefix = "terraformers-artifacts-"
+                }
+
+                resource "aws_sqs_queue" "analysis_events" {
+                  name = "terraformers-analysis-events"
                 }
                 """;
 
@@ -62,6 +76,9 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 "stub-integrated-java",
                 terraformDraft,
                 explanation,
+                List.of("S3 artifact bucket", "SQS analysis event queue"),
+                List.of("analysis events are published to the queue after artifacts are persisted"),
+                List.of("Stub output is for local verification only; enable Bedrock for real image analysis."),
                 references.stream().map(ReferenceDocument::id).toList()
         );
     }

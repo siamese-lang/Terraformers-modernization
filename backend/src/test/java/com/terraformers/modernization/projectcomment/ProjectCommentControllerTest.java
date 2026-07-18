@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisJobRepository;
+import com.terraformers.modernization.analysis.SynchronousAnalysisExecutorTestConfig;
 import com.terraformers.modernization.collaboration.BoardRepository;
 import com.terraformers.modernization.collaboration.CommentRepository;
 import com.terraformers.modernization.identity.UserRepository;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -31,6 +33,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(SynchronousAnalysisExecutorTestConfig.class)
 @ActiveProfiles("test")
 class ProjectCommentControllerTest {
 
@@ -166,6 +169,7 @@ class ProjectCommentControllerTest {
 
         MvcResult result = mockMvc.perform(multipart("/api/upload")
                         .file(file)
+                        .param("projectName", filename.replace(".png", ""))
                         .with(testUserJwt()))
                 .andExpect(status().isCreated())
                 .andReturn();

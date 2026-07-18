@@ -8,12 +8,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.terraformers.modernization.identity.UserEntity;
 import com.terraformers.modernization.projectcore.ProjectArtifactService;
 import com.terraformers.modernization.projectcore.ProjectDomainService;
 import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -41,7 +43,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 true,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         SourceObjectReadResponse response = service.read(42L, null);
@@ -76,7 +79,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 true,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         assertThatThrownBy(() -> service.read(42L, null))
@@ -97,7 +101,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 false,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         assertThatThrownBy(() -> service.read(42L, null))
@@ -105,6 +110,60 @@ class SourceObjectReaderServiceTest {
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    void sourceImageContentReturnsActualBytesAndContentType() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ProjectFileEntity sourceFile = persistedSourceFile();
+        ObjectReader objectReader = mock(ObjectReader.class);
+        byte[] bytes = new byte[] {1, 2, 3, 4};
+        when(artifactService.requireLatestSourceImage(42L)).thenReturn(sourceFile);
+        when(objectReader.readContent(new ObjectReference("terraformers-upload-bucket", "browser-uploads/42/source.png")))
+                .thenReturn(new ObjectContent(
+                        new ObjectMetadata("terraformers-upload-bucket", "browser-uploads/42/source.png", "image/png", bytes.length, "\"etag\""),
+                        bytes
+                ));
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> mock(S3Client.class),
+                objectReader
+        );
+
+        ResponseEntity<byte[]> response = service.readImageContent(42L, null);
+
+        verify(projectDomainService).requireAccessibleProject(42L, null);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType().toString()).isEqualTo("image/png");
+        assertThat(response.getHeaders().getContentLength()).isEqualTo(bytes.length);
+        assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+        assertThat(response.getBody()).containsExactly(bytes);
+    }
+
+    @Test
+    void sourceImageContentRequiresProjectAccessBeforeObjectRead() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ObjectReader objectReader = mock(ObjectReader.class);
+        UserEntity requester = mock(UserEntity.class);
+        org.mockito.Mockito.doThrow(new SecurityException("forbidden"))
+                .when(projectDomainService).requireAccessibleProject(42L, requester);
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> mock(S3Client.class),
+                objectReader
+        );
+
+        assertThatThrownBy(() -> service.readImageContent(42L, requester))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("forbidden");
+        verify(artifactService, never()).requireLatestSourceImage(42L);
+        verify(objectReader, never()).readContent(any(ObjectReference.class));
     }
 
     private ProjectFileEntity persistedSourceFile() {
