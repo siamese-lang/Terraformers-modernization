@@ -22,3 +22,10 @@ github_environment       = "frontend-delivery"
 aliases             = []
 acm_certificate_arn = null
 price_class         = "PriceClass_200"
+
+tags = {
+  Project     = "terraformers-modernization"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostOwner   = "siamese-lang"
+}

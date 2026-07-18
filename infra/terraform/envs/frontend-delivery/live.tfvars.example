@@ -23,5 +23,5 @@ tags = {
   Project     = "terraformers-modernization"
   Environment = "dev"
   ManagedBy   = "terraform"
-  CostOwner   = "replace-with-owner"
+  CostOwner   = "siamese-lang"
 }

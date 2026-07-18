@@ -223,6 +223,13 @@ def build_frontend(bucket_name: str, alb_arn: str, foundation: dict[str, Any]) -
         "acm_certificate_arn            = null",
         'price_class                    = "PriceClass_200"',
         "",
+        "tags = {",
+        '  Project     = "terraformers-modernization"',
+        '  Environment = "dev"',
+        '  ManagedBy   = "terraform"',
+        '  CostOwner   = "siamese-lang"',
+        "}",
+        "",
     ]
     return "\n".join(lines)
 

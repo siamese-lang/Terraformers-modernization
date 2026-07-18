@@ -95,6 +95,11 @@ def main() -> int:
     assert_contains(frontend, 'github_oidc_provider_arn = "arn:aws:iam::123456789013:oidc-provider/token.actions.githubusercontent.com"')
     assert_contains(frontend, "frontend_bucket_force_destroy = false")
     assert_contains(frontend, "loadbalancer/app/terraformers-internal/0123456789abcdef")
+    assert_contains(frontend, 'tags = {')
+    assert_contains(frontend, 'Project     = "terraformers-modernization"')
+    assert_contains(frontend, 'Environment = "dev"')
+    assert_contains(frontend, 'ManagedBy   = "terraform"')
+    assert_contains(frontend, 'CostOwner   = "siamese-lang"')
     assert_not_contains(frontend, "123456789012")
 
     for path in (stateful, eks, frontend):
@@ -206,6 +211,7 @@ def main() -> int:
         "missing_foundation_outputs_rejected=true",
         "oidc_account_mismatch_rejected=true",
         "alb_account_mismatch_rejected=true",
+        "frontend_cost_owner_preserved=true",
         "secret_values_read=false",
         "aws_authentication=none",
         "aws_mutation=none",
