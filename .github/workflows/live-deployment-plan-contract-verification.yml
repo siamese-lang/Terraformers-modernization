@@ -12,6 +12,9 @@ on:
       - "config/live-deployment-stages.json"
       - "scripts/deploy/build-live-deployment-execution-plan.py"
       - "scripts/deploy/summarize-terraform-plan.py"
+      - "scripts/deploy/verify-approved-terraform-apply-contract.py"
+      - "scripts/checks/approved-terraform-apply-contract-verification.py"
+      - ".github/workflows/aws-live-terraform-apply.yml"
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
       - "scripts/checks/terraform-plan-changed-paths-verification.py"
       - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
@@ -35,6 +38,9 @@ jobs:
 
       - name: Verify sanitized Terraform update paths
         run: python3 scripts/checks/terraform-plan-changed-paths-verification.py
+
+      - name: Verify approved Terraform apply contract
+        run: python3 scripts/checks/approved-terraform-apply-contract-verification.py
 
       - name: Verify pre-merge dispatch entry
         run: bash scripts/checks/premerge-live-plan-dispatch-verification.sh
