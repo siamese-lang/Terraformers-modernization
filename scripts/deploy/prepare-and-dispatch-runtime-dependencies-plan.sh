@@ -81,11 +81,14 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "NOT_INSIDE_GIT
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
 PRIVATE_DIR="$(cygpath -u "${LOCALAPPDATA:?LOCALAPPDATA_NOT_SET}")/Terraformers/live-foundation"
 FOUNDATION_TFVARS="$PRIVATE_DIR/foundation.tfvars"
+FOUNDATION_STATE="$PRIVATE_DIR/foundation.remote-post-migration.tfstate"
 NETWORK_APPLY_ROOT="$PRIVATE_DIR/network-apply-"
+RUNTIME_APPLY_ROOT="$PRIVATE_DIR/runtime-dependencies-apply-"
 RUNTIME_EXAMPLE="$REPO_ROOT/infra/terraform/envs/backend-runtime-dependencies/live.tfvars.example"
 RUNTIME_TFVARS="$PRIVATE_DIR/runtime-dependencies.live.tfvars"
 
 [[ -f "$FOUNDATION_TFVARS" ]] || fail "PRIVATE_FOUNDATION_TFVARS_NOT_FOUND"
+[[ -f "$FOUNDATION_STATE" ]] || fail "VERIFIED_FOUNDATION_STATE_NOT_FOUND"
 [[ -f "$RUNTIME_EXAMPLE" ]] || fail "RUNTIME_DEPENDENCIES_TFVARS_EXAMPLE_NOT_FOUND"
 
 cd "$REPO_ROOT"
@@ -112,8 +115,73 @@ grep -Fqx 'CreatedResourceCount=16' "$NETWORK_SUMMARY" || fail "NETWORK_RESOURCE
 grep -Fqx 'PostApplyPlanNoChanges=true' "$NETWORK_SUMMARY" || fail "NETWORK_POST_APPLY_DRIFT_PRESENT"
 grep -Fqx 'RemoteStateObjectPresent=true' "$NETWORK_SUMMARY" || fail "NETWORK_REMOTE_STATE_MISSING"
 
+RUNTIME_SUMMARY="$(
+  find "$PRIVATE_DIR" \
+    -maxdepth 2 \
+    -type f \
+    -path "${RUNTIME_APPLY_ROOT}*/runtime-dependencies-apply-summary.txt" \
+    -print 2>/dev/null |
+  sort |
+  tail -n 1
+)"
+
+BASE_RUNTIME_APPLIED=false
+if [[ -n "$RUNTIME_SUMMARY" ]]; then
+  [[ -f "$RUNTIME_SUMMARY" ]] || fail "RUNTIME_APPLY_SUMMARY_NOT_FOUND"
+  grep -Fqx 'RuntimeDependenciesApplyStatus=success' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_APPLY_NOT_SUCCESSFUL"
+  grep -Fqx 'CreatedResourceCount=13' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_CREATED_RESOURCE_COUNT_MISMATCH"
+  grep -Fqx 'ManagedStateResourceCount=13' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_MANAGED_STATE_COUNT_MISMATCH"
+  grep -Fqx 'EcrRepositoryCount=1' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_ECR_COUNT_MISMATCH"
+  grep -Fqx 'S3BucketCount=2' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_S3_COUNT_MISMATCH"
+  grep -Fqx 'SqsQueueCount=2' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_SQS_COUNT_MISMATCH"
+  grep -Fqx 'SecretsManagerContainerCount=1' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_SECRET_COUNT_MISMATCH"
+  grep -Fqx 'SecretValueWriteExecuted=false' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_SECRET_VALUE_WRITE_PRESENT"
+  grep -Fqx 'PostApplyPlanNoChanges=true' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_POST_APPLY_DRIFT_PRESENT"
+  grep -Fqx 'RemoteStateObjectPresent=true' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_REMOTE_STATE_MISSING"
+  grep -Fqx 'TerraformDestroyExecuted=false' "$RUNTIME_SUMMARY" || fail "RUNTIME_BASE_DESTROY_EXECUTED"
+  BASE_RUNTIME_APPLIED=true
+fi
+
 GITHUB_LOGIN="$(gh api user --jq .login)"
 [[ -n "$GITHUB_LOGIN" ]] || fail "GITHUB_LOGIN_UNAVAILABLE"
+
+GITHUB_OIDC_PROVIDER_ARN="$("${PYTHON_CMD[@]}" - "$FOUNDATION_STATE" "$EXPECTED_ACCOUNT_ID" <<'PYCODE'
+import json
+import re
+import sys
+from pathlib import Path
+
+state_path = Path(sys.argv[1])
+expected_account = sys.argv[2]
+state = json.loads(state_path.read_text(encoding="utf-8"))
+
+entry = state.get("outputs", {}).get("github_oidc_provider_arn")
+if not isinstance(entry, dict) or not isinstance(entry.get("value"), str):
+    raise SystemExit(
+        "FOUNDATION_GITHUB_OIDC_PROVIDER_ARN_OUTPUT_INVALID"
+    )
+
+arn = entry["value"].strip()
+pattern = (
+    r"^arn:aws[a-zA-Z-]*:iam::([0-9]{12}):"
+    r"oidc-provider/token\.actions\.githubusercontent\.com$"
+)
+match = re.fullmatch(pattern, arn)
+
+if match is None:
+    raise SystemExit(
+        "FOUNDATION_GITHUB_OIDC_PROVIDER_ARN_INVALID"
+    )
+
+if match.group(1) != expected_account:
+    raise SystemExit(
+        "FOUNDATION_GITHUB_OIDC_PROVIDER_ARN_ACCOUNT_MISMATCH"
+    )
+
+print(arn)
+PYCODE
+)"
+
 UPLOAD_BUCKET="terraformers-dev-upload-${EXPECTED_ACCOUNT_ID}"
 RESULT_BUCKET="terraformers-dev-result-${EXPECTED_ACCOUNT_ID}"
 
@@ -121,6 +189,7 @@ cp "$RUNTIME_EXAMPLE" "$RUNTIME_TFVARS"
 sed -i \
   -e "s/replace-with-unique-terraformers-upload-bucket/${UPLOAD_BUCKET}/g" \
   -e "s/replace-with-unique-terraformers-result-bucket/${RESULT_BUCKET}/g" \
+  -e "s|arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com|${GITHUB_OIDC_PROVIDER_ARN}|g" \
   -e "s/replace-with-owner/${GITHUB_LOGIN}/g" \
   "$RUNTIME_TFVARS"
 
@@ -139,15 +208,6 @@ check_absent() {
   set -e
   [[ "$result" -ne 0 ]] || fail "$code"
 }
-
-check_absent "UNMANAGED_ECR_REPOSITORY_ALREADY_EXISTS" \
-  aws ecr describe-repositories --repository-names terraformers-backend
-check_absent "UNMANAGED_AI_LOG_QUEUE_ALREADY_EXISTS" \
-  aws sqs get-queue-url --queue-name terraformers-ai-log
-check_absent "UNMANAGED_TERRAFORM_LOG_QUEUE_ALREADY_EXISTS" \
-  aws sqs get-queue-url --queue-name terraformers-terraform-log
-check_absent "UNMANAGED_RUNTIME_SECRET_ALREADY_EXISTS" \
-  aws secretsmanager describe-secret --secret-id terraformers/dev/backend/runtime
 
 check_bucket_available() {
   local bucket="$1"
@@ -168,8 +228,134 @@ check_bucket_available() {
   fi
 }
 
-check_bucket_available "$UPLOAD_BUCKET"
-check_bucket_available "$RESULT_BUCKET"
+verify_initial_resource_absence() {
+  check_absent "UNMANAGED_ECR_REPOSITORY_ALREADY_EXISTS" \
+    aws ecr describe-repositories \
+      --repository-names terraformers-backend
+
+  check_absent "UNMANAGED_AI_LOG_QUEUE_ALREADY_EXISTS" \
+    aws sqs get-queue-url \
+      --queue-name terraformers-ai-log
+
+  check_absent "UNMANAGED_TERRAFORM_LOG_QUEUE_ALREADY_EXISTS" \
+    aws sqs get-queue-url \
+      --queue-name terraformers-terraform-log
+
+  check_absent "UNMANAGED_RUNTIME_SECRET_ALREADY_EXISTS" \
+    aws secretsmanager describe-secret \
+      --secret-id terraformers/dev/backend/runtime
+
+  check_bucket_available "$UPLOAD_BUCKET"
+  check_bucket_available "$RESULT_BUCKET"
+}
+
+verify_managed_base_runtime() {
+  local ecr_state
+  local ai_queue_url
+  local terraform_queue_url
+  local runtime_secret_name
+  local runtime_secret_arn
+  local bucket
+  local bucket_region
+
+  ecr_state="$(
+    aws ecr describe-repositories \
+      --repository-names terraformers-backend \
+      --query 'repositories[0].[repositoryName,imageTagMutability,imageScanningConfiguration.scanOnPush]' \
+      --output text
+  )"
+  [[ "$ecr_state" == $'terraformers-backend\tIMMUTABLE\tTrue' ]] ||
+    fail "MANAGED_ECR_REPOSITORY_CONTRACT_MISMATCH"
+
+  aws ecr get-lifecycle-policy \
+    --repository-name terraformers-backend \
+    >/dev/null 2>&1 ||
+    fail "MANAGED_ECR_LIFECYCLE_POLICY_MISSING"
+
+  ai_queue_url="$(
+    aws sqs get-queue-url \
+      --queue-name terraformers-ai-log \
+      --query QueueUrl \
+      --output text
+  )"
+  [[ "$ai_queue_url" == "https://sqs.ap-northeast-2.amazonaws.com/${EXPECTED_ACCOUNT_ID}/terraformers-ai-log" ]] ||
+    fail "MANAGED_AI_LOG_QUEUE_URL_MISMATCH"
+
+  terraform_queue_url="$(
+    aws sqs get-queue-url \
+      --queue-name terraformers-terraform-log \
+      --query QueueUrl \
+      --output text
+  )"
+  [[ "$terraform_queue_url" == "https://sqs.ap-northeast-2.amazonaws.com/${EXPECTED_ACCOUNT_ID}/terraformers-terraform-log" ]] ||
+    fail "MANAGED_TERRAFORM_LOG_QUEUE_URL_MISMATCH"
+
+  runtime_secret_name="$(
+    aws secretsmanager describe-secret \
+      --secret-id terraformers/dev/backend/runtime \
+      --query Name \
+      --output text
+  )"
+  [[ "$runtime_secret_name" == "terraformers/dev/backend/runtime" ]] ||
+    fail "MANAGED_RUNTIME_SECRET_NAME_MISMATCH"
+
+  runtime_secret_arn="$(
+    aws secretsmanager describe-secret \
+      --secret-id terraformers/dev/backend/runtime \
+      --query ARN \
+      --output text
+  )"
+  [[ "$runtime_secret_arn" =~ ^arn:aws[a-zA-Z-]*:secretsmanager:ap-northeast-2:${EXPECTED_ACCOUNT_ID}:secret:terraformers/dev/backend/runtime-[A-Za-z0-9]+$ ]] ||
+    fail "MANAGED_RUNTIME_SECRET_ARN_MISMATCH"
+
+  for bucket in "$UPLOAD_BUCKET" "$RESULT_BUCKET"; do
+    aws s3api head-bucket \
+      --bucket "$bucket" \
+      >/dev/null 2>&1 ||
+      fail "MANAGED_S3_BUCKET_MISSING"
+
+    bucket_region="$(
+      aws s3api get-bucket-location \
+        --bucket "$bucket" \
+        --query LocationConstraint \
+        --output text
+    )"
+    [[ "$bucket_region" == "ap-northeast-2" ]] ||
+      fail "MANAGED_S3_BUCKET_REGION_MISMATCH"
+
+    [[ "$(
+      aws s3api get-bucket-versioning \
+        --bucket "$bucket" \
+        --query Status \
+        --output text
+    )" == "Enabled" ]] ||
+      fail "MANAGED_S3_VERSIONING_MISMATCH"
+
+    [[ "$(
+      aws s3api get-public-access-block \
+        --bucket "$bucket" \
+        --query 'PublicAccessBlockConfiguration.[BlockPublicAcls,IgnorePublicAcls,BlockPublicPolicy,RestrictPublicBuckets]' \
+        --output text
+    )" == $'True\tTrue\tTrue\tTrue' ]] ||
+      fail "MANAGED_S3_PUBLIC_ACCESS_BLOCK_MISMATCH"
+
+    [[ "$(
+      aws s3api get-bucket-encryption \
+        --bucket "$bucket" \
+        --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
+        --output text
+    )" == "AES256" ]] ||
+      fail "MANAGED_S3_ENCRYPTION_MISMATCH"
+  done
+}
+
+if [[ "$BASE_RUNTIME_APPLIED" == "true" ]]; then
+  verify_managed_base_runtime
+  EXISTING_RESOURCE_MODE="managed-base-13"
+else
+  verify_initial_resource_absence
+  EXISTING_RESOURCE_MODE="absent-initial"
+fi
 
 "${PYTHON_CMD[@]}" - "$RUNTIME_TFVARS" <<'PY' |
 import base64
@@ -215,6 +401,8 @@ printf '%s\n' \
   "RepositoryHead=${ACTUAL_HEAD:0:12}" \
   "NetworkApplyVerified=true" \
   "ExistingResourceCollision=false" \
+  "ExistingResourceMode=${EXISTING_RESOURCE_MODE}" \
+  "BaseRuntimeApplyVerified=${BASE_RUNTIME_APPLIED}" \
   "RuntimeTfvarsPrivate=true" \
   "RuntimeDependenciesSecretConfigured=true" \
   "LaterStageSecretsConfigured=false" \
