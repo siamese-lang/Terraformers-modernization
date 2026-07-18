@@ -1,0 +1,287 @@
+name: AWS Live Terraform Plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_live_plan:
+        description: Authenticate to AWS and generate a live Terraform plan. False only generates the execution-plan contract.
+        required: true
+        type: boolean
+        default: false
+      plan_stage:
+        description: Terraform environment to plan.
+        required: true
+        type: choice
+        options:
+          - network
+          - runtime-dependencies
+          - stateful-dependencies
+          - eks-runtime
+          - frontend-delivery
+        default: network
+      expected_aws_account_id:
+        description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.
+        required: false
+        default: ''
+      allow_destructive:
+        description: Permit delete or replacement findings in the risk summary. Keep false for normal planning.
+        required: true
+        type: boolean
+        default: false
+      allow_optional_adapters:
+        description: Permit Bedrock/OpenSearch adapter resources in the plan. Keep false until separately reviewed.
+        required: true
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      execute_live_plan:
+        description: Authenticate to AWS and generate a live Terraform plan.
+        required: false
+        type: boolean
+        default: false
+      plan_stage:
+        description: Terraform environment to plan.
+        required: false
+        type: string
+        default: network
+      expected_aws_account_id:
+        description: Required account ID when execute_live_plan=true.
+        required: false
+        type: string
+        default: ''
+      allow_destructive:
+        description: Permit delete or replacement findings in the risk summary.
+        required: false
+        type: boolean
+        default: false
+      allow_optional_adapters:
+        description: Permit Bedrock/OpenSearch adapter resources in the plan.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+
+jobs:
+  execution-plan-contract:
+    name: Generate live deployment execution plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate execution plan contract
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/build-live-deployment-execution-plan.py \
+            --manifest config/live-deployment-stages.json \
+            --output-dir artifacts/live-deployment-execution-plan
+
+      - name: Upload execution plan evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-deployment-execution-plan-evidence
+          path: artifacts/live-deployment-execution-plan
+          if-no-files-found: error
+
+  live-terraform-plan:
+    name: Plan ${{ inputs.plan_stage }} against AWS
+    needs: execution-plan-contract
+    if: ${{ inputs.execute_live_plan }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: aws-live-plan
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Validate live-plan inputs
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          test -n "${{ inputs.expected_aws_account_id }}" || {
+            echo 'expected_aws_account_id is required when execute_live_plan=true.' >&2
+            exit 1
+          }
+          test -n "${AWS_ROLE_TO_ASSUME}" || {
+            echo 'AWS_ROLE_TO_ASSUME environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_BUCKET}" || {
+            echo 'AWS_TERRAFORM_STATE_BUCKET environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_PREFIX}" || {
+            echo 'AWS_TERRAFORM_STATE_PREFIX environment variable is required.' >&2
+            exit 1
+          }
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersLivePlan
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify AWS identity and state backend
+        env:
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/aws-live-terraform-plan
+          CALLER_IDENTITY="${RUNNER_TEMP}/caller-identity.json"
+          aws sts get-caller-identity --output json > "${CALLER_IDENTITY}"
+          ACTUAL_ACCOUNT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Account"])' "${CALLER_IDENTITY}")"
+          test "${ACTUAL_ACCOUNT}" = "${{ inputs.expected_aws_account_id }}"
+          rm -f "${CALLER_IDENTITY}"
+          aws s3api head-bucket --bucket "${STATE_BUCKET}"
+          VERSIONING="$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)"
+          test "${VERSIONING}" = 'Enabled'
+          printf '%s\n' 's3-native-lockfile' > artifacts/aws-live-terraform-plan/state-locking-mode.txt
+
+      - name: Resolve Terraform stage and private tfvars
+        id: stage
+        env:
+          NETWORK_TFVARS_B64: ${{ secrets.AWS_LIVE_NETWORK_TFVARS_B64 }}
+          RUNTIME_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64 }}
+          STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
+          EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+          FRONTEND_TFVARS_B64: ${{ secrets.AWS_LIVE_FRONTEND_TFVARS_B64 }}
+        run: |
+          set -euo pipefail
+          case '${{ inputs.plan_stage }}' in
+            network)
+              TF_DIR='infra/terraform/envs/aws-runtime-network'
+              TFVARS_B64="${NETWORK_TFVARS_B64}"
+              ;;
+            runtime-dependencies)
+              TF_DIR='infra/terraform/envs/backend-runtime-dependencies'
+              TFVARS_B64="${RUNTIME_DEPENDENCIES_TFVARS_B64}"
+              ;;
+            stateful-dependencies)
+              TF_DIR='infra/terraform/envs/backend-stateful-dependencies'
+              TFVARS_B64="${STATEFUL_DEPENDENCIES_TFVARS_B64}"
+              ;;
+            eks-runtime)
+              TF_DIR='infra/terraform/envs/eks-runtime'
+              TFVARS_B64="${EKS_TFVARS_B64}"
+              ;;
+            frontend-delivery)
+              TF_DIR='infra/terraform/envs/frontend-delivery'
+              TFVARS_B64="${FRONTEND_TFVARS_B64}"
+              ;;
+            *)
+              echo 'Unsupported plan stage.' >&2
+              exit 1
+              ;;
+          esac
+          test -n "${TFVARS_B64}" || {
+            echo "Private base64 tfvars secret is missing for stage ${{ inputs.plan_stage }}." >&2
+            exit 1
+          }
+          printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
+          test -s "${RUNNER_TEMP}/live.auto.tfvars"
+          printf 'tf_dir=%s\n' "${TF_DIR}" >> "${GITHUB_OUTPUT}"
+          printf 'tfvars_path=%s\n' "${RUNNER_TEMP}/live.auto.tfvars" >> "${GITHUB_OUTPUT}"
+          sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
+            | awk '{print $1}' > artifacts/aws-live-terraform-plan/tfvars.sha256
+
+      - name: Initialize remote state and create saved plan
+        env:
+          TF_DIR: ${{ steps.stage.outputs.tf_dir }}
+          TFVARS_PATH: ${{ steps.stage.outputs.tfvars_path }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+          fi
+          cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
+          bucket       = "${STATE_BUCKET}"
+          key          = "${STATE_PREFIX}/${{ inputs.plan_stage }}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+          terraform -chdir="${TF_DIR}" init -reconfigure -backend-config="${RUNNER_TEMP}/backend.hcl"
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan \
+            -lock-timeout=5m \
+            -var-file="${TFVARS_PATH}" \
+            -out="${RUNNER_TEMP}/live.tfplan" \
+            -no-color
+          terraform -chdir="${TF_DIR}" show -json "${RUNNER_TEMP}/live.tfplan" \
+            > "${RUNNER_TEMP}/live-plan.json"
+          terraform -chdir="${TF_DIR}" providers lock -platform=linux_amd64
+          sha256sum "${RUNNER_TEMP}/live.tfplan" \
+            | awk '{print $1}' > artifacts/aws-live-terraform-plan/binary-plan.sha256
+          if [[ -f "${TF_DIR}/.terraform.lock.hcl" ]]; then
+            sha256sum "${TF_DIR}/.terraform.lock.hcl" \
+              | awk '{print $1}' > artifacts/aws-live-terraform-plan/provider-lock.sha256
+          fi
+
+      - name: Enforce sanitized plan risk gate
+        env:
+          PLAN_ARGS: ${{ (inputs.allow_destructive && '--allow-destructive' || '') }} ${{ (inputs.allow_optional_adapters && '--allow-optional-adapters' || '') }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/live-plan.json" \
+            --output-dir artifacts/aws-live-terraform-plan \
+            --stage '${{ inputs.plan_stage }}' \
+            ${PLAN_ARGS}
+
+      - name: Record plan-only evidence
+        run: |
+          set -euo pipefail
+          {
+            echo 'aws_live_terraform_plan=completed'
+            echo 'credential_mode=github-oidc'
+            echo 'environment_gate=aws-live-plan'
+            echo 'state_locking=s3-native-lockfile'
+            echo 'expected_account_id_verified=true'
+            echo 'plan_stage=${{ inputs.plan_stage }}'
+            echo 'terraform_apply_executed=false'
+            echo 'terraform_destroy_executed=false'
+            echo 'raw_plan_uploaded=false'
+            echo 'aws_mutation=read-only-plan'
+          } > artifacts/aws-live-terraform-plan/live-plan-summary.txt
+
+      - name: Remove sensitive live-plan material
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/caller-identity.json" "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl"
+
+      - name: Upload sanitized live-plan evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-live-terraform-plan-${{ inputs.plan_stage }}-evidence
+          path: artifacts/aws-live-terraform-plan
+          if-no-files-found: warn
+          retention-days: 30
