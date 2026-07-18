@@ -3,7 +3,8 @@ import { useDropzone } from 'react-dropzone';
 import api from '../utils/api';
 import { eventBus } from '../utils/eventBus';
 
-const maxFileSize = 524288000;
+const maxFileSize = 10 * 1024 * 1024;
+const maxFileSizeLabel = '10 MB';
 
 const baseStyle = {
   flex: 1,
@@ -83,9 +84,17 @@ function normalizeUploadResponse(uploadResponse) {
 
 function Dropzone({ closeModal, setDataMain }) {
   const [files, setFiles] = useState([]);
+  const [fileError, setFileError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
-  const onDrop = useCallback((acceptedFiles) => {
+  const onDrop = useCallback((acceptedFiles, fileRejections) => {
+    if (fileRejections.length > 0) {
+      setFiles([]);
+      setFileError(`파일은 PNG/JPEG 형식이며 ${maxFileSizeLabel} 이하여야 합니다.`);
+      return;
+    }
+
+    setFileError('');
     setFiles(acceptedFiles.map((file) => Object.assign(file, {
       preview: URL.createObjectURL(file),
     })));
@@ -190,7 +199,10 @@ function Dropzone({ closeModal, setDataMain }) {
       <div {...getRootProps({ style })}>
         <input {...getInputProps()} />
         <p>PNG/JPEG 아키텍처 이미지를 드래그하거나 클릭해 선택하세요.</p>
+        <p>파일 크기는 최대 {maxFileSizeLabel}입니다.</p>
       </div>
+
+      {fileError && <p role="alert" className="error">{fileError}</p>}
 
       {files.length > 0 && (
         <aside className="dropzone-preview-list">
