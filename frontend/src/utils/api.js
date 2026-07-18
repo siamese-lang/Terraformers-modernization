@@ -48,6 +48,14 @@ export const isAuthRequiredRequest = (config = {}) => {
   return !isPublicRequest(method, path);
 };
 
+const AUTH_EXPIRED_EVENT = 'terraformers:auth-expired';
+
+export const emitAuthExpired = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
 });
@@ -114,6 +122,10 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${token}`;
         return api(originalRequest);
       }
+
+      emitAuthExpired();
+    } else if (error.response.status === 401 && originalRequest?._retry) {
+      emitAuthExpired();
     }
 
     return Promise.reject(error);

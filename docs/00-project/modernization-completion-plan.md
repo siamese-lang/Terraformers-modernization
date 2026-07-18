@@ -53,7 +53,7 @@ Do not restore:
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 0 | Completion plan and verified baseline | In progress |
+| 0 | Completion plan and verified baseline | Complete |
 | 1 | Application shell, routes, authentication boundary, logout | In progress |
 | 2 | Personal and public project UX and canonical API contracts | Pending |
 | 3 | Real Bedrock multimodal analysis and Terraform quality gate | Pending |
@@ -81,7 +81,10 @@ Known incomplete behavior:
 - the sidebar is not interactive
 - unrelated generate, project, community, and comment panels share one screen
 - no account menu or user-initiated logout exists
-- frontend OIDC deployment inputs are incomplete
+- routed application shell implemented
+- auth/navigation tests implemented
+- live browser E2E pending
+- frontend OIDC deployment repair pending
 
 ## Current implementation boundary
 

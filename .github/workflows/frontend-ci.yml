@@ -1,0 +1,43 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+      - 'scripts/checks/frontend-*'
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix frontend ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Run tests
+        run: CI=true npm --prefix frontend test -- --runInBand
+
+      - name: Build production bundle
+        run: npm --prefix frontend run build
+
+      - name: Verify production entrypoint
+        run: test -s frontend/build/index.html
+
+      - name: Upload production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-production-build
+          path: frontend/build
+          if-no-files-found: error
