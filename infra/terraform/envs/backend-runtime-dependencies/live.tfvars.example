@@ -3,6 +3,7 @@ aws_region  = "ap-northeast-2"
 name_prefix = "terraformers"
 
 backend_ecr_repository_name = "terraformers-backend"
+github_oidc_provider_arn     = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
 
 # Replace both names with globally unique, account-scoped bucket names before
 # encoding this file into the protected GitHub environment Secret.

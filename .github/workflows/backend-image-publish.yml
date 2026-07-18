@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image_uri:
-        description: Full image URI to tag. Use an ECR URI when push_image=true.
+        description: Full image URI. Push mode requires the immutable git-<full-commit-sha> tag.
         required: true
         default: terraformers-backend:manual
       push_image:
@@ -12,48 +12,42 @@ on:
         required: true
         type: boolean
         default: false
-      aws_region:
-        description: Optional AWS region override. Defaults to repository/environment variable AWS_REGION, then ap-northeast-2.
-        required: false
-        default: ''
-      aws_role_to_assume:
-        description: Optional GitHub OIDC role ARN override. Defaults to repository/environment secret AWS_ROLE_TO_ASSUME.
-        required: false
-        default: ''
-
 permissions:
   contents: read
   id-token: write
-
-env:
-  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'ap-northeast-2' }}
-  AWS_ROLE_TO_ASSUME: ${{ inputs.aws_role_to_assume || secrets.AWS_ROLE_TO_ASSUME }}
 
 jobs:
   backend-image-publish:
     name: Build and optionally publish backend image
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    environment: aws-backend-image-publish
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.EXPECTED_AWS_ACCOUNT_ID }}
+      SOURCE_COMMIT_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build backend image
-        run: |
-          set -euo pipefail
-          docker build -f backend/Dockerfile -t "${{ inputs.image_uri }}" backend
-          docker image inspect "${{ inputs.image_uri }}" > backend-image-inspect.json
-
-      - name: Validate OIDC role configuration
+      - name: Validate publish contract
         if: ${{ inputs.push_image }}
         run: |
           set -euo pipefail
-          if [[ -z "${AWS_ROLE_TO_ASSUME}" ]]; then
-            echo "AWS_ROLE_TO_ASSUME repository/environment secret or aws_role_to_assume input is required when push_image=true." >&2
+          for variable_name in AWS_ROLE_TO_ASSUME AWS_REGION EXPECTED_AWS_ACCOUNT_ID; do
+            if [[ -z "${!variable_name}" ]]; then
+              echo "${variable_name} Environment or repository variable is required when push_image=true." >&2
+              exit 1
+            fi
+          done
+          if [[ "${{ inputs.image_uri }}" != *":git-${SOURCE_COMMIT_SHA}" ]]; then
+            echo "Push mode requires image tag git-${SOURCE_COMMIT_SHA}." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.image_uri }}" != *.dkr.ecr."${AWS_REGION}".amazonaws.com/* ]]; then
+            echo "image_uri must identify an ECR repository in ${AWS_REGION}." >&2
             exit 1
           fi
 
@@ -64,46 +58,101 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           role-session-name: TerraformersBackendImagePublish
           aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
 
-      - name: Verify AWS caller identity
+      - name: Verify AWS account and immutable tag availability
         if: ${{ inputs.push_image }}
-        run: aws sts get-caller-identity --region "${AWS_REGION}"
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
+        run: |
+          set -euo pipefail
+          actual_account_id="$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")"
+          test "${actual_account_id}" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          echo "aws_account_match=true"
+
+          repository_uri="${IMAGE_URI%:*}"
+          repository_name="${repository_uri##*/}"
+          image_tag="${IMAGE_URI##*:}"
+          if aws ecr describe-images \
+            --region "${AWS_REGION}" \
+            --repository-name "${repository_name}" \
+            --image-ids imageTag="${image_tag}" \
+            >/dev/null 2>&1; then
+            echo "Immutable image tag already exists; refusing overwrite: ${image_tag}" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            -f backend/Dockerfile \
+            -t "${IMAGE_URI}" \
+            backend
+          docker image inspect "${IMAGE_URI}" > backend-image-inspect.json
 
       - name: Login to ECR
         if: ${{ inputs.push_image }}
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
-          ECR_REGISTRY="$(echo "${{ inputs.image_uri }}" | cut -d/ -f1)"
-          if [[ "${ECR_REGISTRY}" != *.amazonaws.com ]]; then
-            echo "image_uri must be an ECR URI when push_image=true: ${{ inputs.image_uri }}" >&2
+          ecr_registry="${IMAGE_URI%%/*}"
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${ecr_registry}"
+
+      - name: Push backend image and resolve digest
+        if: ${{ inputs.push_image }}
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_URI}"
+
+          repository_uri="${IMAGE_URI%:*}"
+          repository_name="${repository_uri##*/}"
+          image_tag="${IMAGE_URI##*:}"
+          image_digest="$(aws ecr describe-images \
+            --region "${AWS_REGION}" \
+            --repository-name "${repository_name}" \
+            --image-ids imageTag="${image_tag}" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          if [[ "${image_digest}" != sha256:* ]]; then
+            echo "Unable to resolve pushed ECR image digest." >&2
             exit 1
           fi
-          aws ecr get-login-password --region "${AWS_REGION}" \
-            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
-      - name: Push backend image
-        if: ${{ inputs.push_image }}
-        run: |
-          set -euo pipefail
-          docker push "${{ inputs.image_uri }}"
           {
-            echo "image_uri=${{ inputs.image_uri }}"
+            echo "source_commit_sha=${SOURCE_COMMIT_SHA}"
+            echo "repository_uri=${repository_uri}"
+            echo "image_tag=${image_tag}"
+            echo "image_digest=${image_digest}"
             echo "pushed=true"
             echo "aws_region=${AWS_REGION}"
             echo "credential_mode=github-oidc"
-            echo "pushed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > backend-image-publish-summary.txt
+          } | tee backend-image-publish-summary.txt >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Record build-only image summary
         if: ${{ !inputs.push_image }}
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
           {
-            echo "image_uri=${{ inputs.image_uri }}"
+            echo "source_commit_sha=${SOURCE_COMMIT_SHA}"
+            echo "image_uri=${IMAGE_URI}"
             echo "pushed=false"
+            echo "aws_region=${AWS_REGION}"
             echo "credential_mode=not-configured"
-            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > backend-image-publish-summary.txt
+          } | tee backend-image-publish-summary.txt >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload image build evidence
         if: always()

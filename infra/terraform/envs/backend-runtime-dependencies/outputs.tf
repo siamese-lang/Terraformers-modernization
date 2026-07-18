@@ -3,6 +3,11 @@ output "backend_image_repository_url" {
   value       = aws_ecr_repository.backend.repository_url
 }
 
+output "backend_image_publisher_role_arn" {
+  description = "Dedicated GitHub OIDC role ARN for publishing immutable backend images."
+  value       = aws_iam_role.backend_image_publisher.arn
+}
+
 output "upload_bucket_name" {
   description = "S3 bucket name for uploaded architecture images."
   value       = aws_s3_bucket.uploads.bucket

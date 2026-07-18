@@ -28,6 +28,38 @@ variable "backend_ecr_repository_name" {
   default     = "terraformers-backend"
 }
 
+variable "github_oidc_provider_arn" {
+  description = "ARN of the existing GitHub Actions OIDC provider. This stage reuses the provider and does not create a duplicate."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:[^:]+:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$", var.github_oidc_provider_arn))
+    error_message = "github_oidc_provider_arn must identify the token.actions.githubusercontent.com OIDC provider."
+  }
+}
+
+variable "github_repository" {
+  description = "GitHub owner/repository allowed to publish the backend image."
+  type        = string
+  default     = "siamese-lang/Terraformers-modernization"
+
+  validation {
+    condition     = var.github_repository == "siamese-lang/Terraformers-modernization"
+    error_message = "The backend image publisher trust must remain scoped to siamese-lang/Terraformers-modernization."
+  }
+}
+
+variable "backend_image_publish_environment" {
+  description = "GitHub Environment whose OIDC subject may assume the backend image publisher role."
+  type        = string
+  default     = "aws-backend-image-publish"
+
+  validation {
+    condition     = var.backend_image_publish_environment == "aws-backend-image-publish"
+    error_message = "The backend image publisher must use the aws-backend-image-publish GitHub Environment."
+  }
+}
+
 variable "upload_bucket_name" {
   description = "Globally unique S3 bucket name for uploaded architecture images. Must be environment-specific."
   type        = string
