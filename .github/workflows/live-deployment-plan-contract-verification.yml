@@ -13,6 +13,7 @@ on:
       - "scripts/deploy/build-live-deployment-execution-plan.py"
       - "scripts/deploy/summarize-terraform-plan.py"
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
+      - "scripts/checks/terraform-plan-changed-paths-verification.py"
       - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
       - "docs/live-aws-deployment-execution-plan.md"
       - "docs/premerge-live-plan-dispatch.md"
@@ -31,6 +32,9 @@ jobs:
 
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh
+
+      - name: Verify sanitized Terraform update paths
+        run: python3 scripts/checks/terraform-plan-changed-paths-verification.py
 
       - name: Verify pre-merge dispatch entry
         run: bash scripts/checks/premerge-live-plan-dispatch-verification.sh
