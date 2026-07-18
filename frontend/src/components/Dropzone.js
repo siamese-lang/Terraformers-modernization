@@ -78,6 +78,10 @@ function normalizeUploadResponse(uploadResponse) {
     provider: uploadResponse.provider,
     resultObjectKey: uploadResponse.resultObjectKey,
     resultPreview: uploadResponse.resultPreview,
+    analysisSummary: uploadResponse.analysisSummary,
+    detectedComponents: uploadResponse.detectedComponents || [],
+    detectedRelationships: uploadResponse.detectedRelationships || [],
+    warnings: uploadResponse.warnings || [],
     failureReason: uploadResponse.failureReason,
   };
 }
@@ -154,13 +158,6 @@ function Dropzone({ closeModal, setDataMain }) {
     setDataMain((previous) => [
       ...previous,
       {
-        key: `image-${Date.now()}`,
-        type: 'user_image',
-        imageUrl: file.preview,
-        alt: file.name,
-        isUser: true,
-      },
-      {
         key: `pending-${Date.now()}`,
         type: 'terraform_result',
         explanation: 'AI가 답변을 생성 중입니다...',
@@ -194,6 +191,17 @@ function Dropzone({ closeModal, setDataMain }) {
       }
 
       const finalProjectId = completed?.projectId || created.projectId;
+      try {
+        const imageResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/source-image`, { responseType: 'blob' });
+        eventBus.emit('bedrock:image', {
+          projectId: finalProjectId,
+          imageUrl: URL.createObjectURL(imageResponse.data),
+          alt: file.name,
+        });
+      } catch {
+        // The result remains usable even if the persisted source image is temporarily unavailable.
+      }
+
       let terraformCode = '';
       try {
         const draftResponse = await api.get(`/api/projects/${encodeURIComponent(finalProjectId)}/terraform/main.tf`);
@@ -237,7 +245,7 @@ function Dropzone({ closeModal, setDataMain }) {
       )}
 
       <div {...getRootProps({ style })}>
-        <input {...getInputProps()} />
+        <input {...getInputProps({ "aria-label": "PNG/JPEG architecture image" })} />
         <p>PNG/JPEG 아키텍처 이미지를 드래그하거나 클릭해 선택하세요.</p>
         <p>파일 크기는 최대 {maxFileSizeLabel}입니다.</p>
       </div>

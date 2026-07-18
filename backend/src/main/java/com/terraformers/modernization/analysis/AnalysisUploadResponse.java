@@ -22,6 +22,10 @@ public record AnalysisUploadResponse(
         String provider,
         String resultObjectKey,
         String resultPreview,
+        String analysisSummary,
+        java.util.List<String> detectedComponents,
+        java.util.List<String> detectedRelationships,
+        java.util.List<String> warnings,
         String failureReason,
         Instant createdAt,
         Instant updatedAt
@@ -52,6 +56,10 @@ public record AnalysisUploadResponse(
                 job.provider(),
                 job.resultObjectKey(),
                 job.resultPreview(),
+                job.analysisSummary(),
+                job.detectedComponents(),
+                job.detectedRelationships(),
+                job.warnings(),
                 job.failureReason(),
                 job.createdAt(),
                 job.updatedAt()

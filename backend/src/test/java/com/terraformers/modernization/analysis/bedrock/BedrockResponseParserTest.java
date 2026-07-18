@@ -1,6 +1,7 @@
 package com.terraformers.modernization.analysis.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -10,33 +11,32 @@ class BedrockResponseParserTest {
     private final BedrockResponseParser parser = new BedrockResponseParser(new ObjectMapper());
 
     @Test
-    void extractsPlainTextFromClaudeResponse() {
+    void parsesStructuredAnalysisSchemaFromClaudeResponse() {
         String response = """
                 {
                   "content": [
-                    {"type": "text", "text": "provider \\\"aws\\\" {\\n  region = var.aws_region\\n}"}
+                    {"type": "text", "text": "{\"summary\":\"VPC with public web tier\",\"components\":[\"VPC\",\"ALB\"],\"relationships\":[\"ALB routes to web tier\"],\"warnings\":[\"CIDRs are inferred\"],\"terraformCode\":\"resource \\\"aws_vpc\\\" \\\"main\\\" { cidr_block = \\\"10.0.0.0/16\\\" }\"}"}
                   ]
                 }
                 """;
 
-        String parsed = parser.extractText(response);
+        ParsedBedrockAnalysis parsed = parser.parse(response);
 
-        assertThat(parsed).contains("provider \"aws\"");
-        assertThat(parsed).doesNotContain("```");
+        assertThat(parsed.summary()).isEqualTo("VPC with public web tier");
+        assertThat(parsed.components()).containsExactly("VPC", "ALB");
+        assertThat(parsed.relationships()).containsExactly("ALB routes to web tier");
+        assertThat(parsed.warnings()).containsExactly("CIDRs are inferred");
+        assertThat(parsed.terraformCode()).contains("resource \"aws_vpc\"");
     }
 
     @Test
-    void stripsMarkdownFenceWhenModelReturnsCodeBlock() {
+    void rejectsUnstructuredTerraformText() {
         String response = """
-                {
-                  "content": [
-                    {"type": "text", "text": "```hcl\\nprovider \\\"aws\\\" {}\\n```"}
-                  ]
-                }
+                {"content":[{"type":"text","text":"resource \\\"aws_s3_bucket\\\" \\\"example\\\" {}"}]}
                 """;
 
-        String parsed = parser.extractText(response);
-
-        assertThat(parsed).isEqualTo("provider \"aws\" {}");
+        assertThatThrownBy(() -> parser.parse(response))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("structured analysis schema");
     }
 }

@@ -36,7 +36,25 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             BedrockPromptBuilder promptBuilder,
             BedrockResponseParser responseParser
     ) {
-        this.bedrockRuntimeClient = BedrockRuntimeClient.builder().build();
+        this(
+                BedrockRuntimeClient.builder().build(),
+                objectReader,
+                referenceRetriever,
+                properties,
+                promptBuilder,
+                responseParser
+        );
+    }
+
+    BedrockAnalysisProvider(
+            BedrockRuntimeClient bedrockRuntimeClient,
+            ObjectReader objectReader,
+            ReferenceRetriever referenceRetriever,
+            AnalysisRuntimeProperties properties,
+            BedrockPromptBuilder promptBuilder,
+            BedrockResponseParser responseParser
+    ) {
+        this.bedrockRuntimeClient = bedrockRuntimeClient;
         this.objectReader = objectReader;
         this.referenceRetriever = referenceRetriever;
         this.properties = properties;
@@ -78,7 +96,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         return new AnalysisResult(
                 "bedrock-integrated-java",
                 parsed.terraformCode(),
-                parsed.explanation(),
+                parsed.summary(),
                 parsed.components(),
                 parsed.relationships(),
                 parsed.warnings(),

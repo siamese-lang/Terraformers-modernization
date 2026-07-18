@@ -35,6 +35,11 @@ public class ProjectTreeService {
                 project.latestAnalysisJobId(),
                 project.latestResultFileId(),
                 project.latestResultObjectKey(),
+                project.analysisStatus(),
+                project.analysisSummary(),
+                project.detectedComponents(),
+                project.detectedRelationships(),
+                project.warnings(),
                 project.updatedAt(),
                 List.of(toRootNode(project))
         );

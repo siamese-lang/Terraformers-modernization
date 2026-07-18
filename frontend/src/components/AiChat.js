@@ -81,6 +81,7 @@ function AiChat() {
   const [isRunning, setIsRunning] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const chatEndRef = useRef(null);
+  const objectUrlsRef = useRef(new Set());
 
   useEffect(() => {
     const onStart = () => {
@@ -90,6 +91,22 @@ function AiChat() {
 
     const onLogs = (nextLogs = []) => {
       setLogs((previous) => [...previous, ...nextLogs]);
+    };
+
+    const onImage = (image) => {
+      if (image.imageUrl) {
+        objectUrlsRef.current.add(image.imageUrl);
+      }
+      setMessages((previous) => [
+        ...previous,
+        {
+          key: `persisted-image-${image.projectId}-${Date.now()}`,
+          type: 'user_image',
+          imageUrl: image.imageUrl,
+          alt: image.alt || 'uploaded architecture',
+          isUser: true,
+        },
+      ]);
     };
 
     const onResult = (result) => {
@@ -138,6 +155,7 @@ function AiChat() {
 
     eventBus.on('bedrock:start', onStart);
     eventBus.on('bedrock:logs', onLogs);
+    eventBus.on('bedrock:image', onImage);
     eventBus.on('bedrock:result', onResult);
     eventBus.on('bedrock:complete', onComplete);
     eventBus.on('bedrock:error', onError);
@@ -145,10 +163,16 @@ function AiChat() {
     return () => {
       eventBus.off('bedrock:start', onStart);
       eventBus.off('bedrock:logs', onLogs);
+      eventBus.off('bedrock:image', onImage);
       eventBus.off('bedrock:result', onResult);
       eventBus.off('bedrock:complete', onComplete);
       eventBus.off('bedrock:error', onError);
     };
+  }, []);
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrlsRef.current.clear();
   }, []);
 
   useEffect(() => {

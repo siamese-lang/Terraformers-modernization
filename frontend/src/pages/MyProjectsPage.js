@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import ProjectTreeReadOnly from '../components/ProjectTreeReadOnly';
 import api from '../utils/api';
 
@@ -9,12 +9,12 @@ function MyProjectsPage() {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const response = await api.get('/api/projects');
     setProjects(response.data || []);
-  };
+  }, []);
 
-  useEffect(() => { refresh().catch((err) => setError(err.message)); }, [refreshToken]);
+  useEffect(() => { refresh().catch((err) => setError(err.message)); }, [refresh, refreshToken]);
 
   const deleteProject = async (project) => {
     if (!window.confirm(`Delete project "${project.displayName}"? Stored objects will remain for retention cleanup.`)) return;

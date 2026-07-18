@@ -13,6 +13,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class BedrockPromptBuilder {
 
+    public static final String RESPONSE_SCHEMA = """
+            {
+              "summary": "concise architecture summary",
+              "components": ["detected service or component names"],
+              "relationships": ["directed relationship descriptions"],
+              "warnings": ["uncertainty, missing labels, or assumptions"],
+              "terraformCode": "complete Terraform HCL draft containing resource or module blocks"
+            }
+            """;
+
     private final ObjectMapper objectMapper;
 
     public BedrockPromptBuilder(ObjectMapper objectMapper) {
@@ -22,7 +32,7 @@ public class BedrockPromptBuilder {
     public String buildClaudeVisionRequest(ObjectContent source, List<ReferenceDocument> references, int maxTokens) {
         String mediaType = requireSupportedImageMediaType(source.metadata().contentType());
         String imageBase64 = Base64.getEncoder().encodeToString(source.bytes());
-        String prompt = buildPrompt(source, references);
+        String prompt = buildPrompt(source, references == null ? List.of() : references);
 
         Map<String, Object> body = Map.of(
                 "anthropic_version", "bedrock-2023-05-31",
@@ -60,30 +70,24 @@ public class BedrockPromptBuilder {
                 .collect(Collectors.joining("\n"));
 
         return """
-                You are analyzing an AWS architecture diagram for the Terraformers modernization backend.
+                Analyze the architecture diagram image and return one JSON object that exactly matches this schema:
+                %s
 
-                Task:
-                1. Decide whether the image is an AWS architecture diagram.
-                2. Identify the AWS services and relationships visible in the image.
-                3. Generate a Terraform draft in HCL for review, not direct production apply.
+                Requirements:
+                - Return JSON only. Do not include markdown fences or surrounding prose.
+                - `terraformCode` must be Terraform HCL, not markdown, and must include real `resource` or `module` blocks.
+                - Do not include secrets, account IDs, access keys, static credentials, public S3 URLs, or real ARNs.
+                - Use placeholders or variables for account-specific values.
+                - If the diagram is ambiguous, still include the best-effort components/relationships and put uncertainty in `warnings`.
 
                 Object metadata:
-                - bucket: %s
-                - key: %s
                 - contentType: %s
                 - contentLength: %s
 
-                Reference patterns:
+                Optional reference patterns:
                 %s
-
-                Output format:
-                - Return only Terraform HCL.
-                - Do not include markdown fences.
-                - Do not include secrets, account IDs, access keys, or real ARNs.
-                - Use placeholders for account-specific values.
                 """.formatted(
-                source.metadata().bucket(),
-                source.metadata().key(),
+                RESPONSE_SCHEMA.strip(),
                 source.metadata().contentType(),
                 source.metadata().contentLength(),
                 referenceText.isBlank() ? "- none" : referenceText

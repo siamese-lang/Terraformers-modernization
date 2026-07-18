@@ -97,6 +97,38 @@ class AnalysisJobOrchestratorTest {
         );
     }
 
+    @Test
+    void marksFailedAndDoesNotRegisterTerraformWhenProviderReturnsProviderOnlyCode() {
+        AnalysisProvider provider = context -> new AnalysisResult(
+                "test-provider",
+                "provider \"aws\" { region = var.aws_region }",
+                "provider only",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+        CapturingProgressPublisher progressPublisher = new CapturingProgressPublisher();
+        AnalysisResultStorage resultStorage = new AnalysisResultStorage(new StubObjectWriter(), new AnalysisRuntimeProperties());
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        AnalysisJobOrchestrator orchestrator = new AnalysisJobOrchestrator(
+                provider,
+                progressPublisher,
+                resultStorage,
+                artifactService,
+                new TerraformDraftValidator()
+        );
+
+        AnalysisJobEntity job = sampleEntity(103L);
+
+        orchestrator.run(job);
+
+        assertThat(job.getStatus()).isEqualTo(AnalysisJobStatus.FAILED);
+        assertThat(job.getFailureReason()).contains("resource or module");
+        assertThat(job.getResultObjectKey()).isNull();
+        verify(artifactService, never()).registerGeneratedTerraform(anyLong(), anyString(), any(ObjectWriteResult.class));
+    }
+
     private AnalysisJobEntity sampleEntity(Long projectId) {
         AnalysisJobEntity job = new AnalysisJobEntity();
         job.setProjectId(projectId);

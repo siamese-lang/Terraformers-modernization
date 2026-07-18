@@ -19,16 +19,19 @@ public class BedrockResponseParser {
         String text = extractResponseText(responseBody);
         try {
             JsonNode structured = objectMapper.readTree(stripMarkdownFence(text));
-            String terraform = firstText(structured, "terraformCode", "terraform", "mainTf");
+            String terraform = firstText(structured, "terraformCode");
+            if (terraform.isBlank()) {
+                throw new IllegalStateException("Bedrock structured response is missing terraformCode");
+            }
             return new ParsedBedrockAnalysis(
                     stripMarkdownFence(terraform),
-                    firstText(structured, "summary", "explanation", "analysisSummary"),
-                    textArray(structured, "components", "services", "detectedComponents"),
-                    textArray(structured, "relationships", "detectedRelationships"),
-                    textArray(structured, "warnings", "uncertainty", "uncertainties")
+                    firstText(structured, "summary"),
+                    textArray(structured, "components"),
+                    textArray(structured, "relationships"),
+                    textArray(structured, "warnings")
             );
-        } catch (Exception ignored) {
-            return new ParsedBedrockAnalysis(stripMarkdownFence(text), "Bedrock returned Terraform without structured analysis metadata.", List.of(), List.of(), List.of("Structured analysis metadata was unavailable."));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Bedrock response must be JSON matching the structured analysis schema", exception);
         }
     }
 
