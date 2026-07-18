@@ -239,12 +239,33 @@ from pathlib import Path
 
 approved_md = Path(sys.argv[1]).read_text(encoding="utf-8")
 plan = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-row_pattern = re.compile(r'^\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$', re.MULTILINE)
+
+row_pattern = re.compile(
+    r'^\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$',
+    re.MULTILINE,
+)
+
 approved_rows = row_pattern.findall(approved_md)
-approved = {
-    (address, resource_type, tuple(action for action in actions.split(",") if action))
+approved_entries = [
+    (
+        address,
+        resource_type,
+        tuple(
+            action
+            for action in actions.split(",")
+            if action
+        ),
+    )
     for address, resource_type, actions in approved_rows
+]
+approved_all = set(approved_entries)
+approved_noop = {
+    entry
+    for entry in approved_all
+    if entry[2] == ("no-op",)
 }
+approved = approved_all - approved_noop
+
 actual_entries = [
     (
         str(change.get("address", "")),
@@ -253,48 +274,118 @@ actual_entries = [
     )
     for change in plan.get("resource_changes", [])
 ]
-actual = set(actual_entries)
+actual_all = set(actual_entries)
+actual_noop = {
+    entry
+    for entry in actual_all
+    if entry[2] == ("no-op",)
+}
+actual = actual_all - actual_noop
+
 expected_types = {
-    "aws_ecr_lifecycle_policy.backend": "aws_ecr_lifecycle_policy",
-    "aws_ecr_repository.backend": "aws_ecr_repository",
-    "aws_s3_bucket.uploads": "aws_s3_bucket",
-    "aws_s3_bucket.results": "aws_s3_bucket",
-    "aws_s3_bucket_public_access_block.uploads": "aws_s3_bucket_public_access_block",
-    "aws_s3_bucket_public_access_block.results": "aws_s3_bucket_public_access_block",
-    "aws_s3_bucket_server_side_encryption_configuration.uploads": "aws_s3_bucket_server_side_encryption_configuration",
-    "aws_s3_bucket_server_side_encryption_configuration.results": "aws_s3_bucket_server_side_encryption_configuration",
-    "aws_s3_bucket_versioning.uploads": "aws_s3_bucket_versioning",
-    "aws_s3_bucket_versioning.results": "aws_s3_bucket_versioning",
-    "aws_secretsmanager_secret.backend_runtime": "aws_secretsmanager_secret",
-    "aws_sqs_queue.ai_log": "aws_sqs_queue",
-    "aws_sqs_queue.terraform_log": "aws_sqs_queue",
+    "aws_ecr_lifecycle_policy.backend":
+        "aws_ecr_lifecycle_policy",
+    "aws_ecr_repository.backend":
+        "aws_ecr_repository",
+    "aws_s3_bucket.uploads":
+        "aws_s3_bucket",
+    "aws_s3_bucket.results":
+        "aws_s3_bucket",
+    "aws_s3_bucket_public_access_block.uploads":
+        "aws_s3_bucket_public_access_block",
+    "aws_s3_bucket_public_access_block.results":
+        "aws_s3_bucket_public_access_block",
+    "aws_s3_bucket_server_side_encryption_configuration.uploads":
+        "aws_s3_bucket_server_side_encryption_configuration",
+    "aws_s3_bucket_server_side_encryption_configuration.results":
+        "aws_s3_bucket_server_side_encryption_configuration",
+    "aws_s3_bucket_versioning.uploads":
+        "aws_s3_bucket_versioning",
+    "aws_s3_bucket_versioning.results":
+        "aws_s3_bucket_versioning",
+    "aws_secretsmanager_secret.backend_runtime":
+        "aws_secretsmanager_secret",
+    "aws_sqs_queue.ai_log":
+        "aws_sqs_queue",
+    "aws_sqs_queue.terraform_log":
+        "aws_sqs_queue",
 }
+
 publisher_types = {
-    "aws_iam_role.backend_image_publisher": "aws_iam_role",
-    "aws_iam_policy.backend_image_publisher": "aws_iam_policy",
-    "aws_iam_role_policy_attachment.backend_image_publisher": "aws_iam_role_policy_attachment",
+    "aws_iam_role.backend_image_publisher":
+        "aws_iam_role",
+    "aws_iam_policy.backend_image_publisher":
+        "aws_iam_policy",
+    "aws_iam_role_policy_attachment.backend_image_publisher":
+        "aws_iam_role_policy_attachment",
 }
-expected = {(address, resource_type, ("create",)) for address, resource_type in expected_types.items()}
+
+expected = {
+    (address, resource_type, ("create",))
+    for address, resource_type in expected_types.items()
+}
+expected_noop = {
+    (address, resource_type, ("no-op",))
+    for address, resource_type in expected_types.items()
+}
 publisher_expected = {
     (address, resource_type, ("create",))
     for address, resource_type in publisher_types.items()
 }
-if len(approved_rows) != len(approved):
-    raise SystemExit("APPROVED_PLAN_DUPLICATE_RESOURCE_ACTION")
-if len(actual_entries) != len(actual):
-    raise SystemExit("REPLAN_DUPLICATE_RESOURCE_ACTION")
+
+if len(approved_entries) != len(approved_all):
+    raise SystemExit(
+        "APPROVED_PLAN_DUPLICATE_RESOURCE_ACTION"
+    )
+
+if len(actual_entries) != len(actual_all):
+    raise SystemExit(
+        "REPLAN_DUPLICATE_RESOURCE_ACTION"
+    )
+
 if approved != actual:
-    raise SystemExit("REPLAN_RESOURCE_ACTION_MISMATCH")
+    raise SystemExit(
+        "REPLAN_RESOURCE_ACTION_MISMATCH"
+    )
+
+# 이전 형식의 artifact에 no-op 행이 포함돼 있다면
+# 재생성 plan의 no-op 집합과도 정확히 일치해야 한다.
+if approved_noop and approved_noop != actual_noop:
+    raise SystemExit(
+        "REPLAN_APPROVED_NOOP_SET_MISMATCH"
+    )
+
 if actual == publisher_expected:
+    if actual_noop != expected_noop:
+        raise SystemExit(
+            "REPLAN_EXPECTED_BASE_NOOP_SET_MISMATCH"
+        )
     approved_resource_count = 3
+
 elif actual == expected:
+    if actual_noop:
+        raise SystemExit(
+            "REPLAN_UNEXPECTED_NOOP_SET"
+        )
     approved_resource_count = 13
+
 elif actual == expected | publisher_expected:
+    if actual_noop:
+        raise SystemExit(
+            "REPLAN_UNEXPECTED_NOOP_SET"
+        )
     approved_resource_count = 16
+
 else:
-    raise SystemExit("REPLAN_EXPECTED_RESOURCE_SET_MISMATCH")
+    raise SystemExit(
+        "REPLAN_EXPECTED_RESOURCE_SET_MISMATCH"
+    )
+
 if len(actual) != approved_resource_count:
-    raise SystemExit("REPLAN_RESOURCE_COUNT_MISMATCH")
+    raise SystemExit(
+        "REPLAN_RESOURCE_COUNT_MISMATCH"
+    )
+
 print(approved_resource_count)
 PY
 )"

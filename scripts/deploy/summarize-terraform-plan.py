@@ -101,6 +101,8 @@ def main() -> int:
         address = str(change.get("address", "unknown"))
         resource_type = str(change.get("type", "unknown"))
         actions = list(change.get("change", {}).get("actions", []))
+        if actions == ["no-op"]:
+            continue
         action_key = "+".join(actions) if actions else "none"
         action_counts[action_key] += 1
         type_counts[resource_type] += 1
