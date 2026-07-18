@@ -33,6 +33,27 @@ on:
         required: true
         type: boolean
         default: false
+      execute_approved_apply:
+        description: Call the approved single-update Terraform apply workflow. Must not be combined with execute_live_plan.
+        required: true
+        type: boolean
+        default: false
+      expected_head_sha:
+        description: Required commit SHA when execute_approved_apply=true. The apply workflow stops on mismatch.
+        required: false
+        default: ''
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated by the approved apply workflow.
+        required: false
+        default: aws_iam_policy.backend_runtime_access
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change in the approved apply workflow.
+        required: false
+        default: policy
+      approval_confirmation:
+        description: Required exact confirmation string when execute_approved_apply=true.
+        required: false
+        default: ''
   workflow_call:
     inputs:
       execute_live_plan:
@@ -60,6 +81,31 @@ on:
         required: false
         type: boolean
         default: false
+      execute_approved_apply:
+        description: Call the approved single-update Terraform apply workflow.
+        required: false
+        type: boolean
+        default: false
+      expected_head_sha:
+        description: Required commit SHA when execute_approved_apply=true.
+        required: false
+        type: string
+        default: ''
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated by the approved apply workflow.
+        required: false
+        type: string
+        default: aws_iam_policy.backend_runtime_access
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change in the approved apply workflow.
+        required: false
+        type: string
+        default: policy
+      approval_confirmation:
+        description: Required exact confirmation string when execute_approved_apply=true.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -94,9 +140,54 @@ jobs:
           path: artifacts/live-deployment-execution-plan
           if-no-files-found: error
 
+  validate-approved-apply-dispatch:
+    name: Validate approved apply dispatch contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Reject invalid plan/apply dispatch combinations
+        env:
+          EXECUTE_LIVE_PLAN: ${{ inputs.execute_live_plan }}
+          EXECUTE_APPROVED_APPLY: ${{ inputs.execute_approved_apply }}
+          PLAN_STAGE: ${{ inputs.plan_stage }}
+        run: |
+          set -euo pipefail
+          if [[ "${EXECUTE_LIVE_PLAN}" = 'true' && "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
+            echo 'execute_live_plan and execute_approved_apply must not both be true.' >&2
+            exit 1
+          fi
+          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' && "${PLAN_STAGE}" != 'eks-runtime' ]]; then
+            echo 'execute_approved_apply requires plan_stage=eks-runtime.' >&2
+            exit 1
+          fi
+          echo 'approved_apply_dispatch_contract=valid'
+
+  approved-live-terraform-apply:
+    name: Call approved eks-runtime apply workflow
+    needs:
+      - execution-plan-contract
+      - validate-approved-apply-dispatch
+    if: ${{ inputs.execute_approved_apply && !inputs.execute_live_plan && inputs.plan_stage == 'eks-runtime' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/aws-live-terraform-apply.yml
+    with:
+      execute_approved_apply: ${{ inputs.execute_approved_apply }}
+      expected_aws_account_id: ${{ inputs.expected_aws_account_id }}
+      expected_head_sha: ${{ inputs.expected_head_sha }}
+      apply_stage: ${{ inputs.plan_stage }}
+      approved_resource_address: ${{ inputs.approved_resource_address }}
+      approved_changed_attribute_path: ${{ inputs.approved_changed_attribute_path }}
+      approval_confirmation: ${{ inputs.approval_confirmation }}
+    secrets: inherit
+
   live-terraform-plan:
     name: Plan ${{ inputs.plan_stage }} against AWS
-    needs: execution-plan-contract
+    needs:
+      - execution-plan-contract
+      - validate-approved-apply-dispatch
     if: ${{ inputs.execute_live_plan }}
     runs-on: ubuntu-latest
     timeout-minutes: 30

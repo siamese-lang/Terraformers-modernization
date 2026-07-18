@@ -33,6 +33,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color .github/workflows
+
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh
 

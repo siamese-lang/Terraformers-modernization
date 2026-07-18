@@ -37,6 +37,36 @@ on:
         description: Type APPLY_REVIEWED_IN_PLACE_UPDATE to confirm the reviewed apply contract.
         required: true
         type: string
+  workflow_call:
+    inputs:
+      execute_approved_apply:
+        description: Apply the reviewed single in-place Terraform update. Must be true to mutate AWS.
+        required: true
+        type: boolean
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller identity.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Commit SHA that must exactly match the checked-out GITHUB_SHA.
+        required: true
+        type: string
+      apply_stage:
+        description: Terraform environment to apply. Only eks-runtime is supported.
+        required: true
+        type: string
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated.
+        required: true
+        type: string
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change.
+        required: true
+        type: string
+      approval_confirmation:
+        description: Type APPLY_REVIEWED_IN_PLACE_UPDATE to confirm the reviewed apply contract.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -259,25 +289,42 @@ jobs:
           TF_DIR: infra/terraform/envs/eks-runtime
         run: |
           set -euo pipefail
+          POST_APPLY_PLAN="${RUNNER_TEMP}/post-apply-plan.txt"
+          POST_APPLY_STATUS='verification-failed'
+          POST_APPLY_STATUS_LINE='post_apply_full_plan=verification-failed'
           set +e
           terraform -chdir="${TF_DIR}" plan \
             -lock-timeout=5m \
             -var-file="${RUNNER_TEMP}/live.auto.tfvars" \
             -detailed-exitcode \
-            -no-color > artifacts/aws-live-terraform-apply/post-apply-summary.txt
+            -no-color > "${POST_APPLY_PLAN}"
           PLAN_EXIT=$?
           set -e
+          case "${PLAN_EXIT}" in
+            0)
+              POST_APPLY_STATUS='no-changes'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=no-changes'
+              ;;
+            2)
+              POST_APPLY_STATUS='changes-remain'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=changes-remain'
+              ;;
+            *)
+              POST_APPLY_STATUS='verification-failed'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=verification-failed'
+              ;;
+          esac
+          sed -i "s/post_apply_full_plan=pending/${POST_APPLY_STATUS_LINE}/" artifacts/aws-live-terraform-apply/apply-summary.txt
+          printf '%s\n' "${POST_APPLY_STATUS_LINE}" > artifacts/aws-live-terraform-apply/post-apply-status.txt
+          printf 'post_apply_plan_exit_code=%s\n' "${PLAN_EXIT}" >> artifacts/aws-live-terraform-apply/post-apply-status.txt
+          echo "Post-apply full plan sanitized status: ${POST_APPLY_STATUS} (exit code ${PLAN_EXIT})."
           if [[ "${PLAN_EXIT}" -ne 0 ]]; then
-            cat artifacts/aws-live-terraform-apply/post-apply-summary.txt >&2
-            echo "Post-apply full plan must return detailed-exitcode 0, got ${PLAN_EXIT}." >&2
             exit 1
           fi
-          sed -i 's/post_apply_full_plan=pending/post_apply_full_plan=no-changes/' artifacts/aws-live-terraform-apply/apply-summary.txt
-          printf '\npost_apply_full_plan=no-changes\n' >> artifacts/aws-live-terraform-apply/post-apply-summary.txt
 
       - name: Remove sensitive apply material
         if: always()
-        run: rm -f "${RUNNER_TEMP}/caller-identity.json" "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl"
+        run: rm -f "${RUNNER_TEMP}/caller-identity.json" "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl" "${RUNNER_TEMP}/post-apply-plan.txt"
 
       - name: Upload sanitized apply evidence
         if: always()
@@ -292,6 +339,6 @@ jobs:
             artifacts/aws-live-terraform-apply/tfvars.sha256
             artifacts/aws-live-terraform-apply/provider-lock.sha256
             artifacts/aws-live-terraform-apply/apply-summary.txt
-            artifacts/aws-live-terraform-apply/post-apply-summary.txt
+            artifacts/aws-live-terraform-apply/post-apply-status.txt
           if-no-files-found: warn
           retention-days: 30
