@@ -9,9 +9,9 @@ Usage:
     --approved-plan-head PLAN_SHA
 
 The command rebuilds the runtime-dependencies plan with local AWS credentials,
-requires the exact reviewed 13-resource create set, applies that saved plan once,
-and verifies remote state and a no-change post-apply plan. It never runs
-terraform destroy and never writes a Secrets Manager secret value.
+requires an exact reviewed 3-, 13-, or 16-resource create set, applies that saved
+plan once, and verifies remote state and a no-change post-apply plan. It never
+runs terraform destroy and never writes a Secrets Manager secret value.
 EOF
 }
 
@@ -231,7 +231,7 @@ set -e
   --output-dir "$RISK_DIR" \
   --stage runtime-dependencies >/dev/null
 
-"${PYTHON_CMD[@]}" - "$APPROVED_RISK_MD" "$PLAN_JSON" <<'PY'
+APPROVED_RESOURCE_COUNT="$("${PYTHON_CMD[@]}" - "$APPROVED_RISK_MD" "$PLAN_JSON" <<'PY'
 import json
 import re
 import sys
@@ -240,18 +240,20 @@ from pathlib import Path
 approved_md = Path(sys.argv[1]).read_text(encoding="utf-8")
 plan = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 row_pattern = re.compile(r'^\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$', re.MULTILINE)
+approved_rows = row_pattern.findall(approved_md)
 approved = {
     (address, resource_type, tuple(action for action in actions.split(",") if action))
-    for address, resource_type, actions in row_pattern.findall(approved_md)
+    for address, resource_type, actions in approved_rows
 }
-actual = {
+actual_entries = [
     (
         str(change.get("address", "")),
         str(change.get("type", "")),
         tuple(change.get("change", {}).get("actions", [])),
     )
     for change in plan.get("resource_changes", [])
-}
+]
+actual = set(actual_entries)
 expected_types = {
     "aws_ecr_lifecycle_policy.backend": "aws_ecr_lifecycle_policy",
     "aws_ecr_repository.backend": "aws_ecr_repository",
@@ -267,19 +269,39 @@ expected_types = {
     "aws_sqs_queue.ai_log": "aws_sqs_queue",
     "aws_sqs_queue.terraform_log": "aws_sqs_queue",
 }
+publisher_types = {
+    "aws_iam_role.backend_image_publisher": "aws_iam_role",
+    "aws_iam_policy.backend_image_publisher": "aws_iam_policy",
+    "aws_iam_role_policy_attachment.backend_image_publisher": "aws_iam_role_policy_attachment",
+}
 expected = {(address, resource_type, ("create",)) for address, resource_type in expected_types.items()}
+publisher_expected = {
+    (address, resource_type, ("create",))
+    for address, resource_type in publisher_types.items()
+}
+if len(approved_rows) != len(approved):
+    raise SystemExit("APPROVED_PLAN_DUPLICATE_RESOURCE_ACTION")
+if len(actual_entries) != len(actual):
+    raise SystemExit("REPLAN_DUPLICATE_RESOURCE_ACTION")
 if approved != actual:
     raise SystemExit("REPLAN_RESOURCE_ACTION_MISMATCH")
-if actual != expected:
+if actual == publisher_expected:
+    approved_resource_count = 3
+elif actual == expected:
+    approved_resource_count = 13
+elif actual == expected | publisher_expected:
+    approved_resource_count = 16
+else:
     raise SystemExit("REPLAN_EXPECTED_RESOURCE_SET_MISMATCH")
-if len(actual) != 13:
+if len(actual) != approved_resource_count:
     raise SystemExit("REPLAN_RESOURCE_COUNT_MISMATCH")
-print("ApprovedResourceActionMatch=true")
-print("ApprovedResourceCount=13")
+print(approved_resource_count)
 PY
+)"
+[[ "$APPROVED_RESOURCE_COUNT" =~ ^(3|13|16)$ ]] || fail "REPLAN_RESOURCE_COUNT_MISMATCH"
 
 grep -Fqx 'terraform_plan_risk_gate=passed' "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_RISK_GATE_FAILED"
-grep -Fqx 'resource_change_count=13' "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_RESOURCE_COUNT_MISMATCH"
+grep -Fqx "resource_change_count=${APPROVED_RESOURCE_COUNT}" "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_RESOURCE_COUNT_MISMATCH"
 grep -Fqx 'destructive_resource_count=0' "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_DESTRUCTIVE_CHANGE_PRESENT"
 grep -Fqx 'replacement_resource_count=0' "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_REPLACEMENT_PRESENT"
 grep -Fqx 'public_exposure_finding_count=0' "$RISK_DIR/plan-risk-summary.txt" || fail "REPLAN_PUBLIC_EXPOSURE_PRESENT"
@@ -291,7 +313,7 @@ printf '%s\n' \
   "RuntimeDependenciesApplyStarted=true" \
   "ApprovedPlanHead=${APPROVED_SHORT}" \
   "ApprovedResourceActionMatch=true" \
-  "ApprovedResourceCount=13" \
+  "ApprovedResourceCount=${APPROVED_RESOURCE_COUNT}" \
   "SecretValueWriteExecuted=false" \
   "TerraformDestroyExecuted=false"
 
@@ -314,10 +336,13 @@ fi
 
 "$TF_EXE" -chdir="$WORK_DIR_WIN" state list > "$STATE_LIST"
 MANAGED_STATE_COUNT="$(grep -v '^data\.' "$STATE_LIST" | grep -c . || true)"
-[[ "$MANAGED_STATE_COUNT" == "13" ]] || fail "RUNTIME_DEPENDENCIES_MANAGED_STATE_COUNT_MISMATCH"
+[[ "$MANAGED_STATE_COUNT" == "16" ]] || fail "RUNTIME_DEPENDENCIES_MANAGED_STATE_COUNT_MISMATCH"
 for address in \
   aws_ecr_lifecycle_policy.backend \
   aws_ecr_repository.backend \
+  aws_iam_policy.backend_image_publisher \
+  aws_iam_role.backend_image_publisher \
+  aws_iam_role_policy_attachment.backend_image_publisher \
   aws_s3_bucket.results \
   aws_s3_bucket.uploads \
   aws_s3_bucket_public_access_block.results \
@@ -331,6 +356,12 @@ for address in \
   aws_sqs_queue.terraform_log; do
   grep -Fqx "$address" "$STATE_LIST" || fail "RUNTIME_DEPENDENCIES_STATE_ADDRESS_MISSING"
 done
+PUBLISHER_IAM_ROLE_COUNT="$(grep -Fxc 'aws_iam_role.backend_image_publisher' "$STATE_LIST" || true)"
+PUBLISHER_IAM_POLICY_COUNT="$(grep -Fxc 'aws_iam_policy.backend_image_publisher' "$STATE_LIST" || true)"
+PUBLISHER_IAM_ATTACHMENT_COUNT="$(grep -Fxc 'aws_iam_role_policy_attachment.backend_image_publisher' "$STATE_LIST" || true)"
+[[ "$PUBLISHER_IAM_ROLE_COUNT" == "1" ]] || fail "BACKEND_IMAGE_PUBLISHER_IAM_ROLE_COUNT_MISMATCH"
+[[ "$PUBLISHER_IAM_POLICY_COUNT" == "1" ]] || fail "BACKEND_IMAGE_PUBLISHER_IAM_POLICY_COUNT_MISMATCH"
+[[ "$PUBLISHER_IAM_ATTACHMENT_COUNT" == "1" ]] || fail "BACKEND_IMAGE_PUBLISHER_IAM_ATTACHMENT_COUNT_MISMATCH"
 
 "$TF_EXE" -chdir="$WORK_DIR_WIN" output -json > "$OUTPUTS_JSON"
 "${PYTHON_CMD[@]}" - "$OUTPUTS_JSON" <<'PY'
@@ -341,6 +372,7 @@ from pathlib import Path
 outputs = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 required_strings = (
     "backend_image_repository_url",
+    "backend_image_publisher_role_arn",
     "upload_bucket_name",
     "upload_bucket_arn",
     "result_bucket_name",
@@ -414,8 +446,11 @@ RepositoryHead=${ACTUAL_HEAD:0:12}
 ApprovedPlanHead=${APPROVED_SHORT}
 PythonCommand=${PYTHON_LABEL}
 ApprovedResourceActionMatch=true
-CreatedResourceCount=13
-ManagedStateResourceCount=13
+CreatedResourceCount=${APPROVED_RESOURCE_COUNT}
+ManagedStateResourceCount=${MANAGED_STATE_COUNT}
+PublisherIamRoleCount=${PUBLISHER_IAM_ROLE_COUNT}
+PublisherIamPolicyCount=${PUBLISHER_IAM_POLICY_COUNT}
+PublisherIamRolePolicyAttachmentCount=${PUBLISHER_IAM_ATTACHMENT_COUNT}
 EcrRepositoryCount=1
 EcrLifecyclePolicyCount=1
 S3BucketCount=2
@@ -431,7 +466,7 @@ StaleLockObjectPresent=false
 TerraformApplyExecuted=true
 TerraformDestroyExecuted=false
 GitHubMutation=none
-AwsMutation=runtime-dependencies-13-create
+AwsMutation=runtime-dependencies-${APPROVED_RESOURCE_COUNT}-create
 PrivateEvidenceDirectoryCreated=true
 EOF
 cat "$SUMMARY_PATH"
