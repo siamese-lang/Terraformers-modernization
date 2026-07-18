@@ -114,7 +114,8 @@
       "directory": "infra/terraform/envs/frontend-delivery",
       "required_variables": [
         "frontend_bucket_name",
-        "api_origin_load_balancer_arn"
+        "api_origin_load_balancer_arn",
+        "github_oidc_provider_arn"
       ],
       "input_sources": {
         "api_origin_load_balancer_arn": "live-private-origin.api_origin_load_balancer_arn"
@@ -122,7 +123,7 @@
       "operator_inputs": [
         "frontend_bucket_name"
       ],
-      "live_prerequisite": "controller-created internal ALB is healthy and its ARN is recorded"
+      "live_prerequisite": "reviewed live foundation outputs, a healthy controller-created internal ALB, and its recorded ARN"
     }
   ]
 }
