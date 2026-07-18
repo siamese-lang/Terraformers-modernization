@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - agent/rdb-domain-realignment
     paths:
       - ".github/workflows/aws-live-terraform-plan.yml"
       - ".github/workflows/runtime-contract-verification.yml"
@@ -36,7 +37,7 @@ jobs:
       - name: Run actionlint
         uses: docker://rhysd/actionlint:1.7.7
         with:
-          args: -color .github/workflows
+          args: -color
 
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh

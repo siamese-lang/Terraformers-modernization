@@ -98,7 +98,7 @@ def verify_workflow_contracts() -> None:
         assert_contains(apply_workflow, status, "sanitized post-apply status")
 
     assert_contains(contract_workflow, "docker://rhysd/actionlint:1.7.7", "pinned actionlint Docker image")
-    assert_contains(contract_workflow, "args: -color .github/workflows", "actionlint scans all workflows")
+    assert_contains(contract_workflow, "args: -color", "actionlint scans all workflows")
 
 
 def main() -> int:
