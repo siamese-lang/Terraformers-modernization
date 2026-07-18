@@ -64,7 +64,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
 
     @Override
     public AnalysisResult analyze(AnalysisRequestContext context) {
-        requireModelId();
+        String modelId = requireModelId();
 
         ObjectContent source = objectReader.readContent(new ObjectReference(
                 context.sourceBucket(),
@@ -85,7 +85,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         );
 
         InvokeModelResponse response = bedrockRuntimeClient.invokeModel(InvokeModelRequest.builder()
-                .modelId(properties.getBedrockModelId())
+                .modelId(modelId)
                 .contentType("application/json")
                 .accept("application/json")
                 .body(SdkBytes.fromUtf8String(requestBody))
@@ -94,7 +94,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         ParsedBedrockAnalysis parsed = responseParser.parse(response.body().asUtf8String());
 
         return new AnalysisResult(
-                "bedrock-integrated-java",
+                "bedrock:" + modelId,
                 parsed.terraformCode(),
                 parsed.summary(),
                 parsed.components(),
@@ -104,9 +104,10 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         );
     }
 
-    private void requireModelId() {
+    private String requireModelId() {
         if (properties.getBedrockModelId() == null || properties.getBedrockModelId().isBlank()) {
             throw new IllegalStateException("terraformers.analysis.bedrock-model-id must be set when Bedrock provider is enabled");
         }
+        return properties.getBedrockModelId().strip();
     }
 }

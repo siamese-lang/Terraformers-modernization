@@ -4,21 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class BedrockResponseParserTest {
 
-    private final BedrockResponseParser parser = new BedrockResponseParser(new ObjectMapper());
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BedrockResponseParser parser = new BedrockResponseParser(objectMapper);
 
     @Test
-    void parsesStructuredAnalysisSchemaFromClaudeResponse() {
-        String response = """
-                {
-                  "content": [
-                    {"type": "text", "text": "{\"summary\":\"VPC with public web tier\",\"components\":[\"VPC\",\"ALB\"],\"relationships\":[\"ALB routes to web tier\"],\"warnings\":[\"CIDRs are inferred\"],\"terraformCode\":\"resource \\\"aws_vpc\\\" \\\"main\\\" { cidr_block = \\\"10.0.0.0/16\\\" }\"}"}
-                  ]
-                }
-                """;
+    void parsesStructuredAnalysisSchemaFromClaudeResponse() throws Exception {
+        String response = claudeResponse(Map.of(
+                "summary", "VPC with public web tier",
+                "components", List.of("VPC", "ALB"),
+                "relationships", List.of("ALB routes to web tier"),
+                "warnings", List.of("CIDRs are inferred"),
+                "terraformCode", "resource \"aws_vpc\" \"main\" { cidr_block = \"10.0.0.0/16\" }"
+        ));
 
         ParsedBedrockAnalysis parsed = parser.parse(response);
 
@@ -30,13 +33,39 @@ class BedrockResponseParserTest {
     }
 
     @Test
-    void rejectsUnstructuredTerraformText() {
-        String response = """
-                {"content":[{"type":"text","text":"resource \\\"aws_s3_bucket\\\" \\\"example\\\" {}"}]}
-                """;
+    void rejectsUnstructuredTerraformText() throws Exception {
+        String response = objectMapper.writeValueAsString(Map.of(
+                "content", List.of(Map.of(
+                        "type", "text",
+                        "text", "resource \"aws_s3_bucket\" \"example\" {}"
+                ))
+        ));
 
         assertThatThrownBy(() -> parser.parse(response))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("structured analysis schema");
+    }
+
+    @Test
+    void rejectsMissingSummary() throws Exception {
+        String response = claudeResponse(Map.of(
+                "components", List.of("S3"),
+                "relationships", List.of(),
+                "warnings", List.of(),
+                "terraformCode", "resource \"aws_s3_bucket\" \"main\" {}"
+        ));
+
+        assertThatThrownBy(() -> parser.parse(response))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("structured analysis schema");
+    }
+
+    private String claudeResponse(Map<String, Object> structured) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "content", List.of(Map.of(
+                        "type", "text",
+                        "text", objectMapper.writeValueAsString(structured)
+                ))
+        ));
     }
 }

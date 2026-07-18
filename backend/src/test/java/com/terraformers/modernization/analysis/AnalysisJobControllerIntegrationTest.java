@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(SynchronousAnalysisExecutorTestConfig.class)
 class AnalysisJobControllerIntegrationTest {
 
     @Autowired
@@ -54,11 +56,11 @@ class AnalysisJobControllerIntegrationTest {
                 .andExpect(header().string("Location", containsString("/api/analysis/jobs/")))
                 .andExpect(jsonPath("$.projectId").value(projectId))
                 .andExpect(jsonPath("$.sourceFileId").value(sourceFileId))
-                .andExpect(jsonPath("$.resultFileId").isNumber())
-                .andExpect(jsonPath("$.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.provider").value("stub-integrated-java"))
-                .andExpect(jsonPath("$.resultObjectKey", not(nullValue())))
-                .andExpect(jsonPath("$.resultPreview", not(nullValue())))
+                .andExpect(jsonPath("$.resultFileId").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.provider").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.resultObjectKey").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.resultPreview").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.failureReason").value(nullValue()))
                 .andReturn();
 
@@ -70,9 +72,9 @@ class AnalysisJobControllerIntegrationTest {
                 .andExpect(jsonPath("$.id").value(jobId))
                 .andExpect(jsonPath("$.projectId").value(projectId))
                 .andExpect(jsonPath("$.sourceFileId").value(sourceFileId))
-                .andExpect(jsonPath("$.resultFileId").value(created.path("resultFileId").asLong()))
+                .andExpect(jsonPath("$.resultFileId").isNumber())
                 .andExpect(jsonPath("$.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.resultObjectKey").value(created.path("resultObjectKey").asText()))
+                .andExpect(jsonPath("$.resultObjectKey", not(nullValue())))
                 .andExpect(jsonPath("$.resultPreview", not(nullValue())));
     }
 
@@ -86,6 +88,7 @@ class AnalysisJobControllerIntegrationTest {
 
         MvcResult uploadResult = mockMvc.perform(multipart("/api/upload")
                         .file(file)
+                        .param("projectName", "Integration Project")
                         .with(testUserJwt()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.projectId").isNumber())

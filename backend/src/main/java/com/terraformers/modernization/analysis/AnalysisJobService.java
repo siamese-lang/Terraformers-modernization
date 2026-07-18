@@ -6,28 +6,35 @@ import com.terraformers.modernization.projectcore.ProjectDomainService;
 import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import com.terraformers.modernization.projectcore.ProjectFileRepository;
 import java.util.NoSuchElementException;
+import java.util.concurrent.Executor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class AnalysisJobService {
 
     private final AnalysisJobRepository repository;
     private final AnalysisRuntimeProperties properties;
-    private final AnalysisJobOrchestrator orchestrator;
+    private final AnalysisJobRunner jobRunner;
+    private final Executor analysisJobExecutor;
     private final ProjectDomainService projectDomainService;
     private final ProjectFileRepository projectFileRepository;
 
     public AnalysisJobService(
             AnalysisJobRepository repository,
             AnalysisRuntimeProperties properties,
-            AnalysisJobOrchestrator orchestrator,
+            AnalysisJobRunner jobRunner,
+            @Qualifier("analysisJobExecutor") Executor analysisJobExecutor,
             ProjectDomainService projectDomainService,
             ProjectFileRepository projectFileRepository
     ) {
         this.repository = repository;
         this.properties = properties;
-        this.orchestrator = orchestrator;
+        this.jobRunner = jobRunner;
+        this.analysisJobExecutor = analysisJobExecutor;
         this.projectDomainService = projectDomainService;
         this.projectFileRepository = projectFileRepository;
     }
@@ -58,8 +65,22 @@ public class AnalysisJobService {
         entity.setAnalysisMode(properties.getMode());
 
         AnalysisJobEntity saved = repository.save(entity);
-        orchestrator.run(saved);
+        schedule(saved.getId());
         return AnalysisJobResponse.from(saved);
+    }
+
+    private void schedule(String jobId) {
+        Runnable task = () -> jobRunner.run(jobId);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    analysisJobExecutor.execute(task);
+                }
+            });
+            return;
+        }
+        analysisJobExecutor.execute(task);
     }
 
     @Transactional(readOnly = true)

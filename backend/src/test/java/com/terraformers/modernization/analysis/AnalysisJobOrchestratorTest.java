@@ -25,6 +25,9 @@ class AnalysisJobOrchestratorTest {
                 "test-provider",
                 "resource \"aws_s3_bucket\" \"accepted\" { bucket_prefix = \"accepted-\" }",
                 "test explanation",
+                List.of("S3"),
+                List.of("upload artifacts are stored in S3"),
+                List.of(),
                 List.of("reference-1")
         );
         CapturingProgressPublisher progressPublisher = new CapturingProgressPublisher();

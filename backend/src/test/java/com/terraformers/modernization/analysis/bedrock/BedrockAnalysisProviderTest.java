@@ -20,6 +20,7 @@ import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.core.SdkBytes;
@@ -34,9 +35,13 @@ class BedrockAnalysisProviderTest {
     void invokesConfiguredModelWithImageBytesAndStructuredJsonSchema() throws Exception {
         BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
         when(client.invokeModel(any(InvokeModelRequest.class))).thenReturn(InvokeModelResponse.builder()
-                .body(SdkBytes.fromUtf8String("""
-                        {"content":[{"type":"text","text":"{\"summary\":\"Private web stack\",\"components\":[\"VPC\",\"ALB\"],\"relationships\":[\"ALB forwards to service\"],\"warnings\":[],\"terraformCode\":\"resource \\\"aws_vpc\\\" \\\"main\\\" { cidr_block = \\\"10.0.0.0/16\\\" }\"}"}]}
-                        """))
+                .body(SdkBytes.fromUtf8String(claudeResponse(Map.of(
+                        "summary", "Private web stack",
+                        "components", List.of("VPC", "ALB"),
+                        "relationships", List.of("ALB forwards to service"),
+                        "warnings", List.of(),
+                        "terraformCode", "resource \"aws_vpc\" \"main\" { cidr_block = \"10.0.0.0/16\" }"
+                ))))
                 .build());
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockModelId("configured-model-id");
@@ -61,10 +66,20 @@ class BedrockAnalysisProviderTest {
         assertThat(body.path("messages").get(0).path("content").get(0).path("type").asText()).isEqualTo("image");
         assertThat(body.toString()).contains("terraformCode");
         assertThat(body.toString()).contains("Return JSON only");
+        assertThat(result.provider()).isEqualTo("bedrock:configured-model-id");
         assertThat(result.explanation()).isEqualTo("Private web stack");
         assertThat(result.components()).containsExactly("VPC", "ALB");
         assertThat(result.relationships()).containsExactly("ALB forwards to service");
         assertThat(result.terraformCode()).contains("resource \"aws_vpc\"");
+    }
+
+    private String claudeResponse(Map<String, Object> structured) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "content", List.of(Map.of(
+                        "type", "text",
+                        "text", objectMapper.writeValueAsString(structured)
+                ))
+        ));
     }
 
     private ObjectReader objectReader() {

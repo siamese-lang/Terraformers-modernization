@@ -20,12 +20,16 @@ public class BedrockResponseParser {
         try {
             JsonNode structured = objectMapper.readTree(stripMarkdownFence(text));
             String terraform = firstText(structured, "terraformCode");
+            String summary = firstText(structured, "summary");
             if (terraform.isBlank()) {
                 throw new IllegalStateException("Bedrock structured response is missing terraformCode");
             }
+            if (summary.isBlank()) {
+                throw new IllegalStateException("Bedrock structured response is missing summary");
+            }
             return new ParsedBedrockAnalysis(
                     stripMarkdownFence(terraform),
-                    firstText(structured, "summary"),
+                    summary,
                     textArray(structured, "components"),
                     textArray(structured, "relationships"),
                     textArray(structured, "warnings")

@@ -3,6 +3,7 @@ package com.terraformers.modernization.project;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -12,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisJobRepository;
+import com.terraformers.modernization.analysis.SynchronousAnalysisExecutorTestConfig;
 import com.terraformers.modernization.collaboration.BoardRepository;
 import com.terraformers.modernization.collaboration.CommentRepository;
 import com.terraformers.modernization.identity.UserRepository;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -31,6 +34,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(SynchronousAnalysisExecutorTestConfig.class)
 @ActiveProfiles("test")
 class ProjectMetadataControllerTest {
 
@@ -150,6 +154,33 @@ class ProjectMetadataControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void ownerCanDeleteProjectAndDeletedProjectIsExcludedFromOwnedList() throws Exception {
+        Long projectId = upload("Delete Me.png");
+
+        mockMvc.perform(delete("/api/projects/" + projectId).with(testUserJwt()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/projects").with(testUserJwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+
+        mockMvc.perform(get("/api/projects/" + projectId).with(testUserJwt()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void nonOwnerCannotDeletePrivateProject() throws Exception {
+        Long projectId = upload("Private Delete Target.png");
+
+        mockMvc.perform(delete("/api/projects/" + projectId).with(otherUserJwt()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects/" + projectId).with(testUserJwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(projectId));
+    }
+
     private Long upload(String filename) throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -160,6 +191,7 @@ class ProjectMetadataControllerTest {
 
         MvcResult result = mockMvc.perform(multipart("/api/upload")
                         .file(file)
+                        .param("projectName", filename.replace(".png", ""))
                         .with(testUserJwt()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.projectId").isNumber())
@@ -184,5 +216,12 @@ class ProjectMetadataControllerTest {
                 .subject("metadata-test-user")
                 .claim("email", "metadata@example.com")
                 .claim("name", "Metadata User"));
+    }
+
+    private RequestPostProcessor otherUserJwt() {
+        return jwt().jwt(builder -> builder
+                .subject("metadata-other-user")
+                .claim("email", "other-metadata@example.com")
+                .claim("name", "Other Metadata User"));
     }
 }
