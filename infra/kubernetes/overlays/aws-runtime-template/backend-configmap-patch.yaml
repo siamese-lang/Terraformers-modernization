@@ -7,8 +7,8 @@ data:
   AWS_REGION: "ap-northeast-2"
 
   # Enable adapters only after the required AWS dependency and IAM policy are validated.
-  S3_READER_ENABLED: "false"
-  S3_WRITER_ENABLED: "false"
+  S3_READER_ENABLED: "true"
+  S3_WRITER_ENABLED: "true"
   BEDROCK_PROVIDER_ENABLED: "false"
   BEDROCK_EMBEDDING_ENABLED: "false"
   OPENSEARCH_RETRIEVER_ENABLED: "false"
