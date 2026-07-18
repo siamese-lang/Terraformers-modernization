@@ -64,6 +64,19 @@ export function AuthSessionProvider({ children }) {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setError('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
+      setUser(null);
+      setStatus('guest');
+    };
+
+    window.addEventListener('terraformers:auth-expired', handleAuthExpired);
+    return () => {
+      window.removeEventListener('terraformers:auth-expired', handleAuthExpired);
+    };
+  }, []);
+
   const logout = useCallback(async () => {
     setError('');
 

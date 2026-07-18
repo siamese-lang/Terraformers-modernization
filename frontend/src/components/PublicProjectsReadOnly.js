@@ -2,8 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../utils/api';
 import '../styles/public-projects.css';
 
+function normalizeProjectId(projectId) {
+  if (projectId === null || projectId === undefined) {
+    return '';
+  }
+  return String(projectId);
+}
+
 function projectIdOf(project) {
-  return project.projectId || project.id || '';
+  return normalizeProjectId(project.projectId || project.id || '');
 }
 
 function projectNameOf(project) {
@@ -50,8 +57,14 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     }
   }, []);
 
+  const publicProjectIds = new Set(projects.map((project) => projectIdOf(project)));
+  const verifiedSelectedProjectId = publicProjectIds.has(normalizeProjectId(selectedProjectId))
+    ? normalizeProjectId(selectedProjectId)
+    : '';
+
   const loadComments = useCallback(async (projectId) => {
-    if (!projectId) {
+    const normalizedProjectId = normalizeProjectId(projectId);
+    if (!normalizedProjectId) {
       setComments([]);
       return;
     }
@@ -59,7 +72,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     setIsCommentsLoading(true);
     setCommentError('');
     try {
-      const response = await api.get(`/api/getProjectComments/${encodeURIComponent(projectId)}`);
+      const response = await api.get(`/api/getProjectComments/${encodeURIComponent(normalizedProjectId)}`);
       setComments(Array.isArray(response.data) ? response.data : []);
     } catch (loadError) {
       setCommentError(loadError?.response?.status === 403
@@ -76,18 +89,17 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   }, [loadPublicProjects]);
 
   useEffect(() => {
-    loadComments(selectedProjectId);
-  }, [loadComments, selectedProjectId]);
+    loadComments(verifiedSelectedProjectId);
+  }, [loadComments, verifiedSelectedProjectId]);
 
   const handleSelectProject = (project) => {
     onSelectProject(project);
-    loadComments(projectIdOf(project));
   };
 
   const handleSubmitComment = async (event) => {
     event.preventDefault();
 
-    if (!selectedProjectId || !commentContent.trim()) {
+    if (!verifiedSelectedProjectId || !commentContent.trim()) {
       return;
     }
 
@@ -95,11 +107,11 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     setCommentError('');
     try {
       await api.post('/api/addProjectComment', {
-        projectId: selectedProjectId,
+        projectId: verifiedSelectedProjectId,
         content: commentContent,
       });
       setCommentContent('');
-      await loadComments(selectedProjectId);
+      await loadComments(verifiedSelectedProjectId);
     } catch (submitError) {
       if (submitError?.response?.status === 401) {
         setCommentError('댓글을 작성하려면 로그인해야 합니다.');
@@ -140,7 +152,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
         <ul className="public-project-list">
           {projects.map((project) => {
             const projectId = projectIdOf(project);
-            const isSelected = selectedProjectId === projectId;
+            const isSelected = verifiedSelectedProjectId === projectId;
             return (
               <li key={projectId}>
                 <button
@@ -161,11 +173,11 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
 
       <section className="public-comments-panel" aria-label="Public project comments">
         <h3>Comments</h3>
-        {!selectedProjectId && (
+        {!verifiedSelectedProjectId && (
           <p className="public-projects-empty">댓글을 보려면 공개 프로젝트를 선택하세요.</p>
         )}
 
-        {selectedProjectId && (
+        {verifiedSelectedProjectId && (
           <>
             {commentError && <p className="public-projects-error">{commentError}</p>}
             {isCommentsLoading && <p className="public-projects-empty">댓글을 불러오는 중입니다.</p>}
