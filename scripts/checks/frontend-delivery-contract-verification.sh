@@ -151,18 +151,26 @@ cat >"${FIXTURE_DIR}/stateful.json" <<'JSON'
   "cognito_user_pool_client_id": {"value": "fixture-client-id"}
 }
 JSON
+cat >"${FIXTURE_DIR}/foundation.json" <<'JSON'
+{
+  "github_oidc_provider_arn": {"value": "arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com"},
+  "aws_account_id": {"value": "111122223333"},
+  "aws_region": {"value": "ap-northeast-2"}
+}
+JSON
 cat >"${FIXTURE_DIR}/frontend.json" <<'JSON'
 {
   "frontend_bucket_name": {"value": "terraformers-dev-frontend-fixture"},
   "cloudfront_distribution_id": {"value": "E123456789FIXTURE"},
   "cloudfront_distribution_domain_name": {"value": "d111111abcdef8.cloudfront.net"},
-  "frontend_delivery_role_arn": {"value": "arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery"}
+  "frontend_delivery_role_arn": {"value": "arn:aws:iam::111122223333:role/terraformers-dev-frontend-delivery"}
 }
 JSON
 
 python3 "${REPO_ROOT}/scripts/deploy/build-frontend-delivery-input-bundle.py" \
   --stateful-outputs-json "${FIXTURE_DIR}/stateful.json" \
   --frontend-outputs-json "${FIXTURE_DIR}/frontend.json" \
+  --foundation-outputs-json "${FIXTURE_DIR}/foundation.json" \
   --output-dir "${BUNDLE_DIR}"
 
 BUILD_ENV="${BUNDLE_DIR}/frontend-build.env"
@@ -179,12 +187,16 @@ grep -qx 'REACT_APP_AWS_REGION=ap-northeast-2' "${BUILD_ENV}"
 grep -qx 'REACT_APP_COGNITO_USER_POOL_ID=ap-northeast-2_fixture' "${BUILD_ENV}"
 grep -qx 'REACT_APP_COGNITO_USER_POOL_CLIENT_ID=fixture-client-id' "${BUILD_ENV}"
 assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|JWT|Authorization' "${BUILD_ENV}" "Frontend build bundle must contain public values only."
-grep -qx 'FRONTEND_AWS_ROLE_TO_ASSUME=arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery' "${GITHUB_ENV_VARS}"
+grep -qx 'FRONTEND_AWS_ROLE_TO_ASSUME=arn:aws:iam::111122223333:role/terraformers-dev-frontend-delivery' "${GITHUB_ENV_VARS}"
 grep -qx 'FRONTEND_BUCKET_NAME=terraformers-dev-frontend-fixture' "${GITHUB_ENV_VARS}"
 grep -qx 'CLOUDFRONT_DISTRIBUTION_ID=E123456789FIXTURE' "${GITHUB_ENV_VARS}"
+grep -qx 'EXPECTED_AWS_ACCOUNT_ID=111122223333' "${GITHUB_ENV_VARS}"
+grep -qx 'AWS_REGION=ap-northeast-2' "${GITHUB_ENV_VARS}"
 assert_not_contains 'PASSWORD|SECRET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|JWT|Authorization' "${GITHUB_ENV_VARS}" "GitHub variable bundle must not contain secrets."
-assert_contains '"frontend_delivery_role_arn": "arn:aws:iam::123456789012:role/terraformers-dev-frontend-delivery"' "${SOURCE_MAP}" "Source map must record the frontend delivery role ARN."
+assert_contains '"frontend_delivery_role_arn": "arn:aws:iam::111122223333:role/terraformers-dev-frontend-delivery"' "${SOURCE_MAP}" "Source map must record the frontend delivery role ARN."
 assert_contains '"api_base_mode": "same-origin-relative"' "${SOURCE_MAP}" "Source map must record same-origin API mode."
+assert_contains '"expected_aws_account_id": "111122223333"' "${SOURCE_MAP}" "Source map must record the expected AWS account ID."
+assert_contains '"aws_region": "ap-northeast-2"' "${SOURCE_MAP}" "Source map must record the foundation AWS region."
 assert_contains '"invalidation_scope": "mutable-entrypoints-only"' "${SOURCE_MAP}" "Source map must record the limited invalidation scope."
 assert_contains '^frontend_build_variable_count=4$' "${BUNDLE_SUMMARY}" "Frontend build variable count must remain four."
 assert_contains '^invalidation_wait=required$' "${BUNDLE_SUMMARY}" "Bundle must require invalidation completion."

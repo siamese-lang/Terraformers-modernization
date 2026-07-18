@@ -116,6 +116,7 @@ scripts/deploy/build-frontend-delivery-input-bundle.py
 
 입력:
 
+- foundation Terraform output의 `github_oidc_provider_arn`, `aws_account_id`, `aws_region`
 - stateful Terraform output의 Cognito region, pool ID, client ID
 - frontend Terraform output의 frontend delivery role ARN, S3 bucket, CloudFront distribution ID/domain
 
@@ -136,7 +137,7 @@ github-environment-variables.env
 - `REACT_APP_COGNITO_USER_POOL_ID`
 - `REACT_APP_COGNITO_USER_POOL_CLIENT_ID`
 
-Password, AWS access key, secret, JWT, Authorization header, bucket write credential, internal ALB ARN/DNS는 frontend bundle에 포함하지 않는다. `github-environment-variables.env`에는 secret이 아닌 `FRONTEND_AWS_ROLE_TO_ASSUME`, `FRONTEND_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID` 설정값만 포함한다.
+Password, AWS access key, secret, JWT, Authorization header, bucket write credential, internal ALB ARN/DNS는 frontend bundle에 포함하지 않는다. `github-environment-variables.env`에는 secret이 아닌 `FRONTEND_AWS_ROLE_TO_ASSUME`, `FRONTEND_BUCKET_NAME`, `CLOUDFRONT_DISTRIBUTION_ID`, `EXPECTED_AWS_ACCOUNT_ID`, `AWS_REGION` 설정값만 포함한다. `EXPECTED_AWS_ACCOUNT_ID`와 `AWS_REGION`은 foundation output에서 오며, 생성기는 frontend role ARN account와 Cognito region이 foundation account/region과 일치하는지 검증한다.
 
 ## 6. 배포와 롤백 경계
 
@@ -148,7 +149,7 @@ Guarded workflow:
 
 기본값은 `deploy_frontend=false`다. 기본 실행은 production build와 digest evidence만 만들고 AWS credential을 구성하지 않는다.
 
-명시적으로 승인한 배포에서는 `allowed-account-ids`와 `EXPECTED_AWS_ACCOUNT_ID` caller 확인을 통과해야 한다. `aws_role_to_assume` 임의 input과 장기 AWS access key secret은 사용하지 않는다.
+명시적으로 승인한 배포에서는 foundation output에서 생성한 `EXPECTED_AWS_ACCOUNT_ID`를 사용해 `allowed-account-ids`와 caller 확인을 통과해야 한다. `aws_role_to_assume` 임의 input과 장기 AWS access key secret은 사용하지 않는다.
 
 명시적으로 승인한 배포에서는:
 

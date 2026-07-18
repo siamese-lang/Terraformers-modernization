@@ -50,6 +50,7 @@ def main() -> int:
     network = FIXTURES / "network.json"
     runtime = FIXTURES / "runtime.json"
     stateful_outputs = FIXTURES / "stateful.json"
+    foundation = FIXTURES / "foundation.json"
     write_json(network, {
         "vpc_id": {"value": "vpc-0123456789abcdef0"},
         "vpc_cidr_block": {"value": "10.40.0.0/16"},
@@ -68,6 +69,11 @@ def main() -> int:
             "value": "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-rds-master-AbCdEf"
         },
     })
+    write_json(foundation, {
+        "github_oidc_provider_arn": {"value": "arn:aws:iam::123456789013:oidc-provider/token.actions.githubusercontent.com"},
+        "aws_account_id": {"value": "123456789013"},
+        "aws_region": {"value": "us-west-2"},
+    })
 
     stateful = GENERATED / "stateful.tfvars"
     eks = GENERATED / "eks.tfvars"
@@ -75,7 +81,7 @@ def main() -> int:
 
     run(sys.executable, str(BUILDER), "--stage", "stateful-dependencies", "--network-outputs-json", str(network), "--output", str(stateful))
     run(sys.executable, str(BUILDER), "--stage", "eks-runtime", "--network-outputs-json", str(network), "--runtime-outputs-json", str(runtime), "--stateful-outputs-json", str(stateful_outputs), "--operator-cidr", "8.8.8.8/32", "--output", str(eks))
-    run(sys.executable, str(BUILDER), "--stage", "frontend-delivery", "--frontend-bucket-name", "terraformers-test-frontend-123456789012", "--api-origin-load-balancer-arn", "arn:aws:elasticloadbalancing:ap-northeast-2:123456789012:loadbalancer/app/terraformers-internal/0123456789abcdef", "--output", str(frontend))
+    run(sys.executable, str(BUILDER), "--stage", "frontend-delivery", "--foundation-outputs-json", str(foundation), "--frontend-bucket-name", "terraformers-test-frontend-123456789013", "--api-origin-load-balancer-arn", "arn:aws:elasticloadbalancing:us-west-2:123456789013:loadbalancer/app/terraformers-internal/0123456789abcdef", "--output", str(frontend))
 
     assert_contains(stateful, 'vpc_id = "vpc-0123456789abcdef0"')
     assert_contains(stateful, '"10.40.2.0/20"')
@@ -85,8 +91,11 @@ def main() -> int:
     assert_contains(eks, 'upload_bucket_arn          = "arn:aws:s3:::terraformers-test-uploads"')
     assert_contains(eks, 'database_master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-rds-master-AbCdEf"')
     assert_contains(eks, "bedrock_model_resource_arns = []")
+    assert_contains(frontend, 'aws_region  = "us-west-2"')
+    assert_contains(frontend, 'github_oidc_provider_arn = "arn:aws:iam::123456789013:oidc-provider/token.actions.githubusercontent.com"')
     assert_contains(frontend, "frontend_bucket_force_destroy = false")
     assert_contains(frontend, "loadbalancer/app/terraformers-internal/0123456789abcdef")
+    assert_not_contains(frontend, "123456789012")
 
     for path in (stateful, eks, frontend):
         assert_not_contains(path, "replace-")
@@ -131,11 +140,72 @@ def main() -> int:
     if "stateful outputs" not in missing_stateful.stderr:
         raise RuntimeError("Missing stateful outputs rejection was not explicit.")
 
+    missing_foundation = run(
+        sys.executable,
+        str(BUILDER),
+        "--stage",
+        "frontend-delivery",
+        "--frontend-bucket-name",
+        "terraformers-test-frontend-123456789013",
+        "--api-origin-load-balancer-arn",
+        "arn:aws:elasticloadbalancing:us-west-2:123456789013:loadbalancer/app/terraformers-internal/0123456789abcdef",
+        "--output",
+        str(GENERATED / "missing-foundation.tfvars"),
+        expected=1,
+    )
+    if "foundation outputs" not in missing_foundation.stderr:
+        raise RuntimeError("Missing foundation outputs rejection was not explicit.")
+
+    oidc_mismatch = FIXTURES / "foundation-oidc-mismatch.json"
+    write_json(oidc_mismatch, {
+        "github_oidc_provider_arn": {"value": "arn:aws:iam::999999999999:oidc-provider/token.actions.githubusercontent.com"},
+        "aws_account_id": {"value": "123456789013"},
+        "aws_region": {"value": "us-west-2"},
+    })
+    rejected_oidc = run(
+        sys.executable,
+        str(BUILDER),
+        "--stage",
+        "frontend-delivery",
+        "--foundation-outputs-json",
+        str(oidc_mismatch),
+        "--frontend-bucket-name",
+        "terraformers-test-frontend-123456789013",
+        "--api-origin-load-balancer-arn",
+        "arn:aws:elasticloadbalancing:us-west-2:123456789013:loadbalancer/app/terraformers-internal/0123456789abcdef",
+        "--output",
+        str(GENERATED / "oidc-mismatch.tfvars"),
+        expected=1,
+    )
+    if "github_oidc_provider_arn account" not in rejected_oidc.stderr:
+        raise RuntimeError("OIDC account mismatch rejection was not explicit.")
+
+    rejected_alb = run(
+        sys.executable,
+        str(BUILDER),
+        "--stage",
+        "frontend-delivery",
+        "--foundation-outputs-json",
+        str(foundation),
+        "--frontend-bucket-name",
+        "terraformers-test-frontend-123456789013",
+        "--api-origin-load-balancer-arn",
+        "arn:aws:elasticloadbalancing:us-west-2:999999999999:loadbalancer/app/terraformers-internal/0123456789abcdef",
+        "--output",
+        str(GENERATED / "alb-mismatch.tfvars"),
+        expected=1,
+    )
+    if "api_origin_load_balancer_arn account" not in rejected_alb.stderr:
+        raise RuntimeError("ALB account mismatch rejection was not explicit.")
+
     summary = [
         "live_stage_tfvars_builder_verification=passed",
         "generated_stage_count=3",
         "unsafe_operator_cidr_rejected=true",
         "missing_stateful_outputs_rejected=true",
+        "missing_foundation_outputs_rejected=true",
+        "oidc_account_mismatch_rejected=true",
+        "alb_account_mismatch_rejected=true",
         "secret_values_read=false",
         "aws_authentication=none",
         "aws_mutation=none",

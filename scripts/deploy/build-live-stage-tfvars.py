@@ -80,10 +80,40 @@ def validate_bucket_name(value: str) -> str:
     return value
 
 
-def validate_alb_arn(value: str) -> str:
+def arn_account_id(value: str, name: str) -> str:
+    parts = value.split(":", 5)
+    if len(parts) < 6 or not re.fullmatch(r"[0-9]{12}", parts[4]):
+        raise TfvarsError(f"{name} must contain a 12-digit AWS account ID")
+    return parts[4]
+
+
+def validate_aws_account_id(value: str) -> str:
+    if not re.fullmatch(r"[0-9]{12}", value) or value == "123456789012" or set(value) == {"0"}:
+        raise TfvarsError("foundation aws_account_id must be a real 12-digit AWS account ID")
+    return value
+
+
+def validate_aws_region(value: str) -> str:
+    if not re.fullmatch(r"[a-z]{2}-[a-z]+-[0-9]", value):
+        raise TfvarsError("foundation aws_region is malformed")
+    return value
+
+
+def validate_github_oidc_provider_arn(value: str, expected_account_id: str) -> str:
+    pattern = r"^arn:aws[a-zA-Z-]*:iam::[0-9]{12}:oidc-provider/token\.actions\.githubusercontent\.com$"
+    if not re.fullmatch(pattern, value):
+        raise TfvarsError("github_oidc_provider_arn must be a token.actions.githubusercontent.com provider ARN")
+    if arn_account_id(value, "github_oidc_provider_arn") != expected_account_id:
+        raise TfvarsError("github_oidc_provider_arn account does not match foundation aws_account_id")
+    return value
+
+
+def validate_alb_arn(value: str, expected_account_id: str | None = None) -> str:
     pattern = r"^arn:aws[a-zA-Z-]*:elasticloadbalancing:[a-z0-9-]+:[0-9]{12}:loadbalancer/app/[^/]+/[a-zA-Z0-9]+$"
     if not re.fullmatch(pattern, value):
         raise TfvarsError("api origin must be an Application Load Balancer ARN")
+    if expected_account_id is not None and arn_account_id(value, "api_origin_load_balancer_arn") != expected_account_id:
+        raise TfvarsError("api_origin_load_balancer_arn account does not match foundation aws_account_id")
     return value
 
 
@@ -169,12 +199,15 @@ def build_eks(
     return "\n".join(lines)
 
 
-def build_frontend(bucket_name: str, alb_arn: str) -> str:
+def build_frontend(bucket_name: str, alb_arn: str, foundation: dict[str, Any]) -> str:
     bucket = validate_bucket_name(bucket_name)
-    alb = validate_alb_arn(alb_arn)
+    account_id = validate_aws_account_id(scalar(foundation, "aws_account_id"))
+    region = validate_aws_region(scalar(foundation, "aws_region"))
+    oidc_provider_arn = validate_github_oidc_provider_arn(scalar(foundation, "github_oidc_provider_arn"), account_id)
+    alb = validate_alb_arn(alb_arn, account_id)
     lines = common_header("frontend-delivery") + [
         'environment = "dev"',
-        'aws_region  = "ap-northeast-2"',
+        f"aws_region  = {hcl_string(region)}",
         'name_prefix = "terraformers"',
         "",
         f"frontend_bucket_name          = {hcl_string(bucket)}",
@@ -183,8 +216,7 @@ def build_frontend(bucket_name: str, alb_arn: str) -> str:
         "",
         f"api_origin_load_balancer_arn = {hcl_string(alb)}",
         "",
-        "# Replace with github_oidc_provider_arn output from aws-live-foundation.",
-        'github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"',
+        f"github_oidc_provider_arn = {hcl_string(oidc_provider_arn)}",
         'github_repository        = "siamese-lang/Terraformers-modernization"',
         'github_environment       = "frontend-delivery"',
         "aliases                       = []",
@@ -201,6 +233,7 @@ def main() -> int:
     parser.add_argument("--network-outputs-json")
     parser.add_argument("--runtime-outputs-json")
     parser.add_argument("--stateful-outputs-json")
+    parser.add_argument("--foundation-outputs-json")
     parser.add_argument("--operator-cidr")
     parser.add_argument("--frontend-bucket-name")
     parser.add_argument("--api-origin-load-balancer-arn")
@@ -229,9 +262,13 @@ def main() -> int:
                 args.operator_cidr,
             )
         else:
-            if not args.frontend_bucket_name or not args.api_origin_load_balancer_arn:
-                raise TfvarsError("Frontend generation requires bucket name and internal ALB ARN")
-            content = build_frontend(args.frontend_bucket_name, args.api_origin_load_balancer_arn)
+            if not args.foundation_outputs_json or not args.frontend_bucket_name or not args.api_origin_load_balancer_arn:
+                raise TfvarsError("Frontend generation requires foundation outputs, bucket name, and internal ALB ARN")
+            content = build_frontend(
+                args.frontend_bucket_name,
+                args.api_origin_load_balancer_arn,
+                load_outputs(args.foundation_outputs_json),
+            )
 
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)

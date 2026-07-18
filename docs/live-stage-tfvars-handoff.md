@@ -145,16 +145,18 @@ backend targets=healthy
 
 ```powershell
 $FrontendBucket = "replace-with-globally-unique-private-bucket"
-$InternalAlbArn = "arn:aws:elasticloadbalancing:ap-northeast-2:123456789012:loadbalancer/app/example/0123456789abcdef"
+$InternalAlbArn = "arn:aws:elasticloadbalancing:ap-northeast-2:123456789013:loadbalancer/app/example/0123456789abcdef"
+$FoundationOutputs = "artifacts\aws-live-foundation-outputs.json"
 
 python scripts\deploy\build-live-stage-tfvars.py `
   --stage frontend-delivery `
+  --foundation-outputs-json $FoundationOutputs `
   --frontend-bucket-name $FrontendBucket `
   --api-origin-load-balancer-arn $InternalAlbArn `
   --output infra\terraform\envs\frontend-delivery\live.tfvars
 ```
 
-Generator는 Application Load Balancer ARN 형식과 S3 bucket 이름 형식을 검사하고 `frontend_bucket_force_destroy=false`를 유지한다.
+Generator는 foundation output의 `github_oidc_provider_arn`, `aws_account_id`, `aws_region`을 읽어 live tfvars에 실제 OIDC provider ARN과 region을 기록한다. OIDC provider ARN account와 ALB ARN account가 foundation `aws_account_id`와 다르거나 placeholder/malformed 값이면 거부하며, `frontend_bucket_force_destroy=false`를 유지한다.
 
 ## GitHub environment Secret 등록
 
