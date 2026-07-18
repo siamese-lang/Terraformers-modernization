@@ -23,8 +23,8 @@ jobs:
     timeout-minutes: 35
     environment: aws-backend-image-publish
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
-      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.EXPECTED_AWS_ACCOUNT_ID }}
       SOURCE_COMMIT_SHA: ${{ github.sha }}
 
