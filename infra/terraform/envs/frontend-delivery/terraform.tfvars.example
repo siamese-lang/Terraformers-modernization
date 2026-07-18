@@ -13,6 +13,11 @@ noncurrent_version_expiration_days = 30
 # Do not supply an internet-facing load balancer.
 api_origin_load_balancer_arn = "arn:aws:elasticloadbalancing:ap-northeast-2:<account-id>:loadbalancer/app/<internal-alb-name>/<id>"
 
+# Reuse the GitHub OIDC provider ARN output by aws-live-foundation; do not create a second provider.
+github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+github_repository        = "siamese-lang/Terraformers-modernization"
+github_environment       = "frontend-delivery"
+
 # Leave empty to use the CloudFront default domain and certificate during initial validation.
 aliases             = []
 acm_certificate_arn = null
