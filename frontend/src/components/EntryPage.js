@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signUp, signIn, signOut, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+import { signUp, signIn, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+import { useAuthSession } from '../auth/AuthSessionContext';
 import '../styles/login.css';
 
 function EntryPage() {
@@ -9,6 +10,7 @@ function EntryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { refresh } = useAuthSession();
 
   const changeView = (view) => {
     setCurrentView(view);
@@ -38,7 +40,6 @@ function EntryPage() {
         });
         navigate('/confirm-sign-up');
       } else if (currentView === 'logIn') {
-        await signOut();
         await signIn({
           username: formData.username,
           password: formData.password,
@@ -46,7 +47,8 @@ function EntryPage() {
         const session = await fetchAuthSession();
         const token = session.tokens ? session.tokens.accessToken : null;
         if (token !== null) {
-          navigate('/');
+          await refresh();
+          navigate('/generate', { replace: true });
         } else {
           setError('Operation failed: missing access token after sign-in. Please check Cognito app client configuration.');
         }
