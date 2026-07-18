@@ -32,10 +32,20 @@ class BedrockPromptBuilderTest {
 
         assertThat(root.path("anthropic_version").asText()).isEqualTo("bedrock-2023-05-31");
         assertThat(root.path("max_tokens").asInt()).isEqualTo(2048);
-        assertThat(request).contains("uploads/diagram.png");
+        assertThat(request).doesNotContain("example-bucket");
+        assertThat(request).doesNotContain("uploads/diagram.png");
+        assertThat(request).contains("terraformCode");
+        assertThat(request).contains("components");
+        assertThat(request).contains("relationships");
         assertThat(request).contains("VPC pattern");
+        assertThat(request).contains("Use private subnets for database workloads.");
+        assertThat(request).contains("image/png");
+        assertThat(request).contains("2048");
         assertThat(request).doesNotContain("access_key");
         assertThat(request).doesNotContain("secret_key");
+        assertThat(request).doesNotContain("AKIA");
+        assertThat(request).doesNotContain("123456789012");
+        assertThat(request).doesNotContain("arn:aws:");
     }
 
     @Test

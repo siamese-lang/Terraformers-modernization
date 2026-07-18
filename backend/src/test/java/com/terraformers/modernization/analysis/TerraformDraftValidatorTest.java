@@ -18,15 +18,31 @@ class TerraformDraftValidatorTest {
     }
 
     @Test
-    void acceptsMultiResourceTerraformDraft() {
+    void acceptsSingleLineResourceTerraformDraft() {
         TerraformDraftValidation validation = validator.validate("""
                 ```hcl
                 provider "aws" { region = var.aws_region }
-                resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }
-                resource "aws_subnet" "public" { vpc_id = aws_vpc.main.id cidr_block = "10.0.1.0/24" }
+                resource "aws_s3_bucket" "accepted" { bucket_prefix = "accepted-" }
                 ```
                 """);
         assertThat(validation.valid()).isTrue();
         assertThat(validation.sanitizedContent()).doesNotContain("```");
+    }
+
+    @Test
+    void acceptsMultilineResourceTerraformDraft() {
+        TerraformDraftValidation validation = validator.validate("""
+                provider "aws" { region = var.aws_region }
+
+                resource "aws_vpc" "main" {
+                  cidr_block = "10.0.0.0/16"
+                }
+
+                resource "aws_subnet" "public" {
+                  vpc_id     = aws_vpc.main.id
+                  cidr_block = "10.0.1.0/24"
+                }
+                """);
+        assertThat(validation.valid()).isTrue();
     }
 }

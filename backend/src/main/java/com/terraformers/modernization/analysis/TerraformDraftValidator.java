@@ -9,7 +9,7 @@ public class TerraformDraftValidator {
 
     private static final Pattern RESOURCE_OR_MODULE = Pattern.compile("(?m)^\\s*(resource|module)\\s+\\\"[^\\\"]+\\\"");
     private static final Pattern ONLY_META_BLOCKS = Pattern.compile("(?s)^(\\s*(terraform|provider)\\s*(\\\"[^\\\"]+\\\")?\\s*\\{[^{}]*(?:\\{[^{}]*}[^{}]*)*}\\s*)+$");
-    private static final Pattern HCL_ASSIGNMENT_OR_BLOCK = Pattern.compile("(?m)^\\s*[A-Za-z_][A-Za-z0-9_-]*\\s*(=|\\{)");
+    private static final Pattern STRUCTURED_RESOURCE_OR_MODULE = Pattern.compile("(?ms)^\\s*(resource|module)\\s+\"[^\"]+\"(?:\\s+\"[^\"]+\")?\\s*\\{.*?(=|^\\s*[A-Za-z_][A-Za-z0-9_-]*\\s*\\{).*?\\}");
 
     public TerraformDraftValidation validate(String candidate) {
         String sanitized = stripMarkdownFences(candidate);
@@ -29,7 +29,7 @@ public class TerraformDraftValidator {
         if (ONLY_META_BLOCKS.matcher(sanitized).matches()) {
             return invalid(sanitized, "generated Terraform contains only terraform/provider configuration");
         }
-        if (!HCL_ASSIGNMENT_OR_BLOCK.matcher(sanitized).find() || looksLikeProse(normalized)) {
+        if (!STRUCTURED_RESOURCE_OR_MODULE.matcher(sanitized).find() || looksLikeProse(normalized)) {
             return invalid(sanitized, "generated Terraform is not a structurally usable HCL draft");
         }
         return new TerraformDraftValidation(true, sanitized, null);
