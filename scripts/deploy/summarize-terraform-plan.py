@@ -64,7 +64,7 @@ def public_exposure_findings(resource_type: str, after: Any) -> list[str]:
 
     if resource_type in {"aws_security_group_rule", "aws_vpc_security_group_ingress_rule"}:
         for path, value in walk(after):
-            if value in {"0.0.0.0/0", "::/0"}:
+            if isinstance(value, str) and value in {"0.0.0.0/0", "::/0"}:
                 findings.append(f"public ingress CIDR at {'.'.join(path)}")
 
     if resource_type == "aws_lb" and after.get("internal") is False:
@@ -80,7 +80,7 @@ def public_exposure_findings(resource_type: str, after: Any) -> list[str]:
 
     if resource_type == "aws_eks_cluster":
         for path, value in walk(after):
-            if value in {"0.0.0.0/0", "::/0"}:
+            if isinstance(value, str) and value in {"0.0.0.0/0", "::/0"}:
                 findings.append(f"EKS public endpoint CIDR at {'.'.join(path)}")
 
     return findings
