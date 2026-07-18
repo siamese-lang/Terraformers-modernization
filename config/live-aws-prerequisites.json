@@ -50,15 +50,17 @@
       "id": "runtime-dependencies",
       "directory": "infra/terraform/envs/backend-runtime-dependencies",
       "required_variables": [
+        "github_oidc_provider_arn",
         "upload_bucket_name",
         "result_bucket_name"
       ],
       "input_sources": {},
       "operator_inputs": [
+        "github_oidc_provider_arn",
         "upload_bucket_name",
         "result_bucket_name"
       ],
-      "live_prerequisite": "globally unique, account-scoped S3 bucket names"
+      "live_prerequisite": "existing GitHub Actions OIDC provider ARN and globally unique, account-scoped S3 bucket names"
     },
     {
       "id": "stateful-dependencies",
