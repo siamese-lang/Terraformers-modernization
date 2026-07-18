@@ -1,11 +1,6 @@
 name: Frontend Build and Delivery
 
 on:
-  push:
-    branches:
-      - agent/rdb-domain-realignment
-    paths:
-      - .github/workflows/frontend-delivery.yml
   workflow_dispatch:
     inputs:
       deploy_frontend:
