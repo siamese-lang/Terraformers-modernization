@@ -26,6 +26,14 @@ public class ProjectSourceObjectController {
         this.authenticatedUserService = authenticatedUserService;
     }
 
+    @GetMapping("/api/projects/{projectId}/source-image")
+    public ResponseEntity<byte[]> readSourceImage(
+            @PathVariable Long projectId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return service.readImageContent(projectId, optionalUser(jwt));
+    }
+
     @GetMapping("/api/projects/{projectId}/source-object")
     public SourceObjectReadResponse readSourceObject(
             @PathVariable Long projectId,

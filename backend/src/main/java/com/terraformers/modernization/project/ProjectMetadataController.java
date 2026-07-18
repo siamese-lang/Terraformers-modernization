@@ -11,6 +11,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,6 +50,15 @@ public class ProjectMetadataController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return service.get(projectId, optionalUser(jwt));
+    }
+
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long projectId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        service.delete(projectId, authenticatedUserService.getOrCreate(jwt));
+        return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{projectId}/visibility")

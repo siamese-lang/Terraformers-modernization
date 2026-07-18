@@ -18,7 +18,9 @@ function ChatItem({ item }) {
   if (item.type === 'user_image') {
     return (
       <article className="chat-item chat-item-user">
-        <div className="chat-bubble" dangerouslySetInnerHTML={{ __html: item.text }} />
+        <div className="chat-bubble">
+          <img src={item.imageUrl} alt={item.alt || 'uploaded architecture'} className="chat-upload-preview" />
+        </div>
       </article>
     );
   }
@@ -29,6 +31,9 @@ function ChatItem({ item }) {
         <div className="chat-avatar">T</div>
         <div className="chat-bubble">
           <p>{item.explanation}</p>
+          {item.components?.length > 0 && <p><strong>Components:</strong> {item.components.join(', ')}</p>}
+          {item.relationships?.length > 0 && <p><strong>Relationships:</strong> {item.relationships.join('; ')}</p>}
+          {item.warnings?.length > 0 && <p><strong>Warnings:</strong> {item.warnings.join('; ')}</p>}
           {item.projectId && (
             <p className="result-project-reference">
               프로젝트 #{item.projectId}가 내 프로젝트에 저장되었습니다.
@@ -98,6 +103,9 @@ function AiChat() {
             explanation: result.explanation,
             terraformCode: result.terraformCode,
             projectId: result.projectId,
+            components: result.components || [],
+            relationships: result.relationships || [],
+            warnings: result.warnings || [],
           };
         }
 

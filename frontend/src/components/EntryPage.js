@@ -80,7 +80,7 @@ function EntryPage() {
               <label htmlFor="email">Email</label>
               <input type="email" id="email" value={formData.email} onChange={handleInputChange} required />
               <label htmlFor="password">Password</label>
-              <input type="password" id="password" value={formData.password} onChange={handleInputChange} required />
+              <input type="password" id="password" value={formData.password} onChange={handleInputChange} autoComplete="current-password" required />
             </fieldset>
             <button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Submit'}</button>
             <button type="button" onClick={() => changeView('logIn')} disabled={loading}>Have an account?</button>
@@ -96,7 +96,7 @@ function EntryPage() {
               <label htmlFor="username">Email</label>
               <input type="text" id="username" value={formData.username} onChange={handleInputChange} required />
               <label htmlFor="password">Password</label>
-              <input type="password" id="password" value={formData.password} onChange={handleInputChange} required />
+              <input type="password" id="password" value={formData.password} onChange={handleInputChange} autoComplete="current-password" required />
               <button type="button" className="link-button" onClick={() => changeView('PWReset')}>Forgot Password?</button>
             </fieldset>
             <button type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>

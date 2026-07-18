@@ -41,7 +41,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 true,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         SourceObjectReadResponse response = service.read(42L, null);
@@ -76,7 +77,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 true,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         assertThatThrownBy(() -> service.read(42L, null))
@@ -97,7 +99,8 @@ class SourceObjectReaderServiceTest {
                 projectDomainService,
                 artifactService,
                 false,
-                () -> s3Client
+                () -> s3Client,
+                new StubObjectReader()
         );
 
         assertThatThrownBy(() -> service.read(42L, null))

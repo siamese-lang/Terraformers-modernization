@@ -54,6 +54,18 @@ public class AnalysisJobEntity {
     @Column(name = "result_preview", columnDefinition = "TEXT")
     private String resultPreview;
 
+    @Column(name = "analysis_summary", columnDefinition = "TEXT")
+    private String analysisSummary;
+
+    @Column(name = "detected_components", columnDefinition = "TEXT")
+    private String detectedComponents;
+
+    @Column(name = "detected_relationships", columnDefinition = "TEXT")
+    private String detectedRelationships;
+
+    @Column(name = "analysis_warnings", columnDefinition = "TEXT")
+    private String analysisWarnings;
+
     @Column(name = "failure_reason", length = 2000)
     private String failureReason;
 
@@ -169,6 +181,15 @@ public class AnalysisJobEntity {
     public void setResultPreview(String resultPreview) {
         this.resultPreview = resultPreview;
     }
+
+    public String getAnalysisSummary() { return analysisSummary; }
+    public void setAnalysisSummary(String analysisSummary) { this.analysisSummary = analysisSummary; }
+    public String getDetectedComponents() { return detectedComponents; }
+    public void setDetectedComponents(String detectedComponents) { this.detectedComponents = detectedComponents; }
+    public String getDetectedRelationships() { return detectedRelationships; }
+    public void setDetectedRelationships(String detectedRelationships) { this.detectedRelationships = detectedRelationships; }
+    public String getAnalysisWarnings() { return analysisWarnings; }
+    public void setAnalysisWarnings(String analysisWarnings) { this.analysisWarnings = analysisWarnings; }
 
     public String getFailureReason() {
         return failureReason;

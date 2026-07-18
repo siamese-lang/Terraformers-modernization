@@ -103,6 +103,8 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
   const [filePreview, setFilePreview] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sourceImageUrl, setSourceImageUrl] = useState('');
+  const [terraformContent, setTerraformContent] = useState('');
 
   const nodeCount = useMemo(() => flattenNodeCount(treeState.roots), [treeState.roots]);
 
@@ -112,13 +114,25 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
     const loadTree = async () => {
       setIsLoading(true);
       setError('');
+      if (sourceImageUrl) { URL.revokeObjectURL(sourceImageUrl); setSourceImageUrl(''); }
+      setTerraformContent('');
       try {
         const path = selectedProjectId
           ? `/api/project-tree/${encodeURIComponent(selectedProjectId)}`
           : '/api/project-tree';
         const response = await api.get(path);
         if (isMounted) {
-          setTreeState(normalizeTreeResponse(response.data, selectedProjectId));
+          const normalized = normalizeTreeResponse(response.data, selectedProjectId);
+          setTreeState(normalized);
+          const pid = normalized.metadata?.projectId || selectedProjectId;
+          if (pid) {
+            api.get(`/api/projects/${encodeURIComponent(pid)}/source-image`, { responseType: 'blob' })
+              .then((imageResponse) => { if (isMounted) setSourceImageUrl(URL.createObjectURL(imageResponse.data)); })
+              .catch(() => {});
+            api.get(`/api/projects/${encodeURIComponent(pid)}/terraform/main.tf`)
+              .then((draftResponse) => { if (isMounted) setTerraformContent(draftResponse.data?.content || ''); })
+              .catch(() => {});
+          }
         }
       } catch (loadError) {
         if (isMounted) {
@@ -138,6 +152,7 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
 
     return () => {
       isMounted = false;
+      if (sourceImageUrl) URL.revokeObjectURL(sourceImageUrl);
     };
   }, [selectedProjectId, refreshToken]);
 
@@ -170,7 +185,7 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
 
       <p className="muted-copy">
         업로드된 프로젝트의 source 참조와 최신 Terraform draft를 읽기 전용 트리로 표시합니다.
-        실행, 삭제, 이름 변경, 파일 생성은 아직 비활성화했습니다.
+        원본 이미지, 분석 결과와 전체 Terraform draft를 표시합니다. 삭제는 프로젝트 목록에서 가능합니다.
       </p>
 
       {treeState.metadata && (
@@ -190,6 +205,8 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
         </dl>
       )}
 
+      {sourceImageUrl && <section><h3>Original architecture image</h3><img src={sourceImageUrl} alt="Persisted architecture" className="project-source-image" /></section>}
+
       {error && <p className="project-tree-error">{error}</p>}
 
       {!error && treeState.roots.length === 0 && !isLoading && (
@@ -202,6 +219,13 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
             <ProjectTreeNode key={root.id} node={root} onFileClick={handleFileClick} />
           ))}
         </ul>
+      )}
+
+      {treeState.metadata && (
+        <section className="analysis-result-panel">
+          <h3>Full terraform/main.tf</h3>
+          {terraformContent ? <pre><code>{terraformContent}</code></pre> : <p>Terraform draft is not available yet.</p>}
+        </section>
       )}
 
       {selectedNode && (

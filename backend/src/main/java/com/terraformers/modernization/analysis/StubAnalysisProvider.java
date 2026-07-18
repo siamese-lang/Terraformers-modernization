@@ -62,6 +62,9 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 "stub-integrated-java",
                 terraformDraft,
                 explanation,
+                List.of("S3 artifact bucket", "SQS analysis event queue"),
+                List.of("analysis events are published to the queue after artifacts are persisted"),
+                List.of("Stub output is for local verification only; enable Bedrock for real image analysis."),
                 references.stream().map(ReferenceDocument::id).toList()
         );
     }

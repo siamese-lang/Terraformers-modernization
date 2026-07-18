@@ -12,17 +12,11 @@ import com.terraformers.modernization.storage.ObjectReference;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
-@Component
-@Primary
-@ConditionalOnProperty(prefix = "terraformers.analysis", name = "bedrock-provider-enabled", havingValue = "true")
 public class BedrockRuntimeAnalysisProvider implements AnalysisProvider {
 
     private static final String ANTHROPIC_VERSION = "bedrock-2023-05-31";
@@ -87,6 +81,9 @@ public class BedrockRuntimeAnalysisProvider implements AnalysisProvider {
                 terraformCode,
                 "Generated through Bedrock Runtime model " + modelId
                         + " using stored source metadata and " + references.size() + " retrieved reference document(s).",
+                List.of(),
+                List.of(),
+                List.of(),
                 resultReferences(metadata, references)
         );
     }

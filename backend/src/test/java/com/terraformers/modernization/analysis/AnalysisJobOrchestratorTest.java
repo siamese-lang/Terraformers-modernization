@@ -23,7 +23,7 @@ class AnalysisJobOrchestratorTest {
     void storesResultObjectKeyAndFileIdWhenAnalysisSucceeds() {
         AnalysisProvider provider = context -> new AnalysisResult(
                 "test-provider",
-                "provider \"aws\" {}",
+                "resource \"aws_s3_bucket\" \"accepted\" { bucket_prefix = \"accepted-\" }",
                 "test explanation",
                 List.of("reference-1")
         );
@@ -41,7 +41,8 @@ class AnalysisJobOrchestratorTest {
                 provider,
                 progressPublisher,
                 resultStorage,
-                artifactService
+                artifactService,
+                new TerraformDraftValidator()
         );
 
         AnalysisJobEntity job = sampleEntity(101L);
@@ -53,10 +54,10 @@ class AnalysisJobOrchestratorTest {
         assertThat(job.getResultFileId()).isEqualTo(301L);
         assertThat(job.getResultObjectKey()).startsWith("test-results/101/");
         assertThat(job.getResultObjectKey()).endsWith("/" + job.getId() + "/main.tf");
-        assertThat(job.getResultPreview()).contains("provider \"aws\"");
+        assertThat(job.getResultPreview()).contains("resource \"aws_s3_bucket\"");
         verify(artifactService).registerGeneratedTerraform(
                 101L,
-                "provider \"aws\" {}",
+                "resource \"aws_s3_bucket\" \"accepted\" { bucket_prefix = \"accepted-\" }",
                 new ObjectWriteResult("result-bucket", job.getResultObjectKey(), "stub-etag")
         );
         assertThat(progressPublisher.statuses()).containsExactly(
@@ -77,7 +78,8 @@ class AnalysisJobOrchestratorTest {
                 provider,
                 progressPublisher,
                 resultStorage,
-                artifactService
+                artifactService,
+                new TerraformDraftValidator()
         );
 
         AnalysisJobEntity job = sampleEntity(102L);

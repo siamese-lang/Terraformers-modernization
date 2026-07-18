@@ -27,6 +27,9 @@ class AnalysisResultStorageTest {
                 "stub",
                 "provider \"aws\" {}",
                 "explanation",
+                List.of("component"),
+                List.of("relationship"),
+                List.of(),
                 List.of("reference-1")
         ));
 
@@ -51,6 +54,9 @@ class AnalysisResultStorageTest {
                 "stub",
                 "provider \"aws\" {}",
                 "explanation",
+                List.of(),
+                List.of(),
+                List.of(),
                 List.of()
         ));
 

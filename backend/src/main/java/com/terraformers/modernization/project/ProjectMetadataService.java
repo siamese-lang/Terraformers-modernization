@@ -52,6 +52,10 @@ public class ProjectMetadataService {
     }
 
     @Transactional
+    public void delete(Long projectId, UserEntity currentUser) {
+        projectDomainService.softDelete(projectId, currentUser);
+    }
+
     public ProjectResponse updateVisibility(
             Long projectId,
             UserEntity currentUser,

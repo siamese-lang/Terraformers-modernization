@@ -12,30 +12,38 @@ public class AnalysisJobOrchestrator {
     private final ProgressPublisher progressPublisher;
     private final AnalysisResultStorage resultStorage;
     private final ProjectArtifactService projectArtifactService;
+    private final TerraformDraftValidator terraformDraftValidator;
 
     public AnalysisJobOrchestrator(
             AnalysisProvider analysisProvider,
             ProgressPublisher progressPublisher,
             AnalysisResultStorage resultStorage,
-            ProjectArtifactService projectArtifactService
+            ProjectArtifactService projectArtifactService,
+            TerraformDraftValidator terraformDraftValidator
     ) {
         this.analysisProvider = analysisProvider;
         this.progressPublisher = progressPublisher;
         this.resultStorage = resultStorage;
         this.projectArtifactService = projectArtifactService;
+        this.terraformDraftValidator = terraformDraftValidator;
     }
 
     public void run(AnalysisJobEntity entity) {
         try {
             markRunning(entity);
             AnalysisResult result = analysisProvider.analyze(toContext(entity));
-            ObjectWriteResult writeResult = resultStorage.storeTerraformDraft(entity, result);
+            TerraformDraftValidation validation = terraformDraftValidator.validate(result.terraformCode());
+            if (!validation.valid()) {
+                throw new IllegalStateException(validation.reason());
+            }
+            AnalysisResult sanitizedResult = result.withTerraformCode(validation.sanitizedContent());
+            ObjectWriteResult writeResult = resultStorage.storeTerraformDraft(entity, sanitizedResult);
             ProjectFileEntity resultFile = projectArtifactService.registerGeneratedTerraform(
                     entity.getProjectId(),
-                    result.terraformCode(),
+                    sanitizedResult.terraformCode(),
                     writeResult
             );
-            markSucceeded(entity, result, writeResult, resultFile);
+            markSucceeded(entity, sanitizedResult, writeResult, resultFile);
         } catch (RuntimeException exception) {
             markFailed(entity, exception);
         }
@@ -57,6 +65,10 @@ public class AnalysisJobOrchestrator {
         entity.setResultFileId(resultFile.getFileId());
         entity.setResultObjectKey(writeResult.key());
         entity.setResultPreview(result.preview());
+        entity.setAnalysisSummary(result.explanation());
+        entity.setDetectedComponents(String.join("\n", result.components() == null ? java.util.List.of() : result.components()));
+        entity.setDetectedRelationships(String.join("\n", result.relationships() == null ? java.util.List.of() : result.relationships()));
+        entity.setAnalysisWarnings(String.join("\n", result.warnings() == null ? java.util.List.of() : result.warnings()));
         progressPublisher.publish(ProgressEvent.of(entity, AnalysisJobStatus.SUCCEEDED, "analysis job completed"));
     }
 
