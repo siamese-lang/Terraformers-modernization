@@ -67,7 +67,7 @@ public class ProjectMetadataService {
     @Transactional(readOnly = true)
     public TerraformDraftResponse getTerraformDraft(Long projectId, UserEntity currentUser) {
         OwnedProjectEntity project = projectDomainService.requireAccessibleProject(projectId, currentUser);
-        ProjectFileEntity terraformFile = projectArtifactService.requireLatestTerraform(projectId);
+        ProjectFileEntity terraformFile = projectArtifactService.requireLatestJobTerraform(projectId);
         AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
                 .orElse(null);
         return TerraformDraftResponse.from(project, terraformFile, latestJob);

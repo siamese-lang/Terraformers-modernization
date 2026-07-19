@@ -1,6 +1,8 @@
 package com.terraformers.modernization.projectcore;
 
 import com.terraformers.modernization.identity.UserEntity;
+import com.terraformers.modernization.analysis.AnalysisJobEntity;
+import com.terraformers.modernization.analysis.AnalysisJobRepository;
 import com.terraformers.modernization.storage.ObjectWriteRequest;
 import com.terraformers.modernization.storage.ObjectWriteResult;
 import com.terraformers.modernization.storage.ObjectWriter;
@@ -25,17 +27,20 @@ public class ProjectArtifactService {
     private final ProjectFileRepository fileRepository;
     private final ProjectDomainService projectDomainService;
     private final ObjectWriter objectWriter;
+    private final AnalysisJobRepository analysisJobRepository;
 
     public ProjectArtifactService(
             OwnedProjectRepository projectRepository,
             ProjectFileRepository fileRepository,
             ProjectDomainService projectDomainService,
-            ObjectWriter objectWriter
+            ObjectWriter objectWriter,
+            AnalysisJobRepository analysisJobRepository
     ) {
         this.projectRepository = projectRepository;
         this.fileRepository = fileRepository;
         this.projectDomainService = projectDomainService;
         this.objectWriter = objectWriter;
+        this.analysisJobRepository = analysisJobRepository;
     }
 
     @Transactional
@@ -111,6 +116,35 @@ public class ProjectArtifactService {
     @Transactional(readOnly = true)
     public ProjectFileEntity requireLatestTerraform(Long projectId) {
         return requireLatest(projectId, GENERATED_TERRAFORM, "Terraform result");
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectFileEntity requireLatestJobSourceImage(Long projectId) {
+        AnalysisJobEntity job = requireLatestJob(projectId);
+        return requireFile(projectId, job.getSourceFileId(), "job source image");
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectFileEntity requireLatestJobTerraform(Long projectId) {
+        AnalysisJobEntity job = requireLatestJob(projectId);
+        if (job.getResultFileId() == null) {
+            throw new NoSuchElementException("Terraform result is unavailable for latest analysis job: " + projectId);
+        }
+        return requireFile(projectId, job.getResultFileId(), "job Terraform result");
+    }
+
+    private AnalysisJobEntity requireLatestJob(Long projectId) {
+        return analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
+                .orElseThrow(() -> new NoSuchElementException("analysis job not found for project: " + projectId));
+    }
+
+    private ProjectFileEntity requireFile(Long projectId, Long fileId, String label) {
+        ProjectFileEntity file = fileRepository.findByFileIdAndDeletedAtIsNull(fileId)
+                .orElseThrow(() -> new NoSuchElementException(label + " not found for project: " + projectId));
+        if (!file.getProject().getProjectId().equals(projectId)) {
+            throw new NoSuchElementException(label + " not found for project: " + projectId);
+        }
+        return file;
     }
 
     @Transactional
