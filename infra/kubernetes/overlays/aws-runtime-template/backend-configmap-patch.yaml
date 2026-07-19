@@ -7,10 +7,11 @@ data:
   AWS_REGION: "ap-northeast-2"
 
   # Production image analysis reads private S3 objects and invokes the configured Bedrock vision model.
-  # BEDROCK_MODEL_ID is supplied from the runtime Secret; IRSA model ARNs remain conditional in Terraform.
+  # The inference profile ID is public runtime configuration; AWS authorization remains controlled by IRSA.
   S3_READER_ENABLED: "true"
   S3_WRITER_ENABLED: "true"
   BEDROCK_PROVIDER_ENABLED: "true"
+  BEDROCK_MODEL_ID: "global.anthropic.claude-sonnet-4-6"
   BEDROCK_EMBEDDING_ENABLED: "false"
   OPENSEARCH_RETRIEVER_ENABLED: "false"
   ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
