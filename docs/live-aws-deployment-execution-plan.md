@@ -65,6 +65,7 @@ AWS_TERRAFORM_STATE_PREFIX
 Required GitHub environment secrets:
 
 ```text
+AWS_LIVE_FOUNDATION_TFVARS_B64
 AWS_LIVE_NETWORK_TFVARS_B64
 AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64
 AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64
@@ -74,10 +75,10 @@ AWS_LIVE_FRONTEND_TFVARS_B64
 
 별도 lock table 변수는 사용하지 않는다. Backend init은 `use_lockfile=true`를 사용한다.
 
-Stage state key 규칙:
+Runtime Terraform stage state key 규칙은 selector와 동일하며 변경하지 않는다.
 
 ```text
-<AWS_TERRAFORM_STATE_PREFIX>/<plan_stage>/terraform.tfstate
+<AWS_TERRAFORM_STATE_PREFIX>/<runtime-plan-stage>/terraform.tfstate
 ```
 
 예:
@@ -87,41 +88,30 @@ terraformers-modernization/dev/network/terraform.tfstate
 terraformers-modernization/dev/eks-runtime/terraform.tfstate
 ```
 
-## 4. Foundation bootstrap
-
-Terraform directory:
+Foundation bootstrap plan은 별도 state component를 사용한다.
 
 ```text
-infra/terraform/bootstrap/aws-live-foundation
+<AWS_TERRAFORM_STATE_PREFIX>/bootstrap/terraform.tfstate
+<AWS_TERRAFORM_STATE_PREFIX>/bootstrap/terraform.tfstate.tflock
 ```
 
-Foundation 생성 대상:
+## 4. Foundation bootstrap
 
-- versioning이 활성화된 private S3 state bucket
-- S3 public access block
-- TLS-only bucket policy
-- AES256 server-side encryption
-- S3 native state 및 `.tflock` object 권한
-- 기존 GitHub IAM OIDC provider 재사용 또는 신규 생성
-- `aws-live-plan` environment subject만 신뢰하는 Terraform plan role
-- AWS `ReadOnlyAccess` 및 state prefix 한정 write 권한
+Foundation은 runtime Terraform plan 5단계(`network`, `runtime-dependencies`, `stateful-dependencies`, `eks-runtime`, `frontend-delivery`)에 포함되지 않는 별도 bootstrap plan target이다. Runtime 배포 계약과 그 다섯 runtime state key는 변경하지 않는다.
 
-Foundation은 최초 1회 local state로 시작한다. 다음 순서를 바꾸지 않는다.
+Foundation plan은 기존 `AWS Live Terraform Plan` workflow(`.github/workflows/aws-live-terraform-plan.yml`)에서 `plan_stage=foundation`으로 실행한다. 기존 protected GitHub Environment `aws-live-plan`, GitHub OIDC plan 역할, S3 remote state 및 native `.tflock` lockfile을 그대로 재사용한다.
 
-1. exact AWS account와 기존 OIDC provider를 확인한다.
-2. private bootstrap tfvars를 저장소 밖에 작성한다.
-3. `scripts/deploy/plan-live-foundation.sh`로 plan을 생성하고 검증한다.
-4. create-only resource set, role trust, S3 보호 설정, binary plan digest를 검토한다.
-5. 사용자가 foundation apply를 명시적으로 승인한다.
-6. 검토한 binary plan만 apply한다.
-7. AWS API와 Terraform output으로 생성 결과를 읽기 전용 검증한다.
-8. local bootstrap state의 백업을 만든다.
-9. private backend configuration을 작성한다.
-10. `terraform init -migrate-state`로 bootstrap state를 생성된 S3 backend로 이전한다.
-11. remote state와 local backup의 resource address를 비교한다.
-12. migration 후 plan이 `No changes`인지 확인한다.
+Terraform directory와 private secret은 다음과 같다.
 
-Foundation apply와 state migration은 같은 작업으로 취급하지 않는다. Apply 검증이 끝나기 전에 state migration을 시작하지 않는다.
+```text
+Terraform directory: infra/terraform/bootstrap/aws-live-foundation
+GitHub Environment secret: AWS_LIVE_FOUNDATION_TFVARS_B64
+Remote state key: <AWS_TERRAFORM_STATE_PREFIX>/bootstrap/terraform.tfstate
+```
+
+이 plan-only 실행은 apply 역할과 관련된 네 개의 create를 포함한 foundation 변경을 검토하기 위한 것이다. Saved Terraform plan, ephemeral JSON risk analysis 및 sanitized evidence만 생성하며 raw tfvars, base64 tfvars, raw plan JSON, binary plan, backend configuration, state는 artifact로 업로드하지 않는다.
+
+Foundation apply는 별도의 명시적 승인 전에는 실행하지 않는다. 이 workflow는 `terraform apply`나 `terraform destroy`를 실행하지 않으며 AWS mutation을 추가하지 않는다.
 
 ## 승인형 eks-runtime apply 사전 구성
 
@@ -143,7 +133,7 @@ Foundation apply는 다음 조건이 모두 충족된 경우에만 승인 대상
 
 1. PR head와 local head가 일치한다.
 2. 최신 8개 automatic verification workflow가 모두 성공한다.
-3. `scripts/deploy/plan-live-foundation.sh` 결과가 `apply-review-ready`다.
+3. `AWS Live Terraform Plan` workflow의 foundation plan evidence와 sanitized risk summary가 검토 완료 상태다.
 4. OIDC provider mode가 실제 AWS inventory와 일치한다.
 5. plan이 예상된 foundation resource만 포함한다.
 6. 모든 managed action이 `create`다.
@@ -253,6 +243,8 @@ Terraform plan selector:
 | `eks-runtime` | `infra/terraform/envs/eks-runtime` | network/runtime/stateful output review |
 | `frontend-delivery` | `infra/terraform/envs/frontend-delivery` | healthy controller-created internal ALB ARN |
 
+`foundation`은 이 runtime selector 표에 포함되지 않는 bootstrap plan target이며 `infra/terraform/bootstrap/aws-live-foundation`을 사용한다. State component는 `bootstrap`이다.
+
 `frontend-delivery`는 internal ALB ARN이 실제 AWS에 존재한 뒤에만 계획한다.
 
 ## 10. Guarded plan workflow
@@ -274,7 +266,7 @@ execute_live_plan=false
 ```text
 execute_live_plan=true
 expected_aws_account_id=<12 digit account ID>
-plan_stage=<one of five selectors>
+plan_stage=<foundation or one of five runtime selectors>
 allow_destructive=false
 allow_optional_adapters=false
 ```

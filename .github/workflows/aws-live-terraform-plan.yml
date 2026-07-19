@@ -13,6 +13,7 @@ on:
         required: true
         type: choice
         options:
+          - foundation
           - network
           - runtime-dependencies
           - stateful-dependencies
@@ -254,6 +255,7 @@ jobs:
       - name: Resolve Terraform stage and private tfvars
         id: stage
         env:
+          FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
           NETWORK_TFVARS_B64: ${{ secrets.AWS_LIVE_NETWORK_TFVARS_B64 }}
           RUNTIME_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64 }}
           STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
@@ -262,25 +264,35 @@ jobs:
         run: |
           set -euo pipefail
           case '${{ inputs.plan_stage }}' in
+            foundation)
+              TF_DIR='infra/terraform/bootstrap/aws-live-foundation'
+              TFVARS_B64="${FOUNDATION_TFVARS_B64}"
+              STATE_COMPONENT='bootstrap'
+              ;;
             network)
               TF_DIR='infra/terraform/envs/aws-runtime-network'
               TFVARS_B64="${NETWORK_TFVARS_B64}"
+              STATE_COMPONENT='network'
               ;;
             runtime-dependencies)
               TF_DIR='infra/terraform/envs/backend-runtime-dependencies'
               TFVARS_B64="${RUNTIME_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='runtime-dependencies'
               ;;
             stateful-dependencies)
               TF_DIR='infra/terraform/envs/backend-stateful-dependencies'
               TFVARS_B64="${STATEFUL_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='stateful-dependencies'
               ;;
             eks-runtime)
               TF_DIR='infra/terraform/envs/eks-runtime'
               TFVARS_B64="${EKS_TFVARS_B64}"
+              STATE_COMPONENT='eks-runtime'
               ;;
             frontend-delivery)
               TF_DIR='infra/terraform/envs/frontend-delivery'
               TFVARS_B64="${FRONTEND_TFVARS_B64}"
+              STATE_COMPONENT='frontend-delivery'
               ;;
             *)
               echo 'Unsupported plan stage.' >&2
@@ -294,6 +306,7 @@ jobs:
           printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
           test -s "${RUNNER_TEMP}/live.auto.tfvars"
           printf 'tf_dir=%s\n' "${TF_DIR}" >> "${GITHUB_OUTPUT}"
+          printf 'state_component=%s\n' "${STATE_COMPONENT}" >> "${GITHUB_OUTPUT}"
           printf 'tfvars_path=%s\n' "${RUNNER_TEMP}/live.auto.tfvars" >> "${GITHUB_OUTPUT}"
           sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
             | awk '{print $1}' > artifacts/aws-live-terraform-plan/tfvars.sha256
@@ -315,7 +328,7 @@ jobs:
           fi
           cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
           bucket       = "${STATE_BUCKET}"
-          key          = "${STATE_PREFIX}/${{ inputs.plan_stage }}/terraform.tfstate"
+          key          = "${STATE_PREFIX}/${{ steps.stage.outputs.state_component }}/terraform.tfstate"
           region       = "${AWS_REGION}"
           encrypt      = true
           use_lockfile = true

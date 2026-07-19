@@ -87,6 +87,14 @@ assert_contains '^public_entrypoint=cloudfront-only$' "${PLAN_DIR}/plan-summary.
 assert_contains '^terraform_apply_automated=false$' "${PLAN_DIR}/plan-summary.txt" "Terraform apply must not be automated."
 assert_contains '^terraform_destroy_automated=false$' "${PLAN_DIR}/plan-summary.txt" "Terraform destroy must not be automated."
 
+assert_contains 'workflow_dispatch:' "${LIVE_WORKFLOW}" "Live plan workflow must support manual dispatch."
+assert_contains '^[[:space:]]*-[[:space:]]+foundation$' "${LIVE_WORKFLOW}" "Manual plan_stage choices must include foundation."
+assert_contains 'AWS_LIVE_FOUNDATION_TFVARS_B64' "${LIVE_WORKFLOW}" "Foundation private tfvars secret is missing."
+assert_contains "TF_DIR='infra/terraform/bootstrap/aws-live-foundation'" "${LIVE_WORKFLOW}" "Foundation must use its bootstrap Terraform directory."
+assert_contains "STATE_COMPONENT='bootstrap'" "${LIVE_WORKFLOW}" "Foundation state component must be bootstrap."
+assert_contains "state_component=%s" "${LIVE_WORKFLOW}" "Stage resolution must export state_component."
+assert_contains "GITHUB_OUTPUT" "${LIVE_WORKFLOW}" "Stage resolution must write outputs to GitHub output."
+assert_contains 'key[[:space:]]*=[[:space:]]*"\${STATE_PREFIX}/\${\{ steps.stage.outputs.state_component \}\}/terraform\.tfstate"' "${LIVE_WORKFLOW}" "Backend key must use the resolved state component."
 assert_contains 'execute_live_plan:' "${LIVE_WORKFLOW}" "Live plan workflow needs an explicit execution switch."
 assert_contains 'default:[[:space:]]*false' "${LIVE_WORKFLOW}" "Live AWS planning must default to contract-only."
 assert_contains 'environment:[[:space:]]*aws-live-plan' "${LIVE_WORKFLOW}" "Live planning must use the protected aws-live-plan environment."
@@ -96,6 +104,7 @@ assert_not_contains 'secrets\.AWS_ACCESS_KEY_ID|secrets\.AWS_SECRET_ACCESS_KEY' 
 assert_contains 'terraform -chdir="\$\{TF_DIR\}" plan' "${LIVE_WORKFLOW}" "Saved Terraform plan command is missing."
 assert_contains 'terraform -chdir="\$\{TF_DIR\}" show -json' "${LIVE_WORKFLOW}" "Terraform plan JSON must be generated ephemerally for sanitization."
 assert_not_contains '(^|[[:space:]])terraform[[:space:]]+(apply|destroy)([[:space:]]|$)' "${LIVE_WORKFLOW}" "Terraform apply/destroy must not exist in the plan workflow."
+assert_not_contains 'terraform -chdir="infra/terraform/bootstrap/aws-live-foundation"[[:space:]]+(apply|destroy)' "${LIVE_WORKFLOW}" "Foundation must remain a plan-only target."
 assert_not_contains 'kubectl[[:space:]]+apply|helm[[:space:]]+(install|upgrade)|aws[[:space:]]+s3[[:space:]]+sync|cloudfront[[:space:]]+create-invalidation' "${LIVE_WORKFLOW}" "Mutation commands must not exist in the plan workflow."
 assert_contains 'rm -f .*live-plan\.json.*live\.tfplan.*live\.auto\.tfvars' "${LIVE_WORKFLOW}" "Raw plan and private tfvars must be deleted before artifact upload."
 assert_contains 'raw_plan_uploaded=false' "${LIVE_WORKFLOW}" "Evidence must state that raw plans are not uploaded."
@@ -208,6 +217,8 @@ printf '%s\n' \
   'live_deployment_plan_contract=passed' \
   'stage_count=12' \
   'terraform_plan_stage_count=5' \
+  'foundation_bootstrap_plan_supported=true' \
+  'foundation_state_component=bootstrap' \
   'plan_workflow=guarded-oidc' \
   'environment_gate=aws-live-plan' \
   'expected_account_check=required' \
