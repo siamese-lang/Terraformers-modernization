@@ -107,10 +107,22 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         } catch (BedrockOutputTruncatedException exception) {
             logCall(context, modelId, attempt, promptMode, exception.getStopReason(), exception.getOutputTokens(), true, startedAt);
             throw exception;
+        } catch (ArchitectureInputRejectedException exception) {
+            logRejectedCall(context, modelId, attempt, promptMode, exception, startedAt);
+            throw exception;
         } catch (RuntimeException exception) {
             logFailedCall(context, modelId, attempt, promptMode, exception, startedAt);
             throw exception;
         }
+    }
+
+    private void logRejectedCall(AnalysisRequestContext context, String modelId, int attempt, BedrockPromptMode promptMode,
+            ArchitectureInputRejectedException exception, long startedAt) {
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.warn("Bedrock analysis call rejected: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} inputType={} classificationConfidence={} maxTokens={} outcome={} errorType={} elapsedMs={}",
+                context.jobId(), context.projectId(), modelId, attempt, promptMode, exception.getInputType(),
+                exception.getClassificationConfidence(), properties.getBedrockMaxTokens(), "REJECTED",
+                exception.getClass().getSimpleName(), elapsedMs);
     }
 
     private void logCall(

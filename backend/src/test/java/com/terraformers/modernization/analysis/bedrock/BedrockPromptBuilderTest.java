@@ -41,6 +41,9 @@ class BedrockPromptBuilderTest {
         assertThat(request).doesNotContain("terraformCode");
         assertThat(request).doesNotContain("Return JSON only");
         assertThat(request).contains("Do not include markdown fences or surrounding prose.");
+        assertThat(request).contains("inputType", "classificationConfidence", "classificationReason");
+        assertThat(request).doesNotContain("ARCHITECTURE_DIAGRAM | NON_ARCHITECTURE_IMAGE | AMBIGUOUS");
+        assertThat(request).contains("must be exactly one of `ARCHITECTURE_DIAGRAM`, `NON_ARCHITECTURE_IMAGE`, or `AMBIGUOUS`");
         assertThat(request).contains("components");
         assertThat(request).contains("relationships");
         assertThat(request).contains("VPC pattern");
@@ -75,7 +78,9 @@ class BedrockPromptBuilderTest {
 
         String request = builder.buildClaudeVisionRequest(content, List.of(), 8192, BedrockPromptMode.COMPACT);
 
-        assertThat(request).contains("<analysis_json>", "<terraform_hcl>");
+        assertThat(request).contains("<analysis_json>", "<terraform_hcl>", "inputType");
+        assertThat(request).contains("leave the contents between `<terraform_hcl>` and `</terraform_hcl>` completely empty",
+                "Do not accept an image solely because it contains AWS or cloud icons");
         assertThat(request).contains("Use count, for_each, or other concise expressions for repeated resource types");
         assertThat(request).contains("Do not include secrets, account IDs, access keys, static credentials");
         assertThat(objectMapper.readTree(request).path("max_tokens").asInt()).isEqualTo(8192);

@@ -16,6 +16,9 @@ public class BedrockPromptBuilder {
     public static final String RESPONSE_SCHEMA = """
             <analysis_json>
             {
+              "inputType": "ARCHITECTURE_DIAGRAM",
+              "classificationConfidence": 0.0,
+              "classificationReason": "one short sentence explaining the classification",
               "summary": "concise architecture summary",
               "components": ["detected service or component names"],
               "relationships": ["directed relationship descriptions"],
@@ -23,7 +26,7 @@ public class BedrockPromptBuilder {
             }
             </analysis_json>
             <terraform_hcl>
-            complete Terraform HCL containing resource or module blocks
+            resource "example" "architecture" {}
             </terraform_hcl>
             """;
 
@@ -83,17 +86,21 @@ public class BedrockPromptBuilder {
                 .collect(Collectors.joining("\n"));
 
         return """
-                Analyze the architecture diagram image and return exactly these two tagged sections, once each:
+                Analyze the image and return exactly these two tagged sections, once each:
                 %s
 
                 Requirements:
                 - Do not include markdown fences or surrounding prose.
                 - Do not include `terraformCode` in `analysis_json`.
-                - `terraform_hcl` must be raw Terraform HCL, not a JSON string, and must include real `resource` or `module` blocks.
+                - `inputType` must be exactly one of `ARCHITECTURE_DIAGRAM`, `NON_ARCHITECTURE_IMAGE`, or `AMBIGUOUS`.
+                - First classify `inputType`. ARCHITECTURE_DIAGRAM requires deployable system components and at least one identifiable connection, flow, dependency, containment, network boundary, or tier relationship that explains a system, deployment, network, service integration, or data flow.
+                - Accept cloud, on-premises, WEB/WAS/DB, Kubernetes, API/message-flow, hand-drawn, and ordinary boxes-and-arrows architecture diagrams. Do not accept an image solely because it contains AWS or cloud icons.
+                - Classify photos, logos, isolated icons, memes, posters, banners, application or console UI screenshots, documents, tables, receipts, unrelated charts, and unconnected cloud-icon collections as NON_ARCHITECTURE_IMAGE. Use AMBIGUOUS when system meaning or relationships cannot be determined, labels are insufficient, or the diagram is cropped.
+                - For NON_ARCHITECTURE_IMAGE or AMBIGUOUS, return empty summary/components/relationships/warnings and leave the contents between `<terraform_hcl>` and `</terraform_hcl>` completely empty; do not infer resources, produce examples, recommendations, templates, or any Terraform.
+                - Only for ARCHITECTURE_DIAGRAM, `terraform_hcl` must be raw Terraform HCL, not a JSON string, and must include real `resource` or `module` blocks.
                 - Keep Terraform concise and limited to what is needed to describe the analyzed architecture; do not duplicate resources or add verbose comments.
                 - Do not include secrets, account IDs, access keys, static credentials, public S3 URLs, or real ARNs.
                 - Use placeholders or variables for account-specific values.
-                - If the diagram is ambiguous, still include the best-effort components/relationships and put uncertainty in `warnings`.
 
                 %s
 
