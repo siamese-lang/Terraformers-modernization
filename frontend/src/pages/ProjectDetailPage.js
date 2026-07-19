@@ -139,7 +139,7 @@ function ProjectDetailPage() {
       <section className="project-danger-zone" aria-labelledby="project-delete-title">
         <h2 id="project-delete-title">프로젝트 관리</h2>
         <h3>프로젝트 삭제</h3>
-        <p>원본 이미지, 분석 결과 및 공개 프로젝트 노출 정보가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+        <p>프로젝트가 내 프로젝트와 공개 화면에서 제거되며, 더 이상 결과에 접근할 수 없습니다. 이 작업은 되돌릴 수 없습니다.</p>
         {deleteError && <p role="alert" className="error">{deleteError}</p>}
         <ProjectDeleteButton projectId={projectId} projectName={project.displayName || `Project ${projectId}`} onError={setDeleteError} onDeleted={() => navigate('/projects', { replace: true, state: { message: '프로젝트가 삭제되었습니다.' } })} />
       </section>

@@ -7,9 +7,10 @@ function ProjectDeleteButton({ projectId, projectName, onDeleted, onError, class
 
   const remove = async () => {
     if (isDeleting) return;
-    if (!window.confirm(`"${projectName}" 프로젝트를 삭제하시겠습니까?\n삭제된 이미지와 분석 결과는 복구할 수 없습니다.`)) return;
+    if (!window.confirm(`"${projectName}" 프로젝트를 삭제하시겠습니까?\n프로젝트가 내 프로젝트와 공개 화면에서 제거되며,\n더 이상 결과에 접근할 수 없습니다.\n이 작업은 되돌릴 수 없습니다.`)) return;
 
     setError('');
+    onError?.('');
     setIsDeleting(true);
     try {
       await api.delete(`/api/projects/${encodeURIComponent(projectId)}`);
