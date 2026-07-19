@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ProjectDetailPage from './ProjectDetailPage';
 import api from '../utils/api';
 
-jest.mock('../utils/api', () => ({ get: jest.fn() }));
+jest.mock('../utils/api', () => ({ get: jest.fn(), patch: jest.fn() }));
 const renderPage = () => render(<MemoryRouter initialEntries={['/projects/7']}><Routes><Route path="/projects/:projectId" element={<ProjectDetailPage />} /></Routes></MemoryRouter>);
 
-beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); global.URL.createObjectURL = jest.fn(() => 'blob:source'); global.URL.revokeObjectURL = jest.fn(); });
-afterEach(() => jest.useRealTimers());
+beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); jest.spyOn(window, 'confirm').mockReturnValue(true); global.URL.createObjectURL = jest.fn(() => 'blob:source'); global.URL.revokeObjectURL = jest.fn(); });
+afterEach(() => { window.confirm.mockRestore(); jest.useRealTimers(); });
 
 test('polls metadata only until success, then loads each job-linked artifact once', async () => {
   let metadataCalls = 0;
@@ -52,4 +52,67 @@ test('shows safe failure reason and link to start a new analysis', async () => {
   renderPage();
   expect(await screen.findByText('AI 모델의 응답 시간이 초과되었습니다. 잠시 후 새 분석을 시작해 주세요.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: '새 분석 시작' })).toHaveAttribute('href', '/generate');
+});
+
+const project = (visibility) => ({ displayName: 'Diagram', visibility, analysisStatus: 'SUCCEEDED', sourceFileId: null, resultFileId: null });
+
+test('shows a private project visibility and its publish control', async () => {
+  api.get.mockResolvedValue({ data: project('PRIVATE') });
+
+  renderPage();
+
+  expect(await screen.findByText('공개 범위: PRIVATE')).toBeInTheDocument();
+  expect(screen.getByText('소유자만 조회할 수 있습니다.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '공개하기' })).toBeInTheDocument();
+});
+
+test('publishes a private project and updates the displayed project from the PATCH response', async () => {
+  api.get.mockResolvedValue({ data: project('PRIVATE') });
+  api.patch.mockResolvedValue({ data: project('PUBLIC') });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole('button', { name: '공개하기' }));
+
+  await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/projects/7/visibility', { visibility: 'PUBLIC' }));
+  expect(window.confirm).toHaveBeenCalled();
+  expect(await screen.findByText('공개 범위: PUBLIC')).toBeInTheDocument();
+  expect(screen.getByText('커뮤니티에서 누구나 조회할 수 있습니다.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '비공개로 전환' })).toBeInTheDocument();
+  expect(api.get.mock.calls.filter(([url]) => url === '/api/projects/7')).toHaveLength(1);
+});
+
+test('requests a private visibility change for a public project', async () => {
+  api.get.mockResolvedValue({ data: project('PUBLIC') });
+  api.patch.mockResolvedValue({ data: project('PRIVATE') });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole('button', { name: '비공개로 전환' }));
+
+  await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/api/projects/7/visibility', { visibility: 'PRIVATE' }));
+  expect(await screen.findByText('공개 범위: PRIVATE')).toBeInTheDocument();
+});
+
+test('disables the visibility button while the PATCH request is pending', async () => {
+  api.get.mockResolvedValue({ data: project('PRIVATE') });
+  let resolvePatch;
+  api.patch.mockImplementation(() => new Promise((resolve) => { resolvePatch = resolve; }));
+  renderPage();
+
+  fireEvent.click(await screen.findByRole('button', { name: '공개하기' }));
+
+  expect(screen.getByRole('button', { name: '변경 중...' })).toBeDisabled();
+  resolvePatch({ data: project('PUBLIC') });
+  expect(await screen.findByRole('button', { name: '비공개로 전환' })).toBeInTheDocument();
+});
+
+test('shows a visibility error and keeps the existing visibility when PATCH fails', async () => {
+  api.get.mockResolvedValue({ data: project('PUBLIC') });
+  api.patch.mockRejectedValue({ response: { data: '공개 범위를 변경할 권한이 없습니다.' } });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole('button', { name: '비공개로 전환' }));
+
+  expect(await screen.findByText('공개 범위 변경 실패: 공개 범위를 변경할 권한이 없습니다.')).toBeInTheDocument();
+  expect(screen.getByText('공개 범위: PUBLIC')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '비공개로 전환' })).toBeInTheDocument();
 });
