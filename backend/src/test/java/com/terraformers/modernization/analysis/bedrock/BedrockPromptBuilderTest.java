@@ -34,7 +34,13 @@ class BedrockPromptBuilderTest {
         assertThat(root.path("max_tokens").asInt()).isEqualTo(2048);
         assertThat(request).doesNotContain("example-bucket");
         assertThat(request).doesNotContain("uploads/diagram.png");
-        assertThat(request).contains("terraformCode");
+        assertThat(request).contains("<analysis_json>");
+        assertThat(request).contains("</analysis_json>");
+        assertThat(request).contains("<terraform_hcl>");
+        assertThat(request).contains("</terraform_hcl>");
+        assertThat(request).doesNotContain("terraformCode");
+        assertThat(request).doesNotContain("Return JSON only");
+        assertThat(request).contains("Do not include markdown fences or surrounding prose.");
         assertThat(request).contains("components");
         assertThat(request).contains("relationships");
         assertThat(request).contains("VPC pattern");
