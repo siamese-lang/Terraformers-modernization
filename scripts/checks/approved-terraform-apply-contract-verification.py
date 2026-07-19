@@ -37,7 +37,10 @@ def verify_workflow() -> None:
     plan = PLAN_WORKFLOW.read_text(encoding="utf-8")
     for text in (
         "- foundation", "- eks-runtime", "default: eks-runtime",
-        "foundation apply is only supported by direct workflow_dispatch.",
+        "CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}",
+        "foundation apply requires workflow_dispatch.",
+        "${GITHUB_REPOSITORY}/.github/workflows/aws-live-terraform-apply.yml@",
+        "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
         "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_IN_PLACE_UPDATE",
@@ -50,6 +53,7 @@ def verify_workflow() -> None:
     ):
         contains(apply, text)
     contains(plan, "uses: ./.github/workflows/aws-live-terraform-apply.yml")
+    assert "foundation apply requires workflow_dispatch." not in plan
     contains(plan, "inputs.plan_stage == 'eks-runtime'")
     contains(plan, "execute_approved_apply requires plan_stage=eks-runtime.")
     for forbidden in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
