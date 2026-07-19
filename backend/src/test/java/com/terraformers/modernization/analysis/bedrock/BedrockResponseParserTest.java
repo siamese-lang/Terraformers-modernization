@@ -118,14 +118,23 @@ class BedrockResponseParserTest {
     }
 
     @Test
-    void rejectsNonArchitectureAndAmbiguousInputsWithoutReturningTerraform() throws Exception {
-        for (String inputType : List.of("NON_ARCHITECTURE_IMAGE", "AMBIGUOUS")) {
-            assertThatThrownBy(() -> parser.parse(claudeResponse("""
-                    <analysis_json>{"inputType":"%s","classificationConfidence":0.5,"classificationReason":"The system structure is not identifiable.","summary":"","components":[],"relationships":[],"warnings":[]}</analysis_json>
-                    <terraform_hcl>resource "aws_s3_bucket" "must_not_be_used" {}</terraform_hcl>
-                    """.formatted(inputType))))
-                    .isInstanceOf(ArchitectureInputRejectedException.class);
-        }
+    void rejectsNonArchitectureImageWithBlankHclAndPreservesClassificationMetadata() throws Exception {
+        assertRejectedInput("NON_ARCHITECTURE_IMAGE", 0.98, "");
+    }
+
+    @Test
+    void rejectsAmbiguousImageWithBlankHclAndPreservesClassificationMetadata() throws Exception {
+        assertRejectedInput("AMBIGUOUS", 0.4, "");
+    }
+
+    @Test
+    void rejectsNonArchitectureInputWithGeneratedHclWithoutReturningResult() throws Exception {
+        assertRejectedInput("NON_ARCHITECTURE_IMAGE", 0.5, "resource \"aws_s3_bucket\" \"must_not_be_used\" {}");
+    }
+
+    @Test
+    void rejectsArchitectureDiagramWithBlankTerraformHcl() throws Exception {
+        assertFormatFailure("<analysis_json>{\"inputType\":\"ARCHITECTURE_DIAGRAM\",\"classificationConfidence\":0.95,\"classificationReason\":\"Components have relationships.\",\"summary\":\"S3\"}</analysis_json><terraform_hcl></terraform_hcl>");
     }
 
     @Test
@@ -161,6 +170,17 @@ class BedrockResponseParserTest {
         assertThatThrownBy(() -> parser.parse(claudeResponse(text)))
                 .isInstanceOf(BedrockResponseFormatException.class)
                 .hasMessageContaining("format");
+    }
+
+    private void assertRejectedInput(String inputType, double confidence, String terraform) throws Exception {
+        assertThatThrownBy(() -> parser.parse(claudeResponse("""
+                <analysis_json>{"inputType":"%s","classificationConfidence":%s,"classificationReason":"The system structure is not identifiable.","summary":"","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <terraform_hcl>%s</terraform_hcl>
+                """.formatted(inputType, confidence, terraform))))
+                .isInstanceOfSatisfying(ArchitectureInputRejectedException.class, exception -> {
+                    assertThat(exception.getInputType()).isEqualTo(ArchitectureInputType.valueOf(inputType));
+                    assertThat(exception.getClassificationConfidence()).isEqualTo(confidence);
+                });
     }
 
     private String claudeResponse(String text) throws Exception {

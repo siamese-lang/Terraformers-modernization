@@ -16,7 +16,7 @@ public class BedrockPromptBuilder {
     public static final String RESPONSE_SCHEMA = """
             <analysis_json>
             {
-              "inputType": "ARCHITECTURE_DIAGRAM | NON_ARCHITECTURE_IMAGE | AMBIGUOUS",
+              "inputType": "ARCHITECTURE_DIAGRAM",
               "classificationConfidence": 0.0,
               "classificationReason": "one short sentence explaining the classification",
               "summary": "concise architecture summary",
@@ -26,7 +26,7 @@ public class BedrockPromptBuilder {
             }
             </analysis_json>
             <terraform_hcl>
-            complete Terraform HCL containing resource or module blocks
+            resource "example" "architecture" {}
             </terraform_hcl>
             """;
 
@@ -92,10 +92,11 @@ public class BedrockPromptBuilder {
                 Requirements:
                 - Do not include markdown fences or surrounding prose.
                 - Do not include `terraformCode` in `analysis_json`.
+                - `inputType` must be exactly one of `ARCHITECTURE_DIAGRAM`, `NON_ARCHITECTURE_IMAGE`, or `AMBIGUOUS`.
                 - First classify `inputType`. ARCHITECTURE_DIAGRAM requires deployable system components and at least one identifiable connection, flow, dependency, containment, network boundary, or tier relationship that explains a system, deployment, network, service integration, or data flow.
                 - Accept cloud, on-premises, WEB/WAS/DB, Kubernetes, API/message-flow, hand-drawn, and ordinary boxes-and-arrows architecture diagrams. Do not accept an image solely because it contains AWS or cloud icons.
                 - Classify photos, logos, isolated icons, memes, posters, banners, application or console UI screenshots, documents, tables, receipts, unrelated charts, and unconnected cloud-icon collections as NON_ARCHITECTURE_IMAGE. Use AMBIGUOUS when system meaning or relationships cannot be determined, labels are insufficient, or the diagram is cropped.
-                - For NON_ARCHITECTURE_IMAGE or AMBIGUOUS, return empty summary/components/relationships/warnings and an empty `terraform_hcl`; do not infer resources, produce examples, recommendations, templates, or any Terraform.
+                - For NON_ARCHITECTURE_IMAGE or AMBIGUOUS, return empty summary/components/relationships/warnings and leave the contents between `<terraform_hcl>` and `</terraform_hcl>` completely empty; do not infer resources, produce examples, recommendations, templates, or any Terraform.
                 - Only for ARCHITECTURE_DIAGRAM, `terraform_hcl` must be raw Terraform HCL, not a JSON string, and must include real `resource` or `module` blocks.
                 - Keep Terraform concise and limited to what is needed to describe the analyzed architecture; do not duplicate resources or add verbose comments.
                 - Do not include secrets, account IDs, access keys, static credentials, public S3 URLs, or real ARNs.
