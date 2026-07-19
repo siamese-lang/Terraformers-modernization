@@ -8,6 +8,7 @@ public record ProjectCommentResponse(
         Long id,
         Long projectId,
         String content,
+        String authorDisplayName,
         String userEmail,
         Instant createdAt
 ) {
@@ -17,17 +18,24 @@ public record ProjectCommentResponse(
                 entity.getBoard().getProject().getProjectId(),
                 entity.getContent(),
                 displayAuthor(entity.getAuthor()),
+                safeEmail(entity.getAuthor()),
                 entity.getCreatedAt()
         );
     }
 
     private static String displayAuthor(UserEntity author) {
-        if (author.getEmail() != null && !author.getEmail().isBlank()) {
-            return author.getEmail();
-        }
         if (author.getDisplayName() != null && !author.getDisplayName().isBlank()) {
             return author.getDisplayName();
         }
-        return author.getCognitoSub();
+        return safeEmail(author) != null ? safeEmail(author) : "사용자";
+    }
+
+    private static String safeEmail(UserEntity author) {
+        if (author.getEmail() == null || author.getEmail().isBlank()) {
+            return null;
+        }
+        String email = author.getEmail().strip();
+        int at = email.indexOf('@');
+        return at > 0 ? email.substring(0, 1) + "***" + email.substring(at) : "사용자";
     }
 }

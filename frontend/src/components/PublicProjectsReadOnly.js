@@ -17,22 +17,6 @@ function projectNameOf(project) {
   return project.projectName || project.name || projectIdOf(project) || 'Untitled project';
 }
 
-function sourceSummary(project) {
-  if (project.originalFilename) {
-    return project.originalFilename;
-  }
-  if (project.sourceBucket && project.sourceKey) {
-    return `s3://${project.sourceBucket}/${project.sourceKey}`;
-  }
-  return 'No source metadata yet';
-}
-
-function storageSummary(project) {
-  const provider = project.sourceStorageProvider || 'metadata-only';
-  const persisted = project.sourceBinaryPersisted ? 'persisted' : 'metadata only';
-  return `${provider} · ${persisted}`;
-}
-
 function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [projects, setProjects] = useState([]);
   const [comments, setComments] = useState([]);
@@ -130,7 +114,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Public projects</p>
-          <h2>Shared projects and comments</h2>
+          <h2>공개 프로젝트 선택</h2>
         </div>
         <button type="button" className="compact-button" onClick={loadPublicProjects} disabled={isLoading}>
           {isLoading ? 'loading' : 'refresh'}
@@ -159,11 +143,23 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                   type="button"
                   className={isSelected ? 'public-project-card selected' : 'public-project-card'}
                   onClick={() => handleSelectProject(project)}
+                  aria-pressed={isSelected}
                 >
+                  <span className="public-project-thumbnail">
+                    {project.imageUrl ? (
+                      <img
+                        src={project.imageUrl}
+                        alt={`${projectNameOf(project)} 미리보기`}
+                        loading="lazy"
+                        onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.nextSibling.hidden = false; }}
+                      />
+                    ) : null}
+                    <span hidden={Boolean(project.imageUrl)} className="public-project-placeholder">미리보기 없음</span>
+                  </span>
                   <span className="public-project-title">{projectNameOf(project)}</span>
-                  <span className="public-project-meta">{project.visibility || 'PUBLIC'}</span>
-                  <span className="public-project-source">{sourceSummary(project)}</span>
-                  <span className="public-project-source">{storageSummary(project)}</span>
+                  <span className="public-project-badge">PUBLIC</span>
+                  <span className="public-project-source">{project.originalFilename || '원본 파일명 없음'}</span>
+                  <span className="public-project-meta">{project.updatedAt ? new Date(project.updatedAt).toLocaleString() : '수정 시각 없음'}</span>
                 </button>
               </li>
             );
@@ -189,7 +185,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                 {comments.map((comment) => (
                   <li key={comment.id || `${comment.projectId}-${comment.createdAt}`} className="public-comment-item">
                     <div className="public-comment-meta">
-                      <span>{comment.userEmail || 'authenticated user'}</span>
+                      <span>{comment.authorDisplayName || comment.userEmail || '사용자'}</span>
                       <span>{comment.createdAt ? new Date(comment.createdAt).toLocaleString() : ''}</span>
                     </div>
                     <p>{comment.content}</p>

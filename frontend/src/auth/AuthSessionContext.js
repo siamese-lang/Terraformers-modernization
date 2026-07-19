@@ -11,6 +11,7 @@ import {
   getCurrentUser,
   signOut,
 } from 'aws-amplify/auth';
+import api from '../utils/api';
 
 const AuthSessionContext = createContext(undefined);
 
@@ -36,8 +37,14 @@ export function AuthSessionProvider({ children }) {
       const currentUser = await getCurrentUser();
       const attributes = await fetchUserAttributes();
 
-      setUser(normalizeUser(currentUser, attributes));
+      const normalizedUser = normalizeUser(currentUser, attributes);
+      setUser(normalizedUser);
       setStatus('authenticated');
+      if (normalizedUser.nickname.trim()) {
+        api.patch('/api/users/me/display-name', { displayName: normalizedUser.nickname }).catch(() => {
+          // Profile synchronization is intentionally best-effort and must not affect login.
+        });
+      }
       return true;
     } catch (authError) {
       setUser(null);

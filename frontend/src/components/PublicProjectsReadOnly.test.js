@@ -57,3 +57,18 @@ test('select handler delegates selection without duplicating comment requests', 
   expect(onSelectProject).toHaveBeenCalledWith(publicProjects[1]);
   expect(api.get.mock.calls.filter(([url]) => url.startsWith('/api/getProjectComments/'))).toHaveLength(0);
 });
+
+test('renders a lazy thumbnail and author display name without storage metadata', async () => {
+  api.get.mockImplementation((url) => {
+    if (url === '/api/public-projects') {
+      return Promise.resolve({ data: [{ projectId: 303, projectName: 'Image project', imageUrl: '/api/projects/303/source-image', originalFilename: 'diagram.png' }] });
+    }
+    return Promise.resolve({ data: [{ id: 'c2', projectId: '303', content: 'hello', authorDisplayName: '별명', userEmail: 'hidden@example.com' }] });
+  });
+  render(<PublicProjectsReadOnly selectedProjectId="303" onSelectProject={jest.fn()} />);
+
+  const image = await screen.findByAltText('Image project 미리보기');
+  expect(image).toHaveAttribute('loading', 'lazy');
+  expect(await screen.findByText('별명')).toBeInTheDocument();
+  expect(screen.queryByText(/metadata-only|s3:\/\//i)).not.toBeInTheDocument();
+});
