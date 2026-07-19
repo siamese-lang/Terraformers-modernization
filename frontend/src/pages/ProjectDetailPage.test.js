@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ProjectDetailPage from './ProjectDetailPage';
 import api from '../utils/api';
 
-jest.mock('../utils/api', () => ({ get: jest.fn(), patch: jest.fn() }));
+jest.mock('../utils/api', () => ({ get: jest.fn(), patch: jest.fn(), delete: jest.fn() }));
 const renderPage = () => render(<MemoryRouter initialEntries={['/projects/7']}><Routes><Route path="/projects/:projectId" element={<ProjectDetailPage />} /></Routes></MemoryRouter>);
 
 beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); jest.spyOn(window, 'confirm').mockReturnValue(true); global.URL.createObjectURL = jest.fn(() => 'blob:source'); global.URL.revokeObjectURL = jest.fn(); });
@@ -115,4 +115,22 @@ test('shows a visibility error and keeps the existing visibility when PATCH fail
   expect(await screen.findByText('공개 범위 변경 실패: 공개 범위를 변경할 권한이 없습니다.')).toBeInTheDocument();
   expect(screen.getByText('공개 범위: PUBLIC')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '비공개로 전환' })).toBeInTheDocument();
+});
+
+test('deletes from the detail danger zone and replaces the detail route', async () => {
+  api.get.mockResolvedValue({ data: project('PRIVATE') });
+  api.delete.mockResolvedValue({});
+  render(<MemoryRouter initialEntries={['/projects/7']}><Routes><Route path="/projects/:projectId" element={<ProjectDetailPage />} /><Route path="/projects" element={<p>목록으로 이동</p>} /></Routes></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Diagram 프로젝트 삭제' }));
+  await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/api/projects/7'));
+  expect(await screen.findByText('목록으로 이동')).toBeInTheDocument();
+});
+
+test('keeps detail content and separates deletion failure from visibility errors', async () => {
+  api.get.mockResolvedValue({ data: project('PUBLIC') });
+  api.delete.mockRejectedValue(new Error('internal details'));
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: 'Diagram 프로젝트 삭제' }));
+  expect(await screen.findByText('프로젝트 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.')).toBeInTheDocument();
+  expect(screen.getByText('공개 범위: PUBLIC')).toBeInTheDocument();
 });
