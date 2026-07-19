@@ -177,10 +177,24 @@ class ProjectMetadataControllerTest {
                 .andExpect(jsonPath("$[0].sourceKey").value(startsWith("browser-uploads/" + publicProjectId + "/")))
                 .andExpect(jsonPath("$[0].sourceStorageProvider").value("metadata-only"))
                 .andExpect(jsonPath("$[0].sourceBinaryPersisted").value(false))
+                .andExpect(jsonPath("$[0].imageUrl").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$[0].latestResultFileId").isNumber())
                 .andExpect(jsonPath("$[0].projectTreeApiPath").value("/api/project-tree/" + publicProjectId))
                 .andExpect(jsonPath("$[0].terraformDraftApiPath")
                         .value("/api/projects/" + publicProjectId + "/terraform/main.tf"));
+    }
+
+    @Test
+    void publicProjectImageUrlIsReturnedOnlyForPersistedSource() throws Exception {
+        Long projectId = upload("Persisted.png");
+        AnalysisJobEntity job = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId).orElseThrow();
+        ProjectFileEntity source = projectFileRepository.findById(job.getSourceFileId()).orElseThrow();
+        source.setBinaryPersisted(true);
+        projectFileRepository.save(source);
+        publishProject(projectId);
+        mockMvc.perform(get("/api/public-projects"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].imageUrl").value("/api/projects/" + projectId + "/source-image"));
     }
 
     @Test

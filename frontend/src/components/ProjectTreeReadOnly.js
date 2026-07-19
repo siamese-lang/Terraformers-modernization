@@ -205,28 +205,25 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
             <dd>{treeState.metadata.visibility}</dd>
           </div>
           <div>
-            <dt>Latest job</dt>
-            <dd>{treeState.metadata.latestAnalysisJobId || '-'}</dd>
-          </div>
-          <div>
             <dt>Analysis status</dt>
             <dd>{treeState.metadata.analysisStatus || 'NO_ANALYSIS'}</dd>
           </div>
         </dl>
       )}
 
-      {sourceImageUrl && <section><h3>Original architecture image</h3><img src={sourceImageUrl} alt="Persisted architecture" className="project-source-image" /></section>}
+      {sourceImageUrl && <section className="project-source-image-section"><h3>Original architecture image</h3><div className="project-source-image-wrapper"><img src={sourceImageUrl} alt="Persisted architecture" className="project-source-image" /></div></section>}
 
       {treeState.metadata && (
         <section className="analysis-detail-panel">
-          <h3>Analysis summary</h3>
+          <section className="analysis-detail-card"><h3>Analysis summary</h3>
           <p>{treeState.metadata.analysisSummary || 'No analysis summary is available yet.'}</p>
-          <h4>Detected components</h4>
+          </section><section className="analysis-detail-card"><h4>Detected components</h4>
           {treeState.metadata.detectedComponents.length > 0 ? <ul>{treeState.metadata.detectedComponents.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No components have been recorded.</p>}
-          <h4>Relationships</h4>
+          </section><section className="analysis-detail-card"><h4>Relationships</h4>
           {treeState.metadata.detectedRelationships.length > 0 ? <ul>{treeState.metadata.detectedRelationships.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No relationships have been recorded.</p>}
-          <h4>Warnings</h4>
+          </section><section className="analysis-detail-card"><h4>Warnings</h4>
           {treeState.metadata.warnings.length > 0 ? <ul>{treeState.metadata.warnings.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No warnings.</p>}
+          </section>
         </section>
       )}
 
@@ -237,11 +234,11 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
       )}
 
       {treeState.roots.length > 0 && (
-        <ul className="project-tree-list">
+        <section className="project-tree-technical"><h3>Project tree and file preview</h3>{treeState.metadata?.latestAnalysisJobId && <p className="muted-copy">Latest job: {treeState.metadata.latestAnalysisJobId}</p>}<ul className="project-tree-list">
           {treeState.roots.map((root) => (
             <ProjectTreeNode key={root.id} node={root} onFileClick={handleFileClick} />
           ))}
-        </ul>
+        </ul></section>
       )}
 
       {treeState.metadata && (

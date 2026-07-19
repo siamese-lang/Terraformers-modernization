@@ -52,4 +52,20 @@ class AuthenticatedUserServiceTest {
         assertThat(created.getRole()).isEqualTo(UserRole.USER);
         assertThat(created.getStatus()).isEqualTo(UserStatus.ACTIVE);
     }
+
+    @Test
+    void uuidOnlyAccessTokenDoesNotOverwriteCustomDisplayName() {
+        UserEntity existing = new UserEntity();
+        existing.setCognitoSub("subject");
+        existing.setDisplayName("Custom nickname");
+        existing.setStatus(UserStatus.ACTIVE);
+        Jwt accessToken = Jwt.withTokenValue("access-token").header("alg", "none")
+                .claim("sub", "subject").claim("cognito:username", "123e4567-e89b-12d3-a456-426614174000").build();
+        when(userRepository.findByCognitoSub("subject")).thenReturn(Optional.of(existing));
+
+        UserEntity actual = service.getOrCreate(accessToken);
+
+        assertThat(actual.getDisplayName()).isEqualTo("Custom nickname");
+        verify(userRepository, never()).save(existing);
+    }
 }

@@ -28,15 +28,17 @@ public class AuthenticatedUserService {
         if (email != null) {
             email = email.toLowerCase(Locale.ROOT);
         }
-        String displayName = resolveDisplayName(jwt, email, cognitoSub);
+        String explicitDisplayName = explicitDisplayName(jwt);
+        String displayName = explicitDisplayName != null
+                ? explicitDisplayName : fallbackDisplayName(jwt, email, cognitoSub);
 
         String resolvedEmail = email;
         return userRepository.findByCognitoSub(cognitoSub)
-                .map(existing -> synchronize(existing, resolvedEmail, displayName))
+                .map(existing -> synchronize(existing, resolvedEmail, explicitDisplayName))
                 .orElseGet(() -> createWithRetry(cognitoSub, resolvedEmail, displayName));
     }
 
-    private UserEntity synchronize(UserEntity existing, String email, String displayName) {
+    private UserEntity synchronize(UserEntity existing, String email, String explicitDisplayName) {
         if (email != null) {
             userRepository.findByEmail(email)
                     .filter(other -> !Objects.equals(other.getUserId(), existing.getUserId()))
@@ -50,8 +52,10 @@ public class AuthenticatedUserService {
             existing.setEmail(email);
             changed = true;
         }
-        if (!Objects.equals(displayName, existing.getDisplayName())) {
-            existing.setDisplayName(displayName);
+        // Access tokens commonly provide only a UUID-like cognito:username. Do not
+        // let that fallback erase a nickname explicitly saved by the user.
+        if (explicitDisplayName != null && !Objects.equals(explicitDisplayName, existing.getDisplayName())) {
+            existing.setDisplayName(explicitDisplayName);
             changed = true;
         }
         if (existing.getStatus() != UserStatus.ACTIVE) {
@@ -78,17 +82,35 @@ public class AuthenticatedUserService {
             return userRepository.save(user);
         } catch (DataIntegrityViolationException exception) {
             return userRepository.findByCognitoSub(cognitoSub)
-                    .map(existing -> synchronize(existing, email, displayName))
+                    .map(existing -> synchronize(existing, email, null))
                     .orElseThrow(() -> exception);
         }
     }
 
-    private String resolveDisplayName(Jwt jwt, String email, String cognitoSub) {
-        String displayName = firstNonBlank(
+    @Transactional
+    public UserEntity updateCurrentDisplayName(Jwt jwt, String displayName) {
+        UserEntity user = getOrCreate(jwt);
+        String normalized = normalizeDisplayName(displayName);
+        if (!normalized.equals(user.getDisplayName())) {
+            user.setDisplayName(normalized);
+            return userRepository.save(user);
+        }
+        return user;
+    }
+
+    private String explicitDisplayName(Jwt jwt) {
+        String displayName = firstNonBlankOrNull(
                 jwt.getClaimAsString("name"),
                 jwt.getClaimAsString("preferred_username"),
-                jwt.getClaimAsString("cognito:username"),
+                jwt.getClaimAsString("nickname")
+        );
+        return displayName == null ? null : normalizeDisplayName(displayName);
+    }
+
+    private String fallbackDisplayName(Jwt jwt, String email, String cognitoSub) {
+        String displayName = firstNonBlank(
                 email,
+                jwt.getClaimAsString("cognito:username"),
                 cognitoSub
         );
         return displayName.length() <= 100 ? displayName : displayName.substring(0, 100);
@@ -123,5 +145,25 @@ public class AuthenticatedUserService {
             }
         }
         throw new IllegalStateException("display name could not be resolved");
+    }
+
+    private String firstNonBlankOrNull(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeDisplayName(String displayName) {
+        if (displayName == null || displayName.isBlank()) {
+            throw new IllegalArgumentException("displayName must not be blank");
+        }
+        String normalized = displayName.strip();
+        if (normalized.length() > 100) {
+            throw new IllegalArgumentException("displayName exceeds maximum length 100");
+        }
+        return normalized;
     }
 }

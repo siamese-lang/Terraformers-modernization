@@ -39,7 +39,9 @@ public record PublicProjectResponse(
                 displayName,
                 project.visibility(),
                 project.visibility() != ProjectVisibility.PUBLIC,
-                null,
+                project.sourceFileId() != null && project.sourceBinaryPersisted()
+                        ? "/api/projects/" + projectId + "/source-image"
+                        : null,
                 project.description(),
                 project.sourceFileId(),
                 project.originalFilename(),
