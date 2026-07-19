@@ -10,6 +10,9 @@ import java.util.List;
 import java.net.SocketTimeoutException;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import software.amazon.awssdk.core.exception.ApiCallAttemptTimeoutException;
+import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 class AnalysisJobRunnerTest {
 
@@ -76,5 +79,35 @@ class AnalysisJobRunnerTest {
         new AnalysisJobRunner(orchestrator, stateService).run("job-1");
 
         verify(stateService).markFailed("job-1", AnalysisJobRunner.GENERIC_FAILURE_REASON);
+    }
+
+    @Test
+    void apiCallAttemptTimeoutMarksJobFailedWithSafeTimeoutMessage() {
+        assertFailureReason(ApiCallAttemptTimeoutException.builder().message("attempt timed out").build(),
+                AnalysisJobRunner.TIMEOUT_FAILURE_REASON);
+    }
+
+    @Test
+    void apiCallTimeoutMarksJobFailedWithSafeTimeoutMessage() {
+        assertFailureReason(ApiCallTimeoutException.builder().message("call timed out").build(),
+                AnalysisJobRunner.TIMEOUT_FAILURE_REASON);
+    }
+
+    @Test
+    void generalSdkClientExceptionMarksJobFailedWithGenericMessage() {
+        assertFailureReason(SdkClientException.builder().message("connection reset").build(),
+                AnalysisJobRunner.GENERIC_FAILURE_REASON);
+    }
+
+    private void assertFailureReason(RuntimeException exception, String expectedReason) {
+        AnalysisJobOrchestrator orchestrator = mock(AnalysisJobOrchestrator.class);
+        AnalysisJobStateService stateService = mock(AnalysisJobStateService.class);
+        AnalysisJobEntity running = new AnalysisJobEntity();
+        when(stateService.markRunning("job-1")).thenReturn(running);
+        when(orchestrator.executeProviderAndStoreDraft(running)).thenThrow(exception);
+
+        new AnalysisJobRunner(orchestrator, stateService).run("job-1");
+
+        verify(stateService).markFailed("job-1", expectedReason);
     }
 }

@@ -37,24 +37,6 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             BedrockPromptBuilder promptBuilder,
             BedrockResponseParser responseParser
     ) {
-        this(
-                bedrockRuntimeClient,
-                objectReader,
-                referenceRetriever,
-                properties,
-                promptBuilder,
-                responseParser
-        );
-    }
-
-    BedrockAnalysisProvider(
-            BedrockRuntimeClient bedrockRuntimeClient,
-            ObjectReader objectReader,
-            ReferenceRetriever referenceRetriever,
-            AnalysisRuntimeProperties properties,
-            BedrockPromptBuilder promptBuilder,
-            BedrockResponseParser responseParser
-    ) {
         this.bedrockRuntimeClient = bedrockRuntimeClient;
         this.objectReader = objectReader;
         this.referenceRetriever = referenceRetriever;

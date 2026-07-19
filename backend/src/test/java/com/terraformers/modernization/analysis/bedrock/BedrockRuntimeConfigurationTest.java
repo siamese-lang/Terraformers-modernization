@@ -2,10 +2,29 @@ package com.terraformers.modernization.analysis.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 
 class BedrockRuntimeConfigurationTest {
+
+    private String originalRegion;
+
+    @BeforeEach
+    void setRegionForClientCreation() {
+        originalRegion = System.getProperty("aws.region");
+        System.setProperty("aws.region", "ap-northeast-2");
+    }
+
+    @AfterEach
+    void restoreRegion() {
+        if (originalRegion == null) {
+            System.clearProperty("aws.region");
+        } else {
+            System.setProperty("aws.region", originalRegion);
+        }
+    }
 
     @Test
     void createsBedrockClientWithExplicitTimeoutHierarchy() {
