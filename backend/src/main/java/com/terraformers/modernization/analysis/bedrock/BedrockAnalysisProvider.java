@@ -11,7 +11,6 @@ import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.SdkBytes;
@@ -30,8 +29,8 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
     private final BedrockPromptBuilder promptBuilder;
     private final BedrockResponseParser responseParser;
 
-    @Autowired
     public BedrockAnalysisProvider(
+            BedrockRuntimeClient bedrockRuntimeClient,
             ObjectReader objectReader,
             ReferenceRetriever referenceRetriever,
             AnalysisRuntimeProperties properties,
@@ -39,7 +38,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             BedrockResponseParser responseParser
     ) {
         this(
-                BedrockRuntimeClient.builder().build(),
+                bedrockRuntimeClient,
                 objectReader,
                 referenceRetriever,
                 properties,
