@@ -93,7 +93,8 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 }
 
 locals {
-  github_oidc_provider_arn = local.create_oidc_provider ? aws_iam_openid_connect_provider.github_actions[0].arn : var.existing_github_oidc_provider_arn
+  github_oidc_provider_arn     = local.create_oidc_provider ? aws_iam_openid_connect_provider.github_actions[0].arn : var.existing_github_oidc_provider_arn
+  terraform_apply_oidc_subject = "repo:${var.github_repository}:environment:${var.apply_github_environment}"
 }
 
 data "aws_iam_policy_document" "github_actions_assume_role" {
@@ -192,4 +193,73 @@ resource "aws_iam_role_policy" "terraform_state_access" {
   name   = "terraformers-live-state-access"
   role   = aws_iam_role.terraform_plan.id
   policy = data.aws_iam_policy_document.terraform_state_access.json
+}
+
+data "aws_iam_policy_document" "github_actions_apply_assume_role" {
+  statement {
+    sid     = "GitHubApplyEnvironmentOIDC"
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = [local.terraform_apply_oidc_subject]
+    }
+  }
+}
+
+resource "aws_iam_role" "terraform_apply" {
+  name                 = var.apply_role_name
+  assume_role_policy   = data.aws_iam_policy_document.github_actions_apply_assume_role.json
+  max_session_duration = 3600
+  tags                 = var.common_tags
+
+  lifecycle {
+    precondition {
+      condition     = try(split(":", var.approved_apply_iam_policy_arn)[4], "") == var.expected_aws_account_id
+      error_message = "approved_apply_iam_policy_arn must belong to expected_aws_account_id."
+    }
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_apply_read_only" {
+  role       = aws_iam_role.terraform_apply.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy" "terraform_apply_state_access" {
+  name   = "terraformers-live-apply-state-access"
+  role   = aws_iam_role.terraform_apply.id
+  policy = data.aws_iam_policy_document.terraform_state_access.json
+}
+
+data "aws_iam_policy_document" "terraform_apply_iam_mutation" {
+  statement {
+    sid    = "UpdateApprovedBackendRuntimeAccessPolicy"
+    effect = "Allow"
+    actions = [
+      "iam:CreatePolicyVersion",
+      "iam:SetDefaultPolicyVersion",
+      "iam:DeletePolicyVersion",
+    ]
+    resources = [var.approved_apply_iam_policy_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "terraform_apply_iam_mutation" {
+  name   = "terraformers-live-apply-approved-policy-mutation"
+  role   = aws_iam_role.terraform_apply.id
+  policy = data.aws_iam_policy_document.terraform_apply_iam_mutation.json
 }
