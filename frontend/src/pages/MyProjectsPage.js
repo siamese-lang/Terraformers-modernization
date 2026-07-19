@@ -22,7 +22,6 @@ function MyProjectsPage() {
     setError('');
     try {
       await api.delete(`/api/projects/${encodeURIComponent(project.projectId)}`);
-      if (selectedProjectId === project.projectId) setSelectedProjectId(null);
       setRefreshToken((value) => value + 1);
     } catch (err) {
       setError(err?.response?.data || err.message || '프로젝트 삭제에 실패했습니다.');
@@ -40,6 +39,7 @@ function MyProjectsPage() {
         {projects.length === 0 ? <p>아직 프로젝트가 없습니다.</p> : projects.map((project) => (
           <article key={project.projectId} className="project-list-item">
             <button type="button" onClick={() => setSelectedProjectId(project.projectId)}>{project.displayName || `Project ${project.projectId}`}</button>
+            <a href={`/projects/${project.projectId}`}>상세 보기</a>
             <span>{project.analysisStatus || 'NO_ANALYSIS'}</span>
             <button type="button" className="danger-button" disabled={deletingId === project.projectId} onClick={() => deleteProject(project)}>{deletingId === project.projectId ? '삭제 중...' : 'Delete'}</button>
           </article>
