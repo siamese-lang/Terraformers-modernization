@@ -193,7 +193,13 @@ jobs:
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
         run: |
           set -euo pipefail
-          if ! rg -q 'backend[[:space:]]+"s3"' "${TF_DIR}" -g '*.tf'; then printf 'terraform { backend "s3" {} }\n' > "${TF_DIR}/zz-live-backend.tf"; fi
+          if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+          fi
           cat > "${RUNNER_TEMP}/backend.hcl" <<BACKEND_CONFIG
           bucket = "${STATE_BUCKET}"
           key = "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate"
