@@ -167,12 +167,24 @@ class ProjectCommentControllerTest {
         Long projectId = upload("UUID Comment.png");
         publishProject(projectId);
         mockMvc.perform(post("/api/projects/" + projectId + "/comments")
-                        .with(jwt().jwt(builder -> builder.subject("123e4567-e89b-12d3-a456-426614174000")
+                        .with(jwt().jwt(builder -> builder.subject("c468bd6c-e001-70a9-e0d2-31d6bcde9501")
                                 .claim("email", "uuid@example.com")))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"safe\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.authorDisplayName").value("u***@example.com"))
-                .andExpect(jsonPath("$.authorDisplayName").value(org.hamcrest.Matchers.not("123e4567-e89b-12d3-a456-426614174000")));
+                .andExpect(jsonPath("$.authorDisplayName").value(org.hamcrest.Matchers.not("c468bd6c-e001-70a9-e0d2-31d6bcde9501")));
+    }
+
+    @Test
+    void emailDisplayNameIsMaskedInsteadOfBeingPublished() throws Exception {
+        Long projectId = upload("Email Comment.png");
+        publishProject(projectId);
+        mockMvc.perform(post("/api/projects/" + projectId + "/comments")
+                        .with(jwt().jwt(builder -> builder.subject("email-name-user")
+                                .claim("email", "same@example.com").claim("name", "same@example.com")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"safe\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorDisplayName").value("s***@example.com"));
     }
 
     @Test

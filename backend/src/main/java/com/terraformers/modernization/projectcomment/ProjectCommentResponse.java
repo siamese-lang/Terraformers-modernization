@@ -13,7 +13,7 @@ public record ProjectCommentResponse(
         Instant createdAt
 ) {
     private static final String UUID_PATTERN =
-            "(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+            "(?i)^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$";
     static ProjectCommentResponse from(CommentEntity entity) {
         return new ProjectCommentResponse(
                 entity.getCommentId(),
@@ -36,6 +36,7 @@ public record ProjectCommentResponse(
         String displayName = author.getDisplayName();
         return displayName != null && !displayName.isBlank()
                 && !displayName.strip().equals(author.getCognitoSub())
+                && (author.getEmail() == null || !displayName.strip().equalsIgnoreCase(author.getEmail().strip()))
                 && !displayName.strip().matches(UUID_PATTERN);
     }
 
