@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import com.terraformers.modernization.storage.ObjectWriteResult;
 import com.terraformers.modernization.analysis.bedrock.BedrockOutputTruncatedException;
 import com.terraformers.modernization.analysis.bedrock.BedrockResponseFormatException;
+import com.terraformers.modernization.analysis.bedrock.ArchitectureInputRejectedException;
+import com.terraformers.modernization.analysis.bedrock.ArchitectureInputType;
 import java.util.List;
 import java.net.SocketTimeoutException;
 import org.junit.jupiter.api.Test;
@@ -109,6 +111,12 @@ class AnalysisJobRunnerTest {
     @Test
     void invalidBedrockFormatMarksJobFailedWithSafeMessage() {
         assertFailureReason(new BedrockResponseFormatException("response body details"), AnalysisJobRunner.FORMAT_FAILURE_REASON);
+    }
+
+    @Test
+    void rejectedArchitectureInputMarksJobFailedWithDedicatedMessage() {
+        assertFailureReason(new ArchitectureInputRejectedException(ArchitectureInputType.NON_ARCHITECTURE_IMAGE, 0.98),
+                AnalysisJobRunner.REJECTED_INPUT_FAILURE_REASON);
     }
 
     private void assertFailureReason(RuntimeException exception, String expectedReason) {

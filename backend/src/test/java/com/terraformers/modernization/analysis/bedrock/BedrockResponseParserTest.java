@@ -18,7 +18,7 @@ class BedrockResponseParserTest {
     void parsesTaggedAnalysisJsonAndRawTerraformHcl() throws Exception {
         ParsedBedrockAnalysis parsed = parser.parse(claudeResponse("""
                 <analysis_json>
-                {"summary":"VPC with public web tier","components":["VPC","ALB"],"relationships":["ALB routes to web tier"],"warnings":["CIDRs are inferred"]}
+                {"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"VPC with public web tier","components":["VPC","ALB"],"relationships":["ALB routes to web tier"],"warnings":["CIDRs are inferred"]}
                 </analysis_json>
                 <terraform_hcl>
                 resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }
@@ -37,7 +37,7 @@ class BedrockResponseParserTest {
     @Test
     void parsesResponseWhenAnalysisJsonAndTerraformHclEachAppearExactlyOnce() throws Exception {
         ParsedBedrockAnalysis parsed = parser.parse(claudeResponse("""
-                <analysis_json>{"summary":"S3 bucket","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"S3 bucket","components":[],"relationships":[],"warnings":[]}</analysis_json>
                 <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
                 """));
 
@@ -53,8 +53,8 @@ class BedrockResponseParserTest {
     @Test
     void rejectsDuplicateRequiredTag() throws Exception {
         assertFormatFailure("""
-                <analysis_json>{"summary":"S3"}</analysis_json>
-                <analysis_json>{"summary":"duplicate"}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"S3"}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"duplicate"}</analysis_json>
                 <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
                 """);
     }
@@ -67,7 +67,7 @@ class BedrockResponseParserTest {
     @Test
     void doesNotThrowIllegalStateExceptionForValidTaggedResponse() throws Exception {
         assertThatCode(() -> parser.parse(claudeResponse("""
-                <analysis_json>{"summary":"S3","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"S3","components":[],"relationships":[],"warnings":[]}</analysis_json>
                 <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
                 """)))
                 .doesNotThrowAnyException();
@@ -76,7 +76,7 @@ class BedrockResponseParserTest {
     @Test
     void preservesQuotesNewlinesAndInterpolationInRawHcl() throws Exception {
         ParsedBedrockAnalysis parsed = parser.parse(claudeResponse("""
-                <analysis_json>{"summary":"S3 bucket","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"S3 bucket","components":[],"relationships":[],"warnings":[]}</analysis_json>
                 <terraform_hcl>
                 resource "aws_s3_bucket" "logs" {
                   bucket = "${var.name}-logs"
@@ -104,7 +104,7 @@ class BedrockResponseParserTest {
     @Test
     void preservesNormalStopReasonAndOutputTokens() throws Exception {
         ParsedBedrockAnalysis parsed = parser.parse(claudeResponse(
-                "<analysis_json>{\"summary\":\"S3\",\"components\":[],\"relationships\":[],\"warnings\":[]}</analysis_json>"
+                "<analysis_json>{\"inputType\":\"ARCHITECTURE_DIAGRAM\",\"classificationConfidence\":0.95,\"classificationReason\":\"Components have relationships.\",\"summary\":\"S3\",\"components\":[],\"relationships\":[],\"warnings\":[]}</analysis_json>"
                         + "<terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>",
                 Map.of("stop_reason", "end_turn", "usage", Map.of("output_tokens", 321))));
 
@@ -115,6 +115,25 @@ class BedrockResponseParserTest {
     @Test
     void rejectsInvalidAnalysisJson() throws Exception {
         assertFormatFailure("<analysis_json>{invalid}</analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
+    }
+
+    @Test
+    void rejectsNonArchitectureAndAmbiguousInputsWithoutReturningTerraform() throws Exception {
+        for (String inputType : List.of("NON_ARCHITECTURE_IMAGE", "AMBIGUOUS")) {
+            assertThatThrownBy(() -> parser.parse(claudeResponse("""
+                    <analysis_json>{"inputType":"%s","classificationConfidence":0.5,"classificationReason":"The system structure is not identifiable.","summary":"","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                    <terraform_hcl>resource "aws_s3_bucket" "must_not_be_used" {}</terraform_hcl>
+                    """.formatted(inputType))))
+                    .isInstanceOf(ArchitectureInputRejectedException.class);
+        }
+    }
+
+    @Test
+    void rejectsMissingOrInvalidClassificationMetadata() throws Exception {
+        assertFormatFailure("<analysis_json>{\"summary\":\"S3\"}</analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
+        assertFormatFailure("<analysis_json>{\"inputType\":\"UNKNOWN\",\"classificationConfidence\":0.5,\"classificationReason\":\"reason\",\"summary\":\"S3\"}</analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
+        assertFormatFailure("<analysis_json>{\"inputType\":\"ARCHITECTURE_DIAGRAM\",\"classificationConfidence\":1.1,\"classificationReason\":\"reason\",\"summary\":\"S3\"}</analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
+        assertFormatFailure("<analysis_json>{\"inputType\":\"ARCHITECTURE_DIAGRAM\",\"classificationConfidence\":0.5,\"classificationReason\":\" \",\"summary\":\"S3\"}</analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
     }
 
     @Test

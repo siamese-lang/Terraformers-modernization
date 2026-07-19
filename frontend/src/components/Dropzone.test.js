@@ -31,3 +31,8 @@ test('does not render an existing-project selector, chat input, or client pollin
   expect(screen.queryByRole('textbox', { name: /chat/i })).not.toBeInTheDocument();
   expect(screen.queryByText(/분석 로그/i)).not.toBeInTheDocument();
 });
+
+test('displays architecture-image guidance without client-side classification', () => {
+  render(<Dropzone onUploaded={jest.fn()} onError={jest.fn()} />);
+  expect(screen.getByText('시스템 구성요소와 연결 관계가 표시된 아키텍처 이미지를 업로드해 주세요.')).toBeInTheDocument();
+});

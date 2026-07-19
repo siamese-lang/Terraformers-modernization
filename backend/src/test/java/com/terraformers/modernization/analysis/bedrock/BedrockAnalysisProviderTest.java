@@ -39,7 +39,7 @@ class BedrockAnalysisProviderTest {
         BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
         when(client.invokeModel(any(InvokeModelRequest.class))).thenReturn(InvokeModelResponse.builder()
                 .body(SdkBytes.fromUtf8String(claudeResponse("""
-                        <analysis_json>{"summary":"Private web stack","components":["VPC","ALB"],"relationships":["ALB forwards to service"],"warnings":[]}</analysis_json>
+                        <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"Private web stack","components":["VPC","ALB"],"relationships":["ALB forwards to service"],"warnings":[]}</analysis_json>
                         <terraform_hcl>resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }</terraform_hcl>
                         """)))
                 .build());
@@ -122,6 +122,30 @@ class BedrockAnalysisProviderTest {
         verify(timeoutClient, times(1)).invokeModel(any(InvokeModelRequest.class));
     }
 
+    @Test
+    void doesNotRetryRejectedInput() throws Exception {
+        BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+        when(client.invokeModel(any(InvokeModelRequest.class))).thenReturn(response("""
+                <analysis_json>{"inputType":"NON_ARCHITECTURE_IMAGE","classificationConfidence":0.98,"classificationReason":"This is a photo.","summary":"","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <terraform_hcl></terraform_hcl>
+                """, "end_turn", 10));
+        assertThatThrownBy(() -> provider(client).analyze(context())).isInstanceOf(ArchitectureInputRejectedException.class);
+        verify(client, times(1)).invokeModel(any(InvokeModelRequest.class));
+    }
+
+    @Test
+    void propagatesRejectedInputAfterTheSingleCompactRetry() throws Exception {
+        BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+        when(client.invokeModel(any(InvokeModelRequest.class)))
+                .thenReturn(response("partial", "max_tokens", 8192))
+                .thenReturn(response("""
+                        <analysis_json>{"inputType":"AMBIGUOUS","classificationConfidence":0.4,"classificationReason":"Relationships are not clear.","summary":"","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                        <terraform_hcl></terraform_hcl>
+                        """, "end_turn", 10));
+        assertThatThrownBy(() -> provider(client).analyze(context())).isInstanceOf(ArchitectureInputRejectedException.class);
+        verify(client, times(2)).invokeModel(any(InvokeModelRequest.class));
+    }
+
     private BedrockAnalysisProvider provider(BedrockRuntimeClient client) {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockModelId("configured-model-id");
@@ -136,7 +160,7 @@ class BedrockAnalysisProviderTest {
 
     private String validResponseText() {
         return """
-                <analysis_json>{"summary":"Private web stack","components":["VPC","ALB"],"relationships":["ALB forwards to service"],"warnings":[]}</analysis_json>
+                <analysis_json>{"inputType":"ARCHITECTURE_DIAGRAM","classificationConfidence":0.95,"classificationReason":"Components have relationships.","summary":"Private web stack","components":["VPC","ALB"],"relationships":["ALB forwards to service"],"warnings":[]}</analysis_json>
                 <terraform_hcl>resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }</terraform_hcl>
                 """;
     }
