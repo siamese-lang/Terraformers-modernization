@@ -14,13 +14,17 @@ import org.springframework.stereotype.Component;
 public class BedrockPromptBuilder {
 
     public static final String RESPONSE_SCHEMA = """
+            <analysis_json>
             {
               "summary": "concise architecture summary",
               "components": ["detected service or component names"],
               "relationships": ["directed relationship descriptions"],
-              "warnings": ["uncertainty, missing labels, or assumptions"],
-              "terraformCode": "complete Terraform HCL draft containing resource or module blocks"
+              "warnings": ["uncertainty, missing labels, or assumptions"]
             }
+            </analysis_json>
+            <terraform_hcl>
+            complete Terraform HCL containing resource or module blocks
+            </terraform_hcl>
             """;
 
     private final ObjectMapper objectMapper;
@@ -70,12 +74,14 @@ public class BedrockPromptBuilder {
                 .collect(Collectors.joining("\n"));
 
         return """
-                Analyze the architecture diagram image and return one JSON object that exactly matches this schema:
+                Analyze the architecture diagram image and return exactly these two tagged sections, once each:
                 %s
 
                 Requirements:
-                - Return JSON only. Do not include markdown fences or surrounding prose.
-                - `terraformCode` must be Terraform HCL, not markdown, and must include real `resource` or `module` blocks.
+                - Do not include markdown fences or surrounding prose.
+                - Do not include `terraformCode` in `analysis_json`.
+                - `terraform_hcl` must be raw Terraform HCL, not a JSON string, and must include real `resource` or `module` blocks.
+                - Keep Terraform concise and limited to what is needed to describe the analyzed architecture; do not duplicate resources or add verbose comments.
                 - Do not include secrets, account IDs, access keys, static credentials, public S3 URLs, or real ARNs.
                 - Use placeholders or variables for account-specific values.
                 - If the diagram is ambiguous, still include the best-effort components/relationships and put uncertainty in `warnings`.

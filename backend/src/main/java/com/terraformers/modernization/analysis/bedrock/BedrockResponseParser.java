@@ -4,10 +4,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class BedrockResponseParser {
+
+    private static final Pattern ANALYSIS_JSON = Pattern.compile("<analysis_json>(.*?)</analysis_json>", Pattern.DOTALL);
+    private static final Pattern TERRAFORM_HCL = Pattern.compile("<terraform_hcl>(.*?)</terraform_hcl>", Pattern.DOTALL);
 
     private final ObjectMapper objectMapper;
 
@@ -16,26 +21,38 @@ public class BedrockResponseParser {
     }
 
     public ParsedBedrockAnalysis parse(String responseBody) {
-        String text = extractResponseText(responseBody);
+        JsonNode root = parseResponseBody(responseBody);
+        if ("max_tokens".equals(root.path("stop_reason").asText())) {
+            throw new BedrockOutputTruncatedException();
+        }
+        readOutputTokenCount(root);
+
+        String text = extractResponseText(root);
+        String analysisJson = requiredTaggedContent(text, ANALYSIS_JSON, "analysis_json");
+        String terraform = requiredTaggedContent(text, TERRAFORM_HCL, "terraform_hcl");
+        if (!ANALYSIS_JSON.matcher(TERRAFORM_HCL.matcher(text).replaceAll("")).replaceAll("").isBlank()) {
+            throw new BedrockResponseFormatException("Bedrock response format is invalid: unexpected content outside tagged sections");
+        }
         try {
-            JsonNode structured = objectMapper.readTree(stripMarkdownFence(text));
-            String terraform = firstText(structured, "terraformCode");
+            JsonNode structured = objectMapper.readTree(analysisJson);
             String summary = firstText(structured, "summary");
-            if (terraform.isBlank()) {
-                throw new IllegalStateException("Bedrock structured response is missing terraformCode");
-            }
             if (summary.isBlank()) {
-                throw new IllegalStateException("Bedrock structured response is missing summary");
+                throw new BedrockResponseFormatException("Bedrock analysis_json is missing summary");
+            }
+            if (structured.has("terraformCode")) {
+                throw new BedrockResponseFormatException("Bedrock analysis_json must not contain terraformCode");
             }
             return new ParsedBedrockAnalysis(
-                    stripMarkdownFence(terraform),
+                    terraform,
                     summary,
                     textArray(structured, "components"),
                     textArray(structured, "relationships"),
                     textArray(structured, "warnings")
             );
+        } catch (BedrockResponseFormatException exception) {
+            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("Bedrock response must be JSON matching the structured analysis schema", exception);
+            throw new BedrockResponseFormatException("Bedrock response format is invalid", exception);
         }
     }
 
@@ -43,9 +60,27 @@ public class BedrockResponseParser {
         return parse(responseBody).terraformCode();
     }
 
-    private String extractResponseText(String responseBody) {
+    private JsonNode parseResponseBody(String responseBody) {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
+            if (root == null || !root.isObject()) {
+                throw new BedrockResponseFormatException("Bedrock response format is invalid");
+            }
+            return root;
+        } catch (Exception exception) {
+            throw new BedrockResponseFormatException("Bedrock response format is invalid", exception);
+        }
+    }
+
+    private void readOutputTokenCount(JsonNode root) {
+        JsonNode outputTokens = root.path("usage").path("output_tokens");
+        if (outputTokens.canConvertToInt()) {
+            outputTokens.asInt();
+        }
+    }
+
+    private String extractResponseText(JsonNode root) {
+        try {
             JsonNode content = root.path("content");
             if (!content.isArray()) {
                 throw new IllegalStateException("Bedrock response does not contain content array");
@@ -62,8 +97,20 @@ public class BedrockResponseParser {
             }
             return text;
         } catch (Exception exception) {
-            throw new IllegalStateException("failed to parse Bedrock response", exception);
+            throw new BedrockResponseFormatException("Bedrock response format is invalid", exception);
         }
+    }
+
+    private String requiredTaggedContent(String text, Pattern pattern, String tagName) {
+        Matcher matcher = pattern.matcher(text);
+        if (!matcher.find() || matcher.find()) {
+            throw new BedrockResponseFormatException("Bedrock response format is invalid: must contain exactly one " + tagName + " section");
+        }
+        String content = matcher.group(1).strip();
+        if (content.isBlank()) {
+            throw new BedrockResponseFormatException("Bedrock response format is invalid: " + tagName + " section is empty");
+        }
+        return content;
     }
 
     private String firstText(JsonNode node, String... names) {
@@ -86,12 +133,4 @@ public class BedrockResponseParser {
         return List.of();
     }
 
-    private String stripMarkdownFence(String text) {
-        String stripped = text == null ? "" : text.strip();
-        if (!stripped.startsWith("```")) {
-            return stripped;
-        }
-        String withoutOpening = stripped.replaceFirst("^```[a-zA-Z0-9_-]*\\s*", "");
-        return withoutOpening.replaceFirst("\\s*```$", "").strip();
-    }
 }

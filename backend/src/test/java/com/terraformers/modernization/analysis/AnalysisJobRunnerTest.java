@@ -6,6 +6,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 import com.terraformers.modernization.storage.ObjectWriteResult;
+import com.terraformers.modernization.analysis.bedrock.BedrockOutputTruncatedException;
+import com.terraformers.modernization.analysis.bedrock.BedrockResponseFormatException;
 import java.util.List;
 import java.net.SocketTimeoutException;
 import org.junit.jupiter.api.Test;
@@ -97,6 +99,16 @@ class AnalysisJobRunnerTest {
     void generalSdkClientExceptionMarksJobFailedWithGenericMessage() {
         assertFailureReason(SdkClientException.builder().message("connection reset").build(),
                 AnalysisJobRunner.GENERIC_FAILURE_REASON);
+    }
+
+    @Test
+    void truncatedBedrockOutputMarksJobFailedWithSafeMessage() {
+        assertFailureReason(new BedrockOutputTruncatedException(), AnalysisJobRunner.TRUNCATED_FAILURE_REASON);
+    }
+
+    @Test
+    void invalidBedrockFormatMarksJobFailedWithSafeMessage() {
+        assertFailureReason(new BedrockResponseFormatException("response body details"), AnalysisJobRunner.FORMAT_FAILURE_REASON);
     }
 
     private void assertFailureReason(RuntimeException exception, String expectedReason) {
