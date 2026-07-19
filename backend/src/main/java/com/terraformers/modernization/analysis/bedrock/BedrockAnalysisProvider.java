@@ -107,6 +107,9 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         } catch (BedrockOutputTruncatedException exception) {
             logCall(context, modelId, attempt, promptMode, exception.getStopReason(), exception.getOutputTokens(), true, startedAt);
             throw exception;
+        } catch (RuntimeException exception) {
+            logFailedCall(context, modelId, attempt, promptMode, exception, startedAt);
+            throw exception;
         }
     }
 
@@ -131,6 +134,20 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         log.info("Bedrock analysis call completed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} elapsedMs={}",
                 context.jobId(), context.projectId(), modelId, attempt, promptMode, stopReason, outputTokens,
                 properties.getBedrockMaxTokens(), false, elapsedMs);
+    }
+
+    private void logFailedCall(
+            AnalysisRequestContext context,
+            String modelId,
+            int attempt,
+            BedrockPromptMode promptMode,
+            RuntimeException exception,
+            long startedAt
+    ) {
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.warn("Bedrock analysis call failed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} outcome={} errorType={} elapsedMs={}",
+                context.jobId(), context.projectId(), modelId, attempt, promptMode, "unknown", null,
+                properties.getBedrockMaxTokens(), false, "FAILED", exception.getClass().getSimpleName(), elapsedMs);
     }
 
     private String requireModelId() {
