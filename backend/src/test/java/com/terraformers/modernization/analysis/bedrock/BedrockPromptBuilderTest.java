@@ -65,4 +65,19 @@ class BedrockPromptBuilderTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unsupported image content type");
     }
+
+    @Test
+    void compactPromptRetainsTaggedSchemaAndIncludesCompressionAndSecretRules() throws Exception {
+        ObjectContent content = new ObjectContent(
+                new ObjectMetadata("example-bucket", "uploads/diagram.png", "image/png", 128L, "etag"),
+                "fake-image".getBytes(StandardCharsets.UTF_8)
+        );
+
+        String request = builder.buildClaudeVisionRequest(content, List.of(), 8192, BedrockPromptMode.COMPACT);
+
+        assertThat(request).contains("<analysis_json>", "<terraform_hcl>");
+        assertThat(request).contains("Use count, for_each, or other concise expressions for repeated resource types");
+        assertThat(request).contains("Do not include secrets, account IDs, access keys, static credentials");
+        assertThat(objectMapper.readTree(request).path("max_tokens").asInt()).isEqualTo(8192);
+    }
 }

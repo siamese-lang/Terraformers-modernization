@@ -34,9 +34,18 @@ public class BedrockPromptBuilder {
     }
 
     public String buildClaudeVisionRequest(ObjectContent source, List<ReferenceDocument> references, int maxTokens) {
+        return buildClaudeVisionRequest(source, references, maxTokens, BedrockPromptMode.STANDARD);
+    }
+
+    public String buildClaudeVisionRequest(
+            ObjectContent source,
+            List<ReferenceDocument> references,
+            int maxTokens,
+            BedrockPromptMode promptMode
+    ) {
         String mediaType = requireSupportedImageMediaType(source.metadata().contentType());
         String imageBase64 = Base64.getEncoder().encodeToString(source.bytes());
-        String prompt = buildPrompt(source, references == null ? List.of() : references);
+        String prompt = buildPrompt(source, references == null ? List.of() : references, promptMode);
 
         Map<String, Object> body = Map.of(
                 "anthropic_version", "bedrock-2023-05-31",
@@ -68,7 +77,7 @@ public class BedrockPromptBuilder {
         }
     }
 
-    private String buildPrompt(ObjectContent source, List<ReferenceDocument> references) {
+    private String buildPrompt(ObjectContent source, List<ReferenceDocument> references, BedrockPromptMode promptMode) {
         String referenceText = references.stream()
                 .map(reference -> "- " + reference.title() + ": " + reference.content())
                 .collect(Collectors.joining("\n"));
@@ -86,6 +95,8 @@ public class BedrockPromptBuilder {
                 - Use placeholders or variables for account-specific values.
                 - If the diagram is ambiguous, still include the best-effort components/relationships and put uncertainty in `warnings`.
 
+                %s
+
                 Object metadata:
                 - contentType: %s
                 - contentLength: %s
@@ -94,10 +105,29 @@ public class BedrockPromptBuilder {
                 %s
                 """.formatted(
                 RESPONSE_SCHEMA.strip(),
+                modeInstructions(promptMode),
                 source.metadata().contentType(),
                 source.metadata().contentLength(),
                 referenceText.isBlank() ? "- none" : referenceText
         );
+    }
+
+    private String modeInstructions(BedrockPromptMode promptMode) {
+        if (promptMode == BedrockPromptMode.COMPACT) {
+            return """
+                    Compact-output requirements (prioritize fitting within the output limit):
+                    - Keep summary to one short paragraph; include only core components, communication/dependency relationships, and material uncertainties.
+                    - Do not repeat equivalent facts or put object descriptions or lengthy rationale in arrays.
+                    - Generate only the core Terraform draft that represents the analyzed architecture.
+                    - Use count, for_each, or other concise expressions for repeated resource types; never copy repeated resource blocks.
+                    - Exclude provider blocks, lengthy comments, README-style explanations, example commands, unnecessary outputs, data sources, and detailed operational options.
+                    - Do not invent resources absent from the image. This is a Terraform draft, not a complete production deployment.
+                    """;
+        }
+        return """
+                Standard-output requirements:
+                - Keep the analysis and Terraform draft concise; do not repeat equivalent details.
+                """;
     }
 
     private String requireSupportedImageMediaType(String contentType) {

@@ -11,6 +11,8 @@ import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.SdkBytes;
@@ -21,6 +23,8 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 @Component
 @ConditionalOnProperty(prefix = "terraformers.analysis", name = "bedrock-provider-enabled", havingValue = "true")
 public class BedrockAnalysisProvider implements AnalysisProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(BedrockAnalysisProvider.class);
 
     private final BedrockRuntimeClient bedrockRuntimeClient;
     private final ObjectReader objectReader;
@@ -61,20 +65,12 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 source.metadata().contentType()
         ));
 
-        String requestBody = promptBuilder.buildClaudeVisionRequest(
-                source,
-                references,
-                properties.getBedrockMaxTokens()
-        );
-
-        InvokeModelResponse response = bedrockRuntimeClient.invokeModel(InvokeModelRequest.builder()
-                .modelId(modelId)
-                .contentType("application/json")
-                .accept("application/json")
-                .body(SdkBytes.fromUtf8String(requestBody))
-                .build());
-
-        ParsedBedrockAnalysis parsed = responseParser.parse(response.body().asUtf8String());
+        ParsedBedrockAnalysis parsed;
+        try {
+            parsed = invokeAndParse(context, source, references, modelId, 1, BedrockPromptMode.STANDARD);
+        } catch (BedrockOutputTruncatedException exception) {
+            parsed = invokeAndParse(context, source, references, modelId, 2, BedrockPromptMode.COMPACT);
+        }
 
         return new AnalysisResult(
                 "bedrock:" + modelId,
@@ -85,6 +81,73 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 parsed.warnings(),
                 references.stream().map(ReferenceDocument::id).toList()
         );
+    }
+
+    private ParsedBedrockAnalysis invokeAndParse(
+            AnalysisRequestContext context,
+            ObjectContent source,
+            List<ReferenceDocument> references,
+            String modelId,
+            int attempt,
+            BedrockPromptMode promptMode
+    ) {
+        long startedAt = System.nanoTime();
+        String requestBody = promptBuilder.buildClaudeVisionRequest(
+                source, references, properties.getBedrockMaxTokens(), promptMode);
+        try {
+            InvokeModelResponse response = bedrockRuntimeClient.invokeModel(InvokeModelRequest.builder()
+                    .modelId(modelId)
+                    .contentType("application/json")
+                    .accept("application/json")
+                    .body(SdkBytes.fromUtf8String(requestBody))
+                    .build());
+            ParsedBedrockAnalysis parsed = responseParser.parse(response.body().asUtf8String());
+            logCall(context, modelId, attempt, promptMode, parsed.stopReason(), parsed.outputTokens(), false, startedAt);
+            return parsed;
+        } catch (BedrockOutputTruncatedException exception) {
+            logCall(context, modelId, attempt, promptMode, exception.getStopReason(), exception.getOutputTokens(), true, startedAt);
+            throw exception;
+        } catch (RuntimeException exception) {
+            logFailedCall(context, modelId, attempt, promptMode, exception, startedAt);
+            throw exception;
+        }
+    }
+
+    private void logCall(
+            AnalysisRequestContext context,
+            String modelId,
+            int attempt,
+            BedrockPromptMode promptMode,
+            String stopReason,
+            Integer outputTokens,
+            boolean truncated,
+            long startedAt
+    ) {
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        if (truncated) {
+            log.warn("Bedrock analysis call completed with truncation{}: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} elapsedMs={}",
+                    attempt == 1 ? "; compact retry will start" : "",
+                    context.jobId(), context.projectId(), modelId, attempt, promptMode, stopReason, outputTokens,
+                    properties.getBedrockMaxTokens(), true, elapsedMs);
+            return;
+        }
+        log.info("Bedrock analysis call completed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} elapsedMs={}",
+                context.jobId(), context.projectId(), modelId, attempt, promptMode, stopReason, outputTokens,
+                properties.getBedrockMaxTokens(), false, elapsedMs);
+    }
+
+    private void logFailedCall(
+            AnalysisRequestContext context,
+            String modelId,
+            int attempt,
+            BedrockPromptMode promptMode,
+            RuntimeException exception,
+            long startedAt
+    ) {
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.warn("Bedrock analysis call failed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} outcome={} errorType={} elapsedMs={}",
+                context.jobId(), context.projectId(), modelId, attempt, promptMode, "unknown", null,
+                properties.getBedrockMaxTokens(), false, "FAILED", exception.getClass().getSimpleName(), elapsedMs);
     }
 
     private String requireModelId() {

@@ -39,7 +39,7 @@ queue_runtime = {
 bedrock_runtime = {
   model_id           = "<bedrock-vision-model-id>"
   embedding_model_id = "<bedrock-embedding-model-id>"
-  max_tokens         = 4096
+  max_tokens         = 8192
 }
 
 opensearch_runtime = {
