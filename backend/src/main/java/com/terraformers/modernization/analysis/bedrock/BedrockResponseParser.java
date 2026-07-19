@@ -103,10 +103,13 @@ public class BedrockResponseParser {
 
     private String requiredTaggedContent(String text, Pattern pattern, String tagName) {
         Matcher matcher = pattern.matcher(text);
-        if (!matcher.find() || matcher.find()) {
+        if (!matcher.find()) {
             throw new BedrockResponseFormatException("Bedrock response format is invalid: must contain exactly one " + tagName + " section");
         }
         String content = matcher.group(1).strip();
+        if (matcher.find()) {
+            throw new BedrockResponseFormatException("Bedrock response format is invalid: must contain exactly one " + tagName + " section");
+        }
         if (content.isBlank()) {
             throw new BedrockResponseFormatException("Bedrock response format is invalid: " + tagName + " section is empty");
         }
