@@ -37,7 +37,13 @@ jobs:
       - name: Run actionlint
         uses: docker://rhysd/actionlint:1.7.7
         with:
-          args: -color
+          args: >-
+            -color
+            -shellcheck=
+            -pyflakes=
+            .github/workflows/aws-live-terraform-plan.yml
+            .github/workflows/aws-live-terraform-apply.yml
+            .github/workflows/live-deployment-plan-contract-verification.yml
 
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh

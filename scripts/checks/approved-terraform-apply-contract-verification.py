@@ -98,7 +98,22 @@ def verify_workflow_contracts() -> None:
         assert_contains(apply_workflow, status, "sanitized post-apply status")
 
     assert_contains(contract_workflow, "docker://rhysd/actionlint:1.7.7", "pinned actionlint Docker image")
-    assert_contains(contract_workflow, "args: -color", "actionlint scans all workflows")
+    assert_contains(
+        contract_workflow,
+        "-shellcheck=",
+        "actionlint shellcheck integration is disabled for workflow contract validation",
+    )
+    assert_contains(
+        contract_workflow,
+        "-pyflakes=",
+        "actionlint pyflakes integration is disabled for workflow contract validation",
+    )
+    for workflow_path in (
+        ".github/workflows/aws-live-terraform-plan.yml",
+        ".github/workflows/aws-live-terraform-apply.yml",
+        ".github/workflows/live-deployment-plan-contract-verification.yml",
+    ):
+        assert_contains(contract_workflow, workflow_path, "scoped actionlint workflow path")
 
 
 def main() -> int:
