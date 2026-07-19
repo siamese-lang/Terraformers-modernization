@@ -91,6 +91,33 @@ variable "plan_role_name" {
   default     = "terraformers-live-terraform-plan"
 }
 
+variable "apply_role_name" {
+  description = "IAM role name assumed by the protected GitHub environment for approved Terraform applies."
+  type        = string
+  default     = "terraformers-live-terraform-apply"
+}
+
+variable "apply_github_environment" {
+  description = "Protected GitHub environment allowed to assume the live Terraform apply role."
+  type        = string
+  default     = "aws-live-apply"
+
+  validation {
+    condition     = length(trimspace(var.apply_github_environment)) > 0 && !strcontains(var.apply_github_environment, "*")
+    error_message = "apply_github_environment must not be empty or contain '*'."
+  }
+}
+
+variable "approved_apply_iam_policy_arn" {
+  description = "Exact customer-managed IAM policy ARN that the approved apply workflow may update."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:policy/.+$", var.approved_apply_iam_policy_arn))
+    error_message = "approved_apply_iam_policy_arn must be a customer-managed IAM policy ARN."
+  }
+}
+
 variable "common_tags" {
   description = "Tags applied to supported bootstrap resources."
   type        = map(string)

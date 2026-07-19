@@ -37,3 +37,23 @@ output "github_oidc_subjects" {
   description = "Exact GitHub OIDC subjects trusted by the plan role."
   value       = var.github_oidc_subjects
 }
+
+output "terraform_apply_role_arn" {
+  description = "Approved apply AWS role assumed by the protected GitHub environment."
+  value       = aws_iam_role.terraform_apply.arn
+}
+
+output "terraform_apply_github_environment" {
+  description = "Protected GitHub environment trusted by the apply role."
+  value       = var.apply_github_environment
+}
+
+output "terraform_apply_oidc_subject" {
+  description = "Exact GitHub OIDC subject trusted by the apply role."
+  value       = local.terraform_apply_oidc_subject
+}
+
+output "terraform_apply_target_policy_arn" {
+  description = "Exact customer-managed IAM policy the apply role may update."
+  value       = var.approved_apply_iam_policy_arn
+}
