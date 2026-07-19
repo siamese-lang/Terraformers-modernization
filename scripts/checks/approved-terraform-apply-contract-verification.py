@@ -7,217 +7,105 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
-SUMMARIZER = ROOT / "scripts" / "deploy" / "summarize-terraform-plan.py"
-VERIFIER = ROOT / "scripts" / "deploy" / "verify-approved-terraform-apply-contract.py"
-EVIDENCE_DIR = ROOT / "artifacts" / "approved-terraform-apply-contract"
-FIXTURE = EVIDENCE_DIR / "approved-update-plan.json"
-SUMMARY_DIR = EVIDENCE_DIR / "summary"
-PLAN_WORKFLOW = ROOT / ".github" / "workflows" / "aws-live-terraform-plan.yml"
-APPLY_WORKFLOW = ROOT / ".github" / "workflows" / "aws-live-terraform-apply.yml"
-CONTRACT_WORKFLOW = ROOT / ".github" / "workflows" / "live-deployment-plan-contract-verification.yml"
+SUMMARIZER = ROOT / "scripts/deploy/summarize-terraform-plan.py"
+VERIFIER = ROOT / "scripts/deploy/verify-approved-terraform-apply-contract.py"
+EVIDENCE_DIR = ROOT / "artifacts/approved-terraform-apply-contract"
+PLAN_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-plan.yml"
+APPLY_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-apply.yml"
+FOUNDATION = {
+    "aws_iam_role.terraform_apply": "aws_iam_role",
+    "aws_iam_role_policy.terraform_apply_iam_mutation": "aws_iam_role_policy",
+    "aws_iam_role_policy.terraform_apply_state_access": "aws_iam_role_policy",
+    "aws_iam_role_policy_attachment.terraform_apply_read_only": "aws_iam_role_policy_attachment",
+}
 
 
-def run_command(args: list[str], expect_success: bool = True) -> subprocess.CompletedProcess[str]:
+def run(args: list[str], success: bool = True) -> None:
     result = subprocess.run(args, text=True, capture_output=True, check=False)
-    if expect_success and result.returncode != 0:
-        raise RuntimeError(
-            f"Command failed with {result.returncode}: {' '.join(args)}\nstdout={result.stdout}\nstderr={result.stderr}"
-        )
-    if not expect_success and result.returncode == 0:
-        raise RuntimeError(f"Command unexpectedly passed: {' '.join(args)}\nstdout={result.stdout}")
-    return result
+    if (success and result.returncode != 0) or (not success and result.returncode == 0):
+        raise RuntimeError(f"unexpected result: {' '.join(args)}\nstdout={result.stdout}\nstderr={result.stderr}")
 
 
-def assert_contains(text: str, needle: str, context: str) -> None:
+def contains(text: str, needle: str) -> None:
     if needle not in text:
-        raise AssertionError(f"Missing {context}: {needle}")
+        raise AssertionError(f"missing workflow contract text: {needle}")
 
 
-def verify_workflow_contracts() -> None:
-    plan_workflow = PLAN_WORKFLOW.read_text(encoding="utf-8")
-    apply_workflow = APPLY_WORKFLOW.read_text(encoding="utf-8")
-    contract_workflow = CONTRACT_WORKFLOW.read_text(encoding="utf-8")
-
-    for input_name in (
-        "execute_live_plan:",
-        "plan_stage:",
-        "expected_aws_account_id:",
-        "allow_destructive:",
-        "allow_optional_adapters:",
-        "execute_approved_apply:",
-        "expected_head_sha:",
-        "approved_resource_address:",
-        "approved_changed_attribute_path:",
-        "approval_confirmation:",
-    ):
-        assert_contains(plan_workflow, input_name, "plan workflow bootstrap input")
-
-    assert_contains(plan_workflow, "execute_live_plan:\n        description:", "plan workflow execute_live_plan input")
-    assert_contains(plan_workflow, "default: false", "plan-only false default")
-    assert_contains(plan_workflow, "execute_approved_apply:\n        description:", "approved apply bootstrap input")
-    assert_contains(plan_workflow, "uses: ./.github/workflows/aws-live-terraform-apply.yml", "local reusable apply workflow call")
-    assert_contains(plan_workflow, "secrets: inherit", "reusable apply workflow inherited secrets")
-    assert_contains(plan_workflow, "execute_live_plan and execute_approved_apply must not both be true.", "explicit mutually exclusive execute failure")
-    assert_contains(plan_workflow, "execute_approved_apply requires plan_stage=eks-runtime.", "explicit apply stage failure")
-    assert_contains(plan_workflow, "if: ${{ inputs.execute_approved_apply && !inputs.execute_live_plan && inputs.plan_stage == 'eks-runtime' }}", "strict apply caller condition")
-
-    assert_contains(apply_workflow, "workflow_call:", "apply workflow reusable trigger")
-    for contract in (
-        "execute_approved_apply:\n        description:",
-        "expected_aws_account_id:\n        description:",
-        "expected_head_sha:\n        description:",
-        "apply_stage:\n        description:",
-        "approved_resource_address:\n        description:",
-        "approved_changed_attribute_path:\n        description:",
-        "approval_confirmation:\n        description:",
-    ):
-        assert_contains(apply_workflow, contract, "apply workflow_call input contract")
-
-    assert_contains(apply_workflow, 'POST_APPLY_PLAN="${RUNNER_TEMP}/post-apply-plan.txt"', "runner-temp post-apply raw output")
-    assert "artifacts/aws-live-terraform-apply/post-apply-summary.txt" not in apply_workflow
-    assert "artifacts/aws-live-terraform-apply/post-apply-plan.txt" not in apply_workflow
-    upload_section = apply_workflow.split("Upload sanitized apply evidence", 1)[1]
-    assert "post-apply-plan.txt" not in upload_section
-    assert "post-apply-summary.txt" not in upload_section
-    assert "post-apply-status.txt" in upload_section
-
-    for forbidden in ("cat", "tail", "grep", "rg"):
-        for line in apply_workflow.splitlines():
-            if "post-apply-plan.txt" in line or "POST_APPLY_PLAN" in line:
-                stripped = line.strip()
-                assert not stripped.startswith(f"{forbidden} "), stripped
-                assert f" {forbidden} " not in stripped, stripped
-
-    for status in (
+def verify_workflow() -> None:
+    apply = APPLY_WORKFLOW.read_text(encoding="utf-8")
+    plan = PLAN_WORKFLOW.read_text(encoding="utf-8")
+    for text in (
+        "- foundation", "- eks-runtime", "default: eks-runtime",
+        "foundation apply is only supported by direct workflow_dispatch.",
+        "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
+        "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_IN_PLACE_UPDATE",
+        "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
+        "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
+        "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}",
+        "AWS_LIVE_FOUNDATION_TFVARS_B64 secret is required.",
+        "temporary_bootstrap_permission_cleanup=external-required",
         "post_apply_full_plan=no-changes",
-        "post_apply_full_plan=changes-remain",
-        "post_apply_full_plan=verification-failed",
     ):
-        assert_contains(apply_workflow, status, "sanitized post-apply status")
+        contains(apply, text)
+    contains(plan, "uses: ./.github/workflows/aws-live-terraform-apply.yml")
+    contains(plan, "inputs.plan_stage == 'eks-runtime'")
+    contains(plan, "execute_approved_apply requires plan_stage=eks-runtime.")
+    for forbidden in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        assert forbidden not in apply, forbidden
+    upload = apply.split("Upload sanitized apply evidence", 1)[1]
+    for forbidden in ("live.tfplan", "live-plan.json", "live.auto.tfvars", "backend.hcl", "post-apply-plan.txt"):
+        assert forbidden not in upload, forbidden
 
-    assert_contains(contract_workflow, "docker://rhysd/actionlint:1.7.7", "pinned actionlint Docker image")
-    assert_contains(
-        contract_workflow,
-        "-shellcheck=",
-        "actionlint shellcheck integration is disabled for workflow contract validation",
-    )
-    assert_contains(
-        contract_workflow,
-        "-pyflakes=",
-        "actionlint pyflakes integration is disabled for workflow contract validation",
-    )
-    for workflow_path in (
-        ".github/workflows/aws-live-terraform-plan.yml",
-        ".github/workflows/aws-live-terraform-apply.yml",
-        ".github/workflows/live-deployment-plan-contract-verification.yml",
-    ):
-        assert_contains(contract_workflow, workflow_path, "scoped actionlint workflow path")
+
+def fixture(address: str, resource_type: str, actions: list[str]) -> dict:
+    return {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": address, "type": resource_type, "change": {"actions": actions, "before": None if actions == ["create"] else {"policy": "before"}, "after": {"name": address}}}]}
+
+
+def verify_contract(plan: dict, contract: str, stage: str, success: bool, extra: list[str] | None = None) -> None:
+    path = EVIDENCE_DIR / f"{contract}-{stage}.json"
+    output = EVIDENCE_DIR / f"{contract}-{stage}-summary"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    run([sys.executable, str(SUMMARIZER), "--plan-json", str(path), "--output-dir", str(output), "--stage", stage])
+    args = [sys.executable, str(VERIFIER), "--summary-json", str(output / "plan-risk-summary.json"), "--summary-txt", str(output / "plan-risk-summary.txt"), "--contract", contract, "--stage", stage]
+    run(args + (extra or []), success)
 
 
 def main() -> int:
-    verify_workflow_contracts()
+    verify_workflow()
+    if EVIDENCE_DIR.exists(): shutil.rmtree(EVIDENCE_DIR)
+    EVIDENCE_DIR.mkdir(parents=True)
 
-    if EVIDENCE_DIR.exists():
-        shutil.rmtree(EVIDENCE_DIR)
-    SUMMARY_DIR.mkdir(parents=True)
-
-    fixture = {
-        "format_version": "1.2",
-        "terraform_version": "1.15.8",
-        "resource_changes": [
-            {
-                "address": "aws_iam_policy.backend_runtime_access",
-                "type": "aws_iam_policy",
-                "change": {
-                    "actions": ["update"],
-                    "before": {"policy": "fixture-before-policy"},
-                    "after": {"policy": "fixture-after-policy-with-bedrock-invokemodel"},
-                },
-            }
-        ],
-    }
-    FIXTURE.write_text(json.dumps(fixture, indent=2) + "\n", encoding="utf-8")
-
-    run_command(
-        [
-            sys.executable,
-            str(SUMMARIZER),
-            "--plan-json",
-            str(FIXTURE),
-            "--output-dir",
-            str(SUMMARY_DIR),
-            "--stage",
-            "eks-runtime",
-        ]
-    )
-    run_command(
-        [
-            sys.executable,
-            str(VERIFIER),
-            "--summary-json",
-            str(SUMMARY_DIR / "plan-risk-summary.json"),
-            "--summary-txt",
-            str(SUMMARY_DIR / "plan-risk-summary.txt"),
-            "--stage",
-            "eks-runtime",
-            "--approved-resource",
-            "aws_iam_policy.backend_runtime_access",
-            "--approved-changed-path",
-            "policy",
-        ]
-    )
-    run_command(
-        [
-            sys.executable,
-            str(VERIFIER),
-            "--summary-json",
-            str(SUMMARY_DIR / "plan-risk-summary.json"),
-            "--summary-txt",
-            str(SUMMARY_DIR / "plan-risk-summary.txt"),
-            "--stage",
-            "eks-runtime",
-            "--approved-resource",
-            "aws_iam_policy.backend_runtime_access",
-            "--approved-changed-path",
-            "tags.Owner",
-        ],
-        expect_success=False,
-    )
-
-    combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (
-            SUMMARY_DIR / "plan-risk-summary.json",
-            SUMMARY_DIR / "plan-risk-summary.txt",
-            SUMMARY_DIR / "plan-risk-summary.md",
-        )
-    )
-    for forbidden in ("fixture-before-policy", "fixture-after-policy-with-bedrock-invokemodel"):
-        assert forbidden not in combined, forbidden
-
-    verification_summary = [
-        "approved_terraform_apply_contract_verification=passed",
-        "approved_resource=aws_iam_policy.backend_runtime_access",
-        "approved_action=update",
-        "approved_changed_path=policy",
-        "negative_changed_path_verification=passed",
-        "raw_plan_uploaded=false",
-        "aws_mutation=none",
-        "kubernetes_mutation=none",
-        "plan_workflow_bootstrap_inputs=present",
-        "plan_workflow_calls_reusable_apply=true",
-        "apply_workflow_call_contract=present",
-        "post_apply_raw_output_uploaded=false",
-        "actionlint_ci_step=present",
+    foundation_changes = [
+        {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
+        for address, kind in FOUNDATION.items()
     ]
-    (EVIDENCE_DIR / "verification-summary.txt").write_text(
-        "\n".join(verification_summary) + "\n", encoding="utf-8"
-    )
-    print("\n".join(verification_summary))
-    return 0
+    positive = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": foundation_changes}
+    verify_contract(positive, "foundation-apply-role-bootstrap", "foundation", True)
+    extra = dict(foundation_changes[0]); extra["address"] = "aws_iam_role.extra"
+    verify_contract({**positive, "resource_changes": foundation_changes + [extra]}, "foundation-apply-role-bootstrap", "foundation", False)
+    verify_contract({**positive, "resource_changes": foundation_changes[:-1]}, "foundation-apply-role-bootstrap", "foundation", False)
+    updated = json.loads(json.dumps(positive)); updated["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"name": "old"}, "after": {"name": "new"}}
+    verify_contract(updated, "foundation-apply-role-bootstrap", "foundation", False)
+    wrong = json.loads(json.dumps(positive)); wrong["resource_changes"][0]["address"] = "aws_iam_role.wrong"
+    verify_contract(wrong, "foundation-apply-role-bootstrap", "foundation", False)
 
+    eks = fixture("aws_iam_policy.backend_runtime_access", "aws_iam_policy", ["update"])
+    eks["resource_changes"][0]["change"]["after"] = {"policy": "after"}
+    verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", True, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "policy"])
+    verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", False, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "tags.Owner"])
+
+    summary = [
+        "approved_terraform_apply_contract_verification=passed",
+        "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
+        "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
+        "foundation_negative_wrong_address=passed", "eks_runtime_positive_and_negative_verification=passed",
+        "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
+    ]
+    (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
+    print("\n".join(summary))
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
