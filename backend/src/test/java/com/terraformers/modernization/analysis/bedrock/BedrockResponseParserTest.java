@@ -1,6 +1,7 @@
 package com.terraformers.modernization.analysis.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,45 @@ class BedrockResponseParserTest {
         assertThat(parsed.relationships()).containsExactly("ALB routes to web tier");
         assertThat(parsed.warnings()).containsExactly("CIDRs are inferred");
         assertThat(parsed.terraformCode()).contains("resource \"aws_vpc\"");
+    }
+
+    @Test
+    void parsesResponseWhenAnalysisJsonAndTerraformHclEachAppearExactlyOnce() throws Exception {
+        ParsedBedrockAnalysis parsed = parser.parse(claudeResponse("""
+                <analysis_json>{"summary":"S3 bucket","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
+                """));
+
+        assertThat(parsed.summary()).isEqualTo("S3 bucket");
+        assertThat(parsed.terraformCode()).isEqualTo("resource \"aws_s3_bucket\" \"main\" {}");
+    }
+
+    @Test
+    void rejectsMissingRequiredTag() throws Exception {
+        assertFormatFailure("<analysis_json>{\"summary\":\"S3\"}</analysis_json>");
+    }
+
+    @Test
+    void rejectsDuplicateRequiredTag() throws Exception {
+        assertFormatFailure("""
+                <analysis_json>{"summary":"S3"}</analysis_json>
+                <analysis_json>{"summary":"duplicate"}</analysis_json>
+                <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
+                """);
+    }
+
+    @Test
+    void rejectsEmptyRequiredTag() throws Exception {
+        assertFormatFailure("<analysis_json>   </analysis_json><terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>");
+    }
+
+    @Test
+    void doesNotThrowIllegalStateExceptionForValidTaggedResponse() throws Exception {
+        assertThatCode(() -> parser.parse(claudeResponse("""
+                <analysis_json>{"summary":"S3","components":[],"relationships":[],"warnings":[]}</analysis_json>
+                <terraform_hcl>resource "aws_s3_bucket" "main" {}</terraform_hcl>
+                """)))
+                .doesNotThrowAnyException();
     }
 
     @Test
