@@ -1,9 +1,11 @@
 package com.terraformers.modernization.analysis.bedrock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,6 +26,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
@@ -71,12 +74,87 @@ class BedrockAnalysisProviderTest {
         assertThat(result.terraformCode()).contains("resource \"aws_vpc\"");
     }
 
+    @Test
+    void retriesOnceWithCompactPromptWhenStandardOutputIsTruncated() throws Exception {
+        BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+        when(client.invokeModel(any(InvokeModelRequest.class)))
+                .thenReturn(response("partial", "max_tokens", 8192))
+                .thenReturn(response(validResponseText(), "end_turn", 300));
+
+        AnalysisResult result = provider(client).analyze(context());
+
+        ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
+        verify(client, times(2)).invokeModel(captor.capture());
+        List<InvokeModelRequest> requests = captor.getAllValues();
+        assertThat(requests.get(0).body().asUtf8String()).contains("Standard-output requirements");
+        assertThat(requests.get(1).body().asUtf8String()).contains("Compact-output requirements");
+        assertThat(result.explanation()).isEqualTo("Private web stack");
+    }
+
+    @Test
+    void propagatesTruncationAfterCompactRetryAlsoTruncates() throws Exception {
+        BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+        when(client.invokeModel(any(InvokeModelRequest.class)))
+                .thenReturn(response("partial", "max_tokens", 8192))
+                .thenReturn(response("still partial", "max_tokens", 8192));
+
+        assertThatThrownBy(() -> provider(client).analyze(context()))
+                .isInstanceOf(BedrockOutputTruncatedException.class);
+        verify(client, times(2)).invokeModel(any(InvokeModelRequest.class));
+    }
+
+    @Test
+    void doesNotRetryFormatOrRuntimeErrors() throws Exception {
+        BedrockRuntimeClient formatClient = mock(BedrockRuntimeClient.class);
+        when(formatClient.invokeModel(any(InvokeModelRequest.class))).thenReturn(response("not tagged", "end_turn", 10));
+        assertThatThrownBy(() -> provider(formatClient).analyze(context())).isInstanceOf(BedrockResponseFormatException.class);
+        verify(formatClient, times(1)).invokeModel(any(InvokeModelRequest.class));
+
+        BedrockRuntimeClient runtimeClient = mock(BedrockRuntimeClient.class);
+        when(runtimeClient.invokeModel(any(InvokeModelRequest.class))).thenThrow(new IllegalStateException("network unavailable"));
+        assertThatThrownBy(() -> provider(runtimeClient).analyze(context())).isInstanceOf(IllegalStateException.class);
+        verify(runtimeClient, times(1)).invokeModel(any(InvokeModelRequest.class));
+
+        BedrockRuntimeClient timeoutClient = mock(BedrockRuntimeClient.class);
+        when(timeoutClient.invokeModel(any(InvokeModelRequest.class)))
+                .thenThrow(SdkClientException.builder().message("Read timed out").build());
+        assertThatThrownBy(() -> provider(timeoutClient).analyze(context())).isInstanceOf(SdkClientException.class);
+        verify(timeoutClient, times(1)).invokeModel(any(InvokeModelRequest.class));
+    }
+
+    private BedrockAnalysisProvider provider(BedrockRuntimeClient client) {
+        AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
+        properties.setBedrockModelId("configured-model-id");
+        properties.setBedrockMaxTokens(8192);
+        return new BedrockAnalysisProvider(client, objectReader(), referenceRetriever(), properties,
+                new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper));
+    }
+
+    private InvokeModelResponse response(String text, String stopReason, int outputTokens) throws Exception {
+        return InvokeModelResponse.builder().body(SdkBytes.fromUtf8String(claudeResponse(text, stopReason, outputTokens))).build();
+    }
+
+    private String validResponseText() {
+        return """
+                <analysis_json>{"summary":"Private web stack","components":["VPC","ALB"],"relationships":["ALB forwards to service"],"warnings":[]}</analysis_json>
+                <terraform_hcl>resource "aws_vpc" "main" { cidr_block = "10.0.0.0/16" }</terraform_hcl>
+                """;
+    }
+
     private String claudeResponse(String text) throws Exception {
         return objectMapper.writeValueAsString(Map.of(
                 "content", List.of(Map.of(
                         "type", "text",
                         "text", text
                 ))
+        ));
+    }
+
+    private String claudeResponse(String text, String stopReason, int outputTokens) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "content", List.of(Map.of("type", "text", "text", text)),
+                "stop_reason", stopReason,
+                "usage", Map.of("output_tokens", outputTokens)
         ));
     }
 

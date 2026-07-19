@@ -30,6 +30,8 @@ class BedrockResponseParserTest {
         assertThat(parsed.relationships()).containsExactly("ALB routes to web tier");
         assertThat(parsed.warnings()).containsExactly("CIDRs are inferred");
         assertThat(parsed.terraformCode()).contains("resource \"aws_vpc\"");
+        assertThat(parsed.stopReason()).isNull();
+        assertThat(parsed.outputTokens()).isNull();
     }
 
     @Test
@@ -92,7 +94,22 @@ class BedrockResponseParserTest {
     void rejectsMaxTokensStopReasonAsTruncatedOutput() throws Exception {
         String response = claudeResponse("partial", Map.of("stop_reason", "max_tokens", "usage", Map.of("output_tokens", 2048)));
 
-        assertThatThrownBy(() -> parser.parse(response)).isInstanceOf(BedrockOutputTruncatedException.class);
+        assertThatThrownBy(() -> parser.parse(response))
+                .isInstanceOfSatisfying(BedrockOutputTruncatedException.class, exception -> {
+                    assertThat(exception.getStopReason()).isEqualTo("max_tokens");
+                    assertThat(exception.getOutputTokens()).isEqualTo(2048);
+                });
+    }
+
+    @Test
+    void preservesNormalStopReasonAndOutputTokens() throws Exception {
+        ParsedBedrockAnalysis parsed = parser.parse(claudeResponse(
+                "<analysis_json>{\"summary\":\"S3\",\"components\":[],\"relationships\":[],\"warnings\":[]}</analysis_json>"
+                        + "<terraform_hcl>resource \"aws_s3_bucket\" \"main\" {}</terraform_hcl>",
+                Map.of("stop_reason", "end_turn", "usage", Map.of("output_tokens", 321))));
+
+        assertThat(parsed.stopReason()).isEqualTo("end_turn");
+        assertThat(parsed.outputTokens()).isEqualTo(321);
     }
 
     @Test

@@ -22,10 +22,11 @@ public class BedrockResponseParser {
 
     public ParsedBedrockAnalysis parse(String responseBody) {
         JsonNode root = parseResponseBody(responseBody);
-        if ("max_tokens".equals(root.path("stop_reason").asText())) {
-            throw new BedrockOutputTruncatedException();
+        String stopReason = root.path("stop_reason").asText(null);
+        Integer outputTokens = readOutputTokenCount(root);
+        if ("max_tokens".equals(stopReason)) {
+            throw new BedrockOutputTruncatedException(stopReason, outputTokens);
         }
-        readOutputTokenCount(root);
 
         String text = extractResponseText(root);
         String analysisJson = requiredTaggedContent(text, ANALYSIS_JSON, "analysis_json");
@@ -47,7 +48,9 @@ public class BedrockResponseParser {
                     summary,
                     textArray(structured, "components"),
                     textArray(structured, "relationships"),
-                    textArray(structured, "warnings")
+                    textArray(structured, "warnings"),
+                    stopReason,
+                    outputTokens
             );
         } catch (BedrockResponseFormatException exception) {
             throw exception;
@@ -72,11 +75,12 @@ public class BedrockResponseParser {
         }
     }
 
-    private void readOutputTokenCount(JsonNode root) {
+    private Integer readOutputTokenCount(JsonNode root) {
         JsonNode outputTokens = root.path("usage").path("output_tokens");
         if (outputTokens.canConvertToInt()) {
-            outputTokens.asInt();
+            return outputTokens.asInt();
         }
+        return null;
     }
 
     private String extractResponseText(JsonNode root) {

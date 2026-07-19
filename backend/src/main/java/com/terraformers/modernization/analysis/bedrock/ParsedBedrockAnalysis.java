@@ -7,6 +7,8 @@ public record ParsedBedrockAnalysis(
         String summary,
         List<String> components,
         List<String> relationships,
-        List<String> warnings
+        List<String> warnings,
+        String stopReason,
+        Integer outputTokens
 ) {
 }

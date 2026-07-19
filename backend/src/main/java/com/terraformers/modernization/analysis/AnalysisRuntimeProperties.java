@@ -15,7 +15,7 @@ public class AnalysisRuntimeProperties {
     private String externalPythonServiceUrl;
     private boolean bedrockProviderEnabled;
     private boolean bedrockEmbeddingEnabled;
-    private int bedrockMaxTokens = 4096;
+    private int bedrockMaxTokens = 8192;
     private boolean opensearchRetrieverEnabled;
     private int opensearchTopK = 3;
     private String opensearchServiceName = "aoss";

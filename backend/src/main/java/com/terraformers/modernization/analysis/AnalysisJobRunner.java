@@ -14,7 +14,7 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 public class AnalysisJobRunner {
 
     static final String TIMEOUT_FAILURE_REASON = "AI 모델의 응답 시간이 초과되었습니다. 잠시 후 새 분석을 시작해 주세요.";
-    static final String TRUNCATED_FAILURE_REASON = "AI 응답이 길어 분석을 완료하지 못했습니다. 더 단순한 이미지를 사용해 다시 시도해 주세요.";
+    static final String TRUNCATED_FAILURE_REASON = "아키텍처가 복잡해 AI 출력 한도를 초과했습니다. 핵심 구성만 남기거나 이미지를 여러 장으로 나누어 다시 시도해 주세요.";
     static final String FORMAT_FAILURE_REASON = "AI 응답 형식을 확인하지 못했습니다. 잠시 후 새 분석을 시작해 주세요.";
     static final String GENERIC_FAILURE_REASON = "분석을 완료하지 못했습니다. 잠시 후 새 분석을 시작해 주세요.";
     private static final Logger log = LoggerFactory.getLogger(AnalysisJobRunner.class);

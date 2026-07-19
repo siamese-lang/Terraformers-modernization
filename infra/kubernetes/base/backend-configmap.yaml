@@ -17,7 +17,7 @@ data:
   ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
 
   # Non-secret runtime defaults.
-  BEDROCK_MAX_TOKENS: "4096"
+  BEDROCK_MAX_TOKENS: "8192"
   OPENSEARCH_SERVICE_NAME: "aoss"
   OPENSEARCH_TOP_K: "3"
   ANALYSIS_RESULT_KEY_PREFIX: "analysis-results"
