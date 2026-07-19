@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - agent/rdb-domain-realignment
     paths:
       - ".github/workflows/aws-live-terraform-plan.yml"
       - ".github/workflows/runtime-contract-verification.yml"
@@ -12,6 +13,9 @@ on:
       - "config/live-deployment-stages.json"
       - "scripts/deploy/build-live-deployment-execution-plan.py"
       - "scripts/deploy/summarize-terraform-plan.py"
+      - "scripts/deploy/verify-approved-terraform-apply-contract.py"
+      - "scripts/checks/approved-terraform-apply-contract-verification.py"
+      - ".github/workflows/aws-live-terraform-apply.yml"
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
       - "scripts/checks/terraform-plan-changed-paths-verification.py"
       - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
@@ -30,11 +34,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: >-
+            -color
+            -shellcheck=
+            -pyflakes=
+            .github/workflows/aws-live-terraform-plan.yml
+            .github/workflows/aws-live-terraform-apply.yml
+            .github/workflows/live-deployment-plan-contract-verification.yml
+
       - name: Verify live deployment plan contract
         run: bash scripts/checks/live-deployment-plan-contract-verification.sh
 
       - name: Verify sanitized Terraform update paths
         run: python3 scripts/checks/terraform-plan-changed-paths-verification.py
+
+      - name: Verify approved Terraform apply contract
+        run: python3 scripts/checks/approved-terraform-apply-contract-verification.py
 
       - name: Verify pre-merge dispatch entry
         run: bash scripts/checks/premerge-live-plan-dispatch-verification.sh

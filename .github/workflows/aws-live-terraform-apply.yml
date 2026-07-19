@@ -1,0 +1,344 @@
+name: AWS Live Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_approved_apply:
+        description: Apply the reviewed single in-place Terraform update. Must be true to mutate AWS.
+        required: true
+        type: boolean
+        default: false
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller identity.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Commit SHA that must exactly match the checked-out GITHUB_SHA.
+        required: true
+        type: string
+      apply_stage:
+        description: Terraform environment to apply. Only eks-runtime is supported.
+        required: true
+        type: choice
+        options:
+          - eks-runtime
+        default: eks-runtime
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated.
+        required: true
+        type: string
+        default: aws_iam_policy.backend_runtime_access
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change.
+        required: true
+        type: string
+        default: policy
+      approval_confirmation:
+        description: Type APPLY_REVIEWED_IN_PLACE_UPDATE to confirm the reviewed apply contract.
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      execute_approved_apply:
+        description: Apply the reviewed single in-place Terraform update. Must be true to mutate AWS.
+        required: true
+        type: boolean
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller identity.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Commit SHA that must exactly match the checked-out GITHUB_SHA.
+        required: true
+        type: string
+      apply_stage:
+        description: Terraform environment to apply. Only eks-runtime is supported.
+        required: true
+        type: string
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated.
+        required: true
+        type: string
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change.
+        required: true
+        type: string
+      approval_confirmation:
+        description: Type APPLY_REVIEWED_IN_PLACE_UPDATE to confirm the reviewed apply contract.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  APPROVAL_CONFIRMATION: APPLY_REVIEWED_IN_PLACE_UPDATE
+  APPROVED_RESOURCE_ADDRESS: aws_iam_policy.backend_runtime_access
+  APPROVED_CHANGED_ATTRIBUTE_PATH: policy
+
+jobs:
+  approved-live-terraform-apply:
+    name: Apply reviewed eks-runtime update
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: aws-live-apply
+
+    steps:
+      - name: Validate apply inputs and approval contract
+        env:
+          EXECUTE_APPROVED_APPLY: ${{ inputs.execute_approved_apply }}
+          APPLY_STAGE: ${{ inputs.apply_stage }}
+          INPUT_APPROVAL_CONFIRMATION: ${{ inputs.approval_confirmation }}
+          INPUT_APPROVED_RESOURCE_ADDRESS: ${{ inputs.approved_resource_address }}
+          INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH: ${{ inputs.approved_changed_attribute_path }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          test "${EXECUTE_APPROVED_APPLY}" = 'true' || {
+            echo 'execute_approved_apply must be true for the approved apply path.' >&2
+            exit 1
+          }
+          test "${APPLY_STAGE}" = 'eks-runtime' || {
+            echo 'Only apply_stage=eks-runtime is supported.' >&2
+            exit 1
+          }
+          test "${INPUT_APPROVAL_CONFIRMATION}" = "${APPROVAL_CONFIRMATION}" || {
+            echo 'approval_confirmation does not match the required confirmation string.' >&2
+            exit 1
+          }
+          test "${INPUT_APPROVED_RESOURCE_ADDRESS}" = "${APPROVED_RESOURCE_ADDRESS}" || {
+            echo 'approved_resource_address does not match the reviewed resource.' >&2
+            exit 1
+          }
+          test "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}" = "${APPROVED_CHANGED_ATTRIBUTE_PATH}" || {
+            echo 'approved_changed_attribute_path does not match the reviewed attribute path.' >&2
+            exit 1
+          }
+          test -n "${EXPECTED_HEAD_SHA}" || {
+            echo 'expected_head_sha is required.' >&2
+            exit 1
+          }
+          test -n "${EXPECTED_AWS_ACCOUNT_ID}" || {
+            echo 'expected_aws_account_id is required.' >&2
+            exit 1
+          }
+          test -n "${AWS_ROLE_TO_ASSUME}" || {
+            echo 'AWS_ROLE_TO_ASSUME environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_BUCKET}" || {
+            echo 'AWS_TERRAFORM_STATE_BUCKET environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_PREFIX}" || {
+            echo 'AWS_TERRAFORM_STATE_PREFIX environment variable is required.' >&2
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify expected HEAD
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_SHA}" = "${EXPECTED_HEAD_SHA}" || {
+            echo "expected_head_sha does not match checked-out GITHUB_SHA (${GITHUB_SHA})." >&2
+            exit 1
+          }
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersLiveApply
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify AWS identity and state backend
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/aws-live-terraform-apply
+          CALLER_IDENTITY="${RUNNER_TEMP}/caller-identity.json"
+          aws sts get-caller-identity --output json > "${CALLER_IDENTITY}"
+          ACTUAL_ACCOUNT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Account"])' "${CALLER_IDENTITY}")"
+          test "${ACTUAL_ACCOUNT}" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          rm -f "${CALLER_IDENTITY}"
+          aws s3api head-bucket --bucket "${STATE_BUCKET}"
+          VERSIONING="$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)"
+          test "${VERSIONING}" = 'Enabled'
+
+      - name: Restore private tfvars
+        env:
+          EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "${EKS_TFVARS_B64}" || {
+            echo 'AWS_LIVE_EKS_TFVARS_B64 secret is required.' >&2
+            exit 1
+          }
+          printf '%s' "${EKS_TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
+          test -s "${RUNNER_TEMP}/live.auto.tfvars"
+          sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
+            | awk '{print $1}' > artifacts/aws-live-terraform-apply/tfvars.sha256
+
+      - name: Initialize remote state and create saved plan
+        env:
+          TF_DIR: infra/terraform/envs/eks-runtime
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+          APPLY_STAGE: ${{ inputs.apply_stage }}
+        run: |
+          set -euo pipefail
+          if ! rg -q 'backend[[:space:]]+"s3"' "${TF_DIR}" -g '*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'BACKEND'
+          terraform {
+            backend "s3" {}
+          }
+          BACKEND
+          fi
+          cat > "${RUNNER_TEMP}/backend.hcl" <<BACKEND_CONFIG
+          bucket       = "${STATE_BUCKET}"
+          key          = "${STATE_PREFIX}/${APPLY_STAGE}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
+          BACKEND_CONFIG
+          terraform -chdir="${TF_DIR}" init -reconfigure -backend-config="${RUNNER_TEMP}/backend.hcl"
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan \
+            -lock-timeout=5m \
+            -var-file="${RUNNER_TEMP}/live.auto.tfvars" \
+            -out="${RUNNER_TEMP}/live.tfplan" \
+            -no-color
+          terraform -chdir="${TF_DIR}" show -json "${RUNNER_TEMP}/live.tfplan" \
+            > "${RUNNER_TEMP}/live-plan.json"
+          terraform -chdir="${TF_DIR}" providers lock -platform=linux_amd64
+          sha256sum "${RUNNER_TEMP}/live.tfplan" \
+            | awk '{print $1}' > artifacts/aws-live-terraform-apply/binary-plan.sha256
+          if [[ -f "${TF_DIR}/.terraform.lock.hcl" ]]; then
+            sha256sum "${TF_DIR}/.terraform.lock.hcl" \
+              | awk '{print $1}' > artifacts/aws-live-terraform-apply/provider-lock.sha256
+          fi
+
+      - name: Enforce sanitized plan risk gate
+        env:
+          APPLY_STAGE: ${{ inputs.apply_stage }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/live-plan.json" \
+            --output-dir artifacts/aws-live-terraform-apply \
+            --stage "${APPLY_STAGE}"
+
+      - name: Verify exact approved apply contract
+        env:
+          APPLY_STAGE: ${{ inputs.apply_stage }}
+          INPUT_APPROVED_RESOURCE_ADDRESS: ${{ inputs.approved_resource_address }}
+          INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH: ${{ inputs.approved_changed_attribute_path }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/verify-approved-terraform-apply-contract.py \
+            --summary-json artifacts/aws-live-terraform-apply/plan-risk-summary.json \
+            --summary-txt artifacts/aws-live-terraform-apply/plan-risk-summary.txt \
+            --stage "${APPLY_STAGE}" \
+            --approved-resource "${INPUT_APPROVED_RESOURCE_ADDRESS}" \
+            --approved-changed-path "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}"
+
+      - name: Apply reviewed saved plan
+        env:
+          TF_DIR: infra/terraform/envs/eks-runtime
+        run: |
+          set -euo pipefail
+          terraform -chdir="${TF_DIR}" apply -no-color -auto-approve "${RUNNER_TEMP}/live.tfplan"
+          {
+            echo 'aws_live_terraform_apply=completed'
+            echo 'approved_resource=aws_iam_policy.backend_runtime_access'
+            echo 'approved_action=update'
+            echo 'approved_changed_path=policy'
+            echo 'expected_account_id_verified=true'
+            echo 'expected_head_verified=true'
+            echo 'post_apply_full_plan=pending'
+            echo 'terraform_destroy_executed=false'
+            echo 'kubernetes_mutation_executed=false'
+            echo 'runtime_secret_updated=false'
+            echo 'backend_rollout_executed=false'
+            echo 'raw_plan_uploaded=false'
+          } > artifacts/aws-live-terraform-apply/apply-summary.txt
+
+      - name: Verify post-apply full plan has no changes
+        env:
+          TF_DIR: infra/terraform/envs/eks-runtime
+        run: |
+          set -euo pipefail
+          POST_APPLY_PLAN="${RUNNER_TEMP}/post-apply-plan.txt"
+          POST_APPLY_STATUS='verification-failed'
+          POST_APPLY_STATUS_LINE='post_apply_full_plan=verification-failed'
+          set +e
+          terraform -chdir="${TF_DIR}" plan \
+            -lock-timeout=5m \
+            -var-file="${RUNNER_TEMP}/live.auto.tfvars" \
+            -detailed-exitcode \
+            -no-color > "${POST_APPLY_PLAN}"
+          PLAN_EXIT=$?
+          set -e
+          case "${PLAN_EXIT}" in
+            0)
+              POST_APPLY_STATUS='no-changes'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=no-changes'
+              ;;
+            2)
+              POST_APPLY_STATUS='changes-remain'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=changes-remain'
+              ;;
+            *)
+              POST_APPLY_STATUS='verification-failed'
+              POST_APPLY_STATUS_LINE='post_apply_full_plan=verification-failed'
+              ;;
+          esac
+          sed -i "s/post_apply_full_plan=pending/${POST_APPLY_STATUS_LINE}/" artifacts/aws-live-terraform-apply/apply-summary.txt
+          printf '%s\n' "${POST_APPLY_STATUS_LINE}" > artifacts/aws-live-terraform-apply/post-apply-status.txt
+          printf 'post_apply_plan_exit_code=%s\n' "${PLAN_EXIT}" >> artifacts/aws-live-terraform-apply/post-apply-status.txt
+          echo "Post-apply full plan sanitized status: ${POST_APPLY_STATUS} (exit code ${PLAN_EXIT})."
+          if [[ "${PLAN_EXIT}" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Remove sensitive apply material
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/caller-identity.json" "${RUNNER_TEMP}/live-plan.json" "${RUNNER_TEMP}/live.tfplan" "${RUNNER_TEMP}/live.auto.tfvars" "${RUNNER_TEMP}/backend.hcl" "${RUNNER_TEMP}/post-apply-plan.txt"
+
+      - name: Upload sanitized apply evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-live-terraform-apply-${{ inputs.apply_stage }}-evidence
+          path: |
+            artifacts/aws-live-terraform-apply/plan-risk-summary.txt
+            artifacts/aws-live-terraform-apply/plan-risk-summary.md
+            artifacts/aws-live-terraform-apply/plan-risk-summary.json
+            artifacts/aws-live-terraform-apply/binary-plan.sha256
+            artifacts/aws-live-terraform-apply/tfvars.sha256
+            artifacts/aws-live-terraform-apply/provider-lock.sha256
+            artifacts/aws-live-terraform-apply/apply-summary.txt
+            artifacts/aws-live-terraform-apply/post-apply-status.txt
+          if-no-files-found: warn
+          retention-days: 30
