@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
+import ProjectDeleteButton from '../components/ProjectDeleteButton';
 
 const labels = {
   PENDING: '분석 요청이 대기 중입니다.',
@@ -16,11 +17,13 @@ const visibilityDescriptions = {
 
 function ProjectDetailPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [terraform, setTerraform] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [error, setError] = useState('');
   const [visibilityError, setVisibilityError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [waitingForBedrock, setWaitingForBedrock] = useState(false);
   const objectUrlRef = useRef(null);
@@ -115,7 +118,8 @@ function ProjectDetailPage() {
     <section className="page-stack">
       <Link to="/projects">내 프로젝트 목록으로 돌아가기</Link>
       <h1>{project.displayName}</h1>
-      <section aria-label="공개 범위">
+      <section className="project-detail-summary" aria-label="프로젝트 상태와 공개 범위">
+        <p><strong>{project.analysisStatus || 'NO_ANALYSIS'}</strong> {labels[project.analysisStatus]}</p>
         <p><strong>공개 범위: {project.visibility}</strong></p>
         <p>{visibilityDescriptions[project.visibility]}</p>
         {visibilityError && <p role="alert" className="error">공개 범위 변경 실패: {visibilityError}</p>}
@@ -123,7 +127,6 @@ function ProjectDetailPage() {
           {isUpdatingVisibility ? '변경 중...' : isPublic ? '비공개로 전환' : '공개하기'}
         </button>
       </section>
-      <p><strong>{project.analysisStatus || 'NO_ANALYSIS'}</strong> {labels[project.analysisStatus]}</p>
       {project.analysisStatus === 'RUNNING' && <div><p>이미지 복잡도에 따라 1~3분 정도 걸릴 수 있습니다.</p><p>다른 페이지로 이동해도 분석은 계속되며 내 프로젝트에서 다시 확인할 수 있습니다.</p>{waitingForBedrock && <p>Bedrock 모델의 응답을 기다리고 있습니다.</p>}</div>}
       {imageUrl && <img src={imageUrl} alt={`${project.displayName} architecture`} style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto', maxHeight: 640 }} />}
       {project.failureReason && <p role="alert" className="error">{project.failureReason}</p>}
@@ -133,6 +136,13 @@ function ProjectDetailPage() {
       {project.detectedRelationships?.length > 0 && <p><strong>관계:</strong> {project.detectedRelationships.join(', ')}</p>}
       {project.warnings?.length > 0 && <p><strong>Warnings:</strong> {project.warnings.join(', ')}</p>}
       {project.resultFileId && <pre className="terraform-code"><code>{terraform}</code></pre>}
+      <section className="project-danger-zone" aria-labelledby="project-delete-title">
+        <h2 id="project-delete-title">프로젝트 관리</h2>
+        <h3>프로젝트 삭제</h3>
+        <p>원본 이미지, 분석 결과 및 공개 프로젝트 노출 정보가 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+        {deleteError && <p role="alert" className="error">{deleteError}</p>}
+        <ProjectDeleteButton projectId={projectId} projectName={project.displayName || `Project ${projectId}`} onError={setDeleteError} onDeleted={() => navigate('/projects', { replace: true, state: { message: '프로젝트가 삭제되었습니다.' } })} />
+      </section>
     </section>
   );
 }
