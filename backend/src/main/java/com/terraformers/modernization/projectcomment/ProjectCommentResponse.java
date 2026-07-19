@@ -12,6 +12,8 @@ public record ProjectCommentResponse(
         String userEmail,
         Instant createdAt
 ) {
+    private static final String UUID_PATTERN =
+            "(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
     static ProjectCommentResponse from(CommentEntity entity) {
         return new ProjectCommentResponse(
                 entity.getCommentId(),
@@ -24,10 +26,17 @@ public record ProjectCommentResponse(
     }
 
     private static String displayAuthor(UserEntity author) {
-        if (author.getDisplayName() != null && !author.getDisplayName().isBlank()) {
-            return author.getDisplayName();
+        if (isSafeDisplayName(author)) {
+            return author.getDisplayName().strip();
         }
         return safeEmail(author) != null ? safeEmail(author) : "사용자";
+    }
+
+    private static boolean isSafeDisplayName(UserEntity author) {
+        String displayName = author.getDisplayName();
+        return displayName != null && !displayName.isBlank()
+                && !displayName.strip().equals(author.getCognitoSub())
+                && !displayName.strip().matches(UUID_PATTERN);
     }
 
     private static String safeEmail(UserEntity author) {

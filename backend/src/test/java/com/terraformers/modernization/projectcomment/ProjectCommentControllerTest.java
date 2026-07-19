@@ -83,7 +83,8 @@ class ProjectCommentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.projectId").value(projectId))
                 .andExpect(jsonPath("$.content").value("첫 번째 공개 댓글"))
-                .andExpect(jsonPath("$.userEmail").value("comment@example.com"))
+                .andExpect(jsonPath("$.authorDisplayName").value("Comment User"))
+                .andExpect(jsonPath("$.userEmail").value("c***@example.com"))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty());
 
         mockMvc.perform(get("/api/projects/" + projectId + "/comments"))
@@ -91,7 +92,8 @@ class ProjectCommentControllerTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].projectId").value(projectId))
                 .andExpect(jsonPath("$[0].content").value("첫 번째 공개 댓글"))
-                .andExpect(jsonPath("$[0].userEmail").value("comment@example.com"));
+                .andExpect(jsonPath("$[0].authorDisplayName").value("Comment User"))
+                .andExpect(jsonPath("$[0].userEmail").value("c***@example.com"));
     }
 
     @Test
@@ -107,7 +109,8 @@ class ProjectCommentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(projectId))
                 .andExpect(jsonPath("$.content").value("호환 댓글"))
-                .andExpect(jsonPath("$.userEmail").value("comment@example.com"));
+                .andExpect(jsonPath("$.authorDisplayName").value("Comment User"))
+                .andExpect(jsonPath("$.userEmail").value("c***@example.com"));
 
         mockMvc.perform(get("/api/getProjectComments/" + projectId))
                 .andExpect(status().isOk())
@@ -156,6 +159,35 @@ class ProjectCommentControllerTest {
                         .with(testUserJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void uuidDisplayNameIsNotReturnedAsPublicAuthorName() throws Exception {
+        Long projectId = upload("UUID Comment.png");
+        publishProject(projectId);
+        mockMvc.perform(post("/api/projects/" + projectId + "/comments")
+                        .with(jwt().jwt(builder -> builder.subject("123e4567-e89b-12d3-a456-426614174000")
+                                .claim("email", "uuid@example.com")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"safe\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorDisplayName").value("u***@example.com"))
+                .andExpect(jsonPath("$.authorDisplayName").value(org.hamcrest.Matchers.not("123e4567-e89b-12d3-a456-426614174000")));
+    }
+
+    @Test
+    void displayNameEndpointTrimsAndValidatesAuthenticatedUser() throws Exception {
+        mockMvc.perform(patch("/api/users/me/display-name").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Name\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/users/me/display-name").with(testUserJwt()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"  Nickname  \"}"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(patch("/api/users/me/display-name").with(testUserJwt()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/users/me/display-name").with(testUserJwt()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"" + "x".repeat(101) + "\"}"))
                 .andExpect(status().isBadRequest());
     }
 

@@ -72,3 +72,16 @@ test('renders a lazy thumbnail and author display name without storage metadata'
   expect(await screen.findByText('별명')).toBeInTheDocument();
   expect(screen.queryByText(/metadata-only|s3:\/\//i)).not.toBeInTheDocument();
 });
+
+test('shows the thumbnail placeholder after an image load error', async () => {
+  api.get.mockImplementation((url) => Promise.resolve({
+    data: url === '/api/public-projects'
+      ? [{ projectId: 404, projectName: 'Broken image', imageUrl: '/broken.png' }]
+      : [],
+  }));
+  render(<PublicProjectsReadOnly selectedProjectId="" onSelectProject={jest.fn()} />);
+  const image = await screen.findByAltText('Broken image 미리보기');
+  await userEvent.click(image); // ensure the element remains interactive inside the card
+  image.dispatchEvent(new Event('error'));
+  expect(screen.getByText('미리보기 없음')).toBeVisible();
+});
