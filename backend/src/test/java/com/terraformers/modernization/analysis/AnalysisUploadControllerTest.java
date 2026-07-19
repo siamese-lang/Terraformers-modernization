@@ -109,7 +109,7 @@ class AnalysisUploadControllerTest {
     }
 
     @Test
-    void uploadAddsImageToExistingProjectWhenProjectIdIsProvided() throws Exception {
+    void uploadRejectsExistingProjectMode() throws Exception {
         MvcResult firstUpload = mockMvc.perform(multipart("/api/upload")
                         .file(image("first.png"))
                         .param("projectName", "Existing Target")
@@ -122,9 +122,7 @@ class AnalysisUploadControllerTest {
                         .file(image("second.png"))
                         .param("projectId", String.valueOf(projectId))
                         .with(testUserJwt()))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.projectId").value(projectId))
-                .andExpect(jsonPath("$.originalFilename").value("second.png"));
+                .andExpect(status().isBadRequest());
     }
 
     @Test

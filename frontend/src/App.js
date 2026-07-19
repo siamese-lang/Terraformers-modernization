@@ -13,6 +13,7 @@ import EntryPage from './components/EntryPage';
 import CommunityPage from './pages/CommunityPage';
 import GeneratePage from './pages/GeneratePage';
 import MyProjectsPage from './pages/MyProjectsPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
 
 function HomeRedirect() {
   const { status } = useAuthSession();
@@ -56,6 +57,7 @@ function App() {
                 </ProtectedRoute>
               )}
             />
+            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

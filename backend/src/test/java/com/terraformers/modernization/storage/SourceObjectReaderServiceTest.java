@@ -31,7 +31,7 @@ class SourceObjectReaderServiceTest {
         ProjectFileEntity sourceFile = persistedSourceFile();
         S3Client s3Client = mock(S3Client.class);
         Instant lastModified = Instant.parse("2026-07-15T00:00:00Z");
-        when(artifactService.requireLatestSourceImage(42L)).thenReturn(sourceFile);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
         when(s3Client.headObject(any(HeadObjectRequest.class)))
                 .thenReturn(HeadObjectResponse.builder()
                         .eTag("\"etag-from-s3\"")
@@ -74,7 +74,7 @@ class SourceObjectReaderServiceTest {
         ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
         ProjectFileEntity sourceFile = metadataOnlySourceFile();
         S3Client s3Client = mock(S3Client.class);
-        when(artifactService.requireLatestSourceImage(42L)).thenReturn(sourceFile);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
         SourceObjectReaderService service = new SourceObjectReaderService(
                 projectDomainService,
                 artifactService,
@@ -96,7 +96,7 @@ class SourceObjectReaderServiceTest {
         ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
         ProjectFileEntity sourceFile = persistedSourceFile();
         S3Client s3Client = mock(S3Client.class);
-        when(artifactService.requireLatestSourceImage(42L)).thenReturn(sourceFile);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
         SourceObjectReaderService service = new SourceObjectReaderService(
                 projectDomainService,
                 artifactService,
@@ -119,7 +119,7 @@ class SourceObjectReaderServiceTest {
         ProjectFileEntity sourceFile = persistedSourceFile();
         ObjectReader objectReader = mock(ObjectReader.class);
         byte[] bytes = new byte[] {1, 2, 3, 4};
-        when(artifactService.requireLatestSourceImage(42L)).thenReturn(sourceFile);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
         when(objectReader.readContent(new ObjectReference("terraformers-upload-bucket", "browser-uploads/42/source.png")))
                 .thenReturn(new ObjectContent(
                         new ObjectMetadata("terraformers-upload-bucket", "browser-uploads/42/source.png", "image/png", bytes.length, "\"etag\""),
@@ -162,7 +162,7 @@ class SourceObjectReaderServiceTest {
         assertThatThrownBy(() -> service.readImageContent(42L, requester))
                 .isInstanceOf(SecurityException.class)
                 .hasMessage("forbidden");
-        verify(artifactService, never()).requireLatestSourceImage(42L);
+        verify(artifactService, never()).requireLatestJobSourceImage(42L);
         verify(objectReader, never()).readContent(any(ObjectReference.class));
     }
 

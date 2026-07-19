@@ -1,11 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import MyProjectsPage from './MyProjectsPage';
 import api from '../utils/api';
-
-jest.mock('../components/ProjectTreeReadOnly', () => function ProjectTreeReadOnly({ selectedProjectId }) {
-  return <div data-testid="tree">selected={selectedProjectId || ''}</div>;
-});
 
 jest.mock('../utils/api', () => ({
   get: jest.fn(),
@@ -20,15 +17,13 @@ beforeEach(() => {
   api.delete.mockResolvedValue({});
 });
 
-test('confirms deletion, calls delete API, refreshes list, and clears selected project', async () => {
-  render(<MyProjectsPage />);
+test('confirms deletion and refreshes the route-based project list', async () => {
+  render(<MemoryRouter><MyProjectsPage /></MemoryRouter>);
   await screen.findByText('Delete me');
-  await userEvent.click(screen.getByRole('button', { name: 'Delete me' }));
-  expect(screen.getByTestId('tree')).toHaveTextContent('selected=42');
+  expect(screen.getByRole('link', { name: '상세 보기' })).toHaveAttribute('href', '/projects/42');
 
   await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
   await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/api/projects/42'));
   await waitFor(() => expect(screen.getByText('아직 프로젝트가 없습니다.')).toBeInTheDocument());
-  expect(screen.getByTestId('tree')).toHaveTextContent('selected=');
 });

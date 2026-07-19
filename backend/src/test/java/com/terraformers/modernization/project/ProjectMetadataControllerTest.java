@@ -13,12 +13,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisJobRepository;
+import com.terraformers.modernization.analysis.AnalysisJobEntity;
+import com.terraformers.modernization.analysis.AnalysisJobStatus;
 import com.terraformers.modernization.analysis.SynchronousAnalysisExecutorTestConfig;
 import com.terraformers.modernization.collaboration.BoardRepository;
 import com.terraformers.modernization.collaboration.CommentRepository;
 import com.terraformers.modernization.identity.UserRepository;
 import com.terraformers.modernization.projectcore.OwnedProjectRepository;
 import com.terraformers.modernization.projectcore.ProjectFileRepository;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -100,6 +103,44 @@ class ProjectMetadataControllerTest {
 
         mockMvc.perform(get("/api/projects/" + projectId + "/source-object").with(testUserJwt()))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void detailAndTerraformRemainBoundToLatestJobFilesWhenNewerPhysicalFilesExist() throws Exception {
+        Long projectId = upload("Job Bound.png");
+        AnalysisJobEntity job = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId).orElseThrow();
+        Long jobSourceFileId = job.getSourceFileId();
+        Long jobResultFileId = job.getResultFileId();
+        ProjectFileEntity source = projectFileRepository.findById(jobSourceFileId).orElseThrow();
+        ProjectFileEntity result = projectFileRepository.findById(jobResultFileId).orElseThrow();
+        projectFileRepository.save(copyFile(source, "source/newer.png", "newer.png", "ARCHITECTURE_IMAGE"));
+        projectFileRepository.save(copyFile(result, "terraform/newer.tf", "newer.tf", "GENERATED_TERRAFORM"));
+
+        mockMvc.perform(get("/api/projects/" + projectId).with(testUserJwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceFileId").value(jobSourceFileId))
+                .andExpect(jsonPath("$.resultFileId").value(jobResultFileId));
+        mockMvc.perform(get("/api/projects/" + projectId + "/terraform/main.tf").with(testUserJwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fileId").value(jobResultFileId));
+    }
+
+    @Test
+    void failedLatestJobDoesNotReturnPreviousTerraform() throws Exception {
+        Long projectId = upload("Failed Job.png");
+        AnalysisJobEntity job = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId).orElseThrow();
+        job.setStatus(AnalysisJobStatus.FAILED);
+        job.setResultFileId(null);
+        job.setFailureReason("analysis failed");
+        analysisJobRepository.save(job);
+
+        mockMvc.perform(get("/api/projects/" + projectId).with(testUserJwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.analysisStatus").value("FAILED"))
+                .andExpect(jsonPath("$.resultFileId").doesNotExist())
+                .andExpect(jsonPath("$.failureReason").value("analysis failed"));
+        mockMvc.perform(get("/api/projects/" + projectId + "/terraform/main.tf").with(testUserJwt()))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -209,6 +250,23 @@ class ProjectMetadataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(projectId))
                 .andExpect(jsonPath("$.visibility").value("PUBLIC"));
+    }
+
+    private ProjectFileEntity copyFile(ProjectFileEntity original, String path, String name, String type) {
+        ProjectFileEntity copy = new ProjectFileEntity();
+        copy.setProject(original.getProject());
+        copy.setNodeType("FILE");
+        copy.setFileType(type);
+        copy.setPath(path);
+        copy.setSortOrder(200);
+        copy.setOriginalFilename(name);
+        copy.setS3Bucket(original.getS3Bucket());
+        copy.setS3Key(original.getS3Key() + ".newer");
+        copy.setStorageProvider(original.getStorageProvider());
+        copy.setBinaryPersisted(original.isBinaryPersisted());
+        copy.setContentType(original.getContentType());
+        copy.setInlineContent("newer physical artifact");
+        return copy;
     }
 
     private RequestPostProcessor testUserJwt() {

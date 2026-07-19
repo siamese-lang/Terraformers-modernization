@@ -48,7 +48,7 @@ class AnalysisUploadServiceTest {
                 analysisJobService
         );
 
-        assertThatThrownBy(() -> service.upload(file, null, "New Project", jwt))
+        assertThatThrownBy(() -> service.upload(file, "New Project", jwt))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("storage unavailable");
         verify(projectDomainService).softDelete(77L, currentUser);

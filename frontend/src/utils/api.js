@@ -24,6 +24,7 @@ const PUBLIC_GET_PATTERNS = [
   /^\/api\/projects\/\d+\/terraform\/main\.tf$/,
   /^\/api\/projects\/\d+\/comments$/,
   /^\/api\/projects\/\d+\/source-object$/,
+  /^\/api\/projects\/\d+\/source-image$/,
   /^\/api\/project-tree\/\d+$/,
   /^\/api\/getProjectInfrastructureImage\/\d+$/,
   /^\/api\/getProjectComments\/\d+$/,

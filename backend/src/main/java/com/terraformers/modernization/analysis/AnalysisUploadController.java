@@ -29,14 +29,12 @@ public class AnalysisUploadController {
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AnalysisUploadResponse> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "projectId", required = false) Long requestedProjectId,
-            @RequestParam(value = "projectName", required = false) String requestedProjectName,
+            @RequestParam("projectName") String projectName,
             @AuthenticationPrincipal Jwt jwt
     ) {
         AnalysisUploadResponse response = uploadService.upload(
                 file,
-                requestedProjectId,
-                requestedProjectName,
+                projectName,
                 jwt
         );
         return ResponseEntity

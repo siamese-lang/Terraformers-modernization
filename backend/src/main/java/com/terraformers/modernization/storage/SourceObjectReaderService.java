@@ -64,7 +64,7 @@ public class SourceObjectReaderService {
     @Transactional(readOnly = true)
     public SourceObjectReadResponse read(Long projectId, UserEntity currentUser) {
         projectDomainService.requireAccessibleProject(projectId, currentUser);
-        ProjectFileEntity sourceFile = projectArtifactService.requireLatestSourceImage(projectId);
+        ProjectFileEntity sourceFile = projectArtifactService.requireLatestJobSourceImage(projectId);
 
         if (!sourceFile.isBinaryPersisted()
                 || isBlank(sourceFile.getS3Bucket())
@@ -117,7 +117,7 @@ public class SourceObjectReaderService {
     @Transactional(readOnly = true)
     public ResponseEntity<byte[]> readImageContent(Long projectId, UserEntity currentUser) {
         projectDomainService.requireAccessibleProject(projectId, currentUser);
-        ProjectFileEntity sourceFile = projectArtifactService.requireLatestSourceImage(projectId);
+        ProjectFileEntity sourceFile = projectArtifactService.requireLatestJobSourceImage(projectId);
         if (!sourceFile.isBinaryPersisted() || isBlank(sourceFile.getS3Bucket()) || isBlank(sourceFile.getS3Key())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "project source image content is unavailable: " + projectId);
         }

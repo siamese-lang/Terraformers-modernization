@@ -67,7 +67,7 @@ public class ProjectMetadataService {
     @Transactional(readOnly = true)
     public TerraformDraftResponse getTerraformDraft(Long projectId, UserEntity currentUser) {
         OwnedProjectEntity project = projectDomainService.requireAccessibleProject(projectId, currentUser);
-        ProjectFileEntity terraformFile = projectArtifactService.requireLatestTerraform(projectId);
+        ProjectFileEntity terraformFile = projectArtifactService.requireLatestJobTerraform(projectId);
         AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
                 .orElse(null);
         return TerraformDraftResponse.from(project, terraformFile, latestJob);
@@ -88,20 +88,12 @@ public class ProjectMetadataService {
 
     private ProjectResponse toResponse(OwnedProjectEntity project) {
         Long projectId = project.getProjectId();
-        ProjectFileEntity sourceFile = fileRepository
-                .findFirstByProject_ProjectIdAndFileTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
-                        projectId,
-                        ProjectArtifactService.ARCHITECTURE_IMAGE
-                )
-                .orElse(null);
-        ProjectFileEntity terraformFile = fileRepository
-                .findFirstByProject_ProjectIdAndFileTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
-                        projectId,
-                        ProjectArtifactService.GENERATED_TERRAFORM
-                )
-                .orElse(null);
         AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
                 .orElse(null);
+        ProjectFileEntity sourceFile = latestJob == null ? null : fileRepository
+                .findByFileIdAndDeletedAtIsNull(latestJob.getSourceFileId()).orElse(null);
+        ProjectFileEntity terraformFile = latestJob == null || latestJob.getResultFileId() == null ? null : fileRepository
+                .findByFileIdAndDeletedAtIsNull(latestJob.getResultFileId()).orElse(null);
         return ProjectResponse.from(project, sourceFile, terraformFile, latestJob);
     }
 }

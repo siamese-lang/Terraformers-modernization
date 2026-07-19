@@ -39,7 +39,6 @@ public class AnalysisUploadService {
 
     public AnalysisUploadResponse upload(
             MultipartFile file,
-            Long requestedProjectId,
             String requestedProjectName,
             Jwt jwt
     ) {
@@ -49,12 +48,7 @@ public class AnalysisUploadService {
 
         UserEntity currentUser = authenticatedUserService.getOrCreate(jwt);
         String originalFilename = safeOriginalFilename(file);
-        OwnedProjectEntity project = resolveProject(
-                requestedProjectId,
-                requestedProjectName,
-                currentUser
-        );
-        boolean createdProject = requestedProjectId == null;
+        OwnedProjectEntity project = resolveProject(requestedProjectName, currentUser);
 
         try {
             StoredUploadObject storedUpload = uploadObjectStorageService.store(
@@ -90,25 +84,18 @@ public class AnalysisUploadService {
                     storedUpload
             );
         } catch (RuntimeException exception) {
-            if (createdProject) {
-                projectDomainService.softDelete(project.getProjectId(), currentUser);
-            }
+            projectDomainService.softDelete(project.getProjectId(), currentUser);
             throw exception;
         }
     }
 
     private OwnedProjectEntity resolveProject(
-            Long requestedProjectId,
             String requestedProjectName,
             UserEntity currentUser
     ) {
-        boolean hasProjectId = requestedProjectId != null;
         boolean hasProjectName = requestedProjectName != null && !requestedProjectName.isBlank();
-        if (hasProjectId == hasProjectName) {
-            throw new IllegalArgumentException("upload must specify exactly one mode: projectId for an existing project or nonblank projectName for a new project");
-        }
-        if (hasProjectId) {
-            return projectDomainService.requireModifiableProject(requestedProjectId, currentUser);
+        if (!hasProjectName) {
+            throw new IllegalArgumentException("projectName must not be blank");
         }
         return projectDomainService.createProject(
                 currentUser,
