@@ -6,14 +6,18 @@ data:
   SPRING_PROFILES_ACTIVE: "prod"
   AWS_REGION: "ap-northeast-2"
 
-  # Production image analysis reads private S3 objects and invokes the configured Bedrock vision model.
-  # The inference profile ID is public runtime configuration; AWS authorization remains controlled by IRSA.
+  # Production image analysis reads private S3 objects and invokes the configured Bedrock models.
+  # OPENSEARCH_ENDPOINT is supplied through the private runtime Secret from the rag-runtime output.
   S3_READER_ENABLED: "true"
   S3_WRITER_ENABLED: "true"
   BEDROCK_PROVIDER_ENABLED: "true"
   BEDROCK_MODEL_ID: "global.anthropic.claude-sonnet-4-6"
-  BEDROCK_EMBEDDING_ENABLED: "false"
-  OPENSEARCH_RETRIEVER_ENABLED: "false"
+  RETRIEVAL_MODE: "REQUIRED"
+  BEDROCK_EMBEDDING_MODEL_ID: "amazon.titan-embed-text-v2:0"
+  INDEX_NAME: "terraformers-reference-v1"
+  VECTOR_FIELD_NAME: "embedding"
+  CONTENT_FIELD_NAME: "content"
+  EXPECTED_VECTOR_DIMENSION: "1024"
   ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
 
   BEDROCK_MAX_TOKENS: "8192"
