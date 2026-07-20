@@ -72,6 +72,30 @@ def verify_workflow() -> None:
     contains(plan, "APPLY_REVIEWED_RAG_RUNTIME_CREATE")
     contains(plan, "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY")
     contains(plan, "expected_head_sha is required for execute_approved_apply.")
+    summary_case = apply.split('case "${APPLY_CONTRACT}" in', 1)[1].split('            esac', 1)[0]
+    expected_summary_branches = {
+        "foundation-rag-apply-permission-create": (
+            "approved_action=create", "approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create", "approved_resource_count=1", "environment_gate=aws-live-plan",
+        ),
+        "foundation-rag-apply-permission-update": (
+            "approved_action=update", "approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create", "approved_changed_path=policy", "approved_resource_count=1", "environment_gate=aws-live-plan",
+        ),
+        "foundation-apply-role-bootstrap": ("approved_action=create", "approved_resource_count=4", "environment_gate=aws-live-plan"),
+        "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=25", "environment_gate=aws-live-apply"),
+        "rag-runtime-reviewed-recovery": ("approved_action=create-and-read", "approved_resource_count=18", "environment_gate=aws-live-apply"),
+        "eks-runtime-backend-policy-update": ("approved_resource=aws_iam_policy.backend_runtime_access", "approved_action=update", "approved_changed_path=policy", "environment_gate=aws-live-apply"),
+    }
+    for contract, expected_values in expected_summary_branches.items():
+        branch = summary_case.split(f"{contract})", 1)[1].split(";;", 1)[0]
+        for value in expected_values:
+            contains(branch, value)
+    create_summary = summary_case.split("foundation-rag-apply-permission-create)", 1)[1].split(";;", 1)[0]
+    update_summary = summary_case.split("foundation-rag-apply-permission-update)", 1)[1].split(";;", 1)[0]
+    assert create_summary != update_summary
+    assert "else" not in summary_case
+    unknown_summary = summary_case.split("*)", 1)[1].split(";;", 1)[0]
+    contains(unknown_summary, 'echo "unknown apply contract: ${APPLY_CONTRACT}" >&2')
+    contains(unknown_summary, "exit 1")
     foundation = (ROOT / "infra/terraform/bootstrap/aws-live-foundation/main.tf").read_text(encoding="utf-8")
     for required in (
         "terraformers-dev-backend-irsa-role", "iam:PolicyARN", "Terraformers", "rag-runtime",
