@@ -16,6 +16,8 @@ import com.terraformers.modernization.analysis.AnalysisResult;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceRetriever;
+import com.terraformers.modernization.reference.BedrockArchitectureFactsExtractor;
+import com.terraformers.modernization.reference.RetrievalQueryTextBuilder;
 import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectMetadata;
 import com.terraformers.modernization.storage.ObjectReader;
@@ -54,7 +56,9 @@ class BedrockAnalysisProviderTest {
                 referenceRetriever(),
                 properties,
                 new BedrockPromptBuilder(objectMapper),
-                new BedrockResponseParser(objectMapper)
+                new BedrockResponseParser(objectMapper),
+                new BedrockArchitectureFactsExtractor(client, objectMapper, properties),
+                new RetrievalQueryTextBuilder()
         );
 
         AnalysisResult result = provider.analyze(context());
@@ -154,7 +158,8 @@ class BedrockAnalysisProviderTest {
         properties.setBedrockModelId("configured-model-id");
         properties.setBedrockMaxTokens(8192);
         return new BedrockAnalysisProvider(client, objectReader(), referenceRetriever(), properties,
-                new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper));
+                new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper),
+                new BedrockArchitectureFactsExtractor(client, objectMapper, properties), new RetrievalQueryTextBuilder());
     }
 
     private InvokeModelResponse response(String text, String stopReason, int outputTokens) throws Exception {

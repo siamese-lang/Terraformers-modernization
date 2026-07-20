@@ -60,13 +60,6 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         this.queryTextBuilder = queryTextBuilder;
     }
 
-    // Retained for focused generation tests; production wiring uses the facts stage constructor above.
-    public BedrockAnalysisProvider(BedrockRuntimeClient bedrockRuntimeClient, ObjectReader objectReader,
-            ReferenceRetriever referenceRetriever, AnalysisRuntimeProperties properties, BedrockPromptBuilder promptBuilder,
-            BedrockResponseParser responseParser) {
-        this(bedrockRuntimeClient, objectReader, referenceRetriever, properties, promptBuilder, responseParser, null, null);
-    }
-
     @Override
     public AnalysisResult analyze(AnalysisRequestContext context) {
         String modelId = requireModelId();
