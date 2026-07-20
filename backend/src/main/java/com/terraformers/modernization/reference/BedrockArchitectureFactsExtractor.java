@@ -47,7 +47,7 @@ public class BedrockArchitectureFactsExtractor {
                 if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) { textBlock = block; break; }
             }
             if (textBlock == null) throw new IllegalStateException("Bedrock facts response has no text block");
-            String text = normalizeFactsJson(textBlock.path("text").asText());
+            String text = extractFactsJsonObject(textBlock.path("text").asText());
             JsonNode facts = objectMapper.readTree(text);
             if (!facts.isObject()) throw new IllegalStateException("Bedrock facts response is not a JSON object");
             if (!facts.path("summary").isMissingNode() && !facts.path("summary").isTextual()) throw new IllegalStateException("Bedrock facts summary must be text");
@@ -60,16 +60,37 @@ public class BedrockArchitectureFactsExtractor {
         }
     }
 
-    private String normalizeFactsJson(String responseText) {
+    private String extractFactsJsonObject(String responseText) {
         String normalized = responseText.strip();
-        if (!normalized.startsWith("```")) return normalized;
+        int objectStart = normalized.indexOf('{');
+        if (objectStart < 0) throw new IllegalStateException("Bedrock facts response has no JSON object");
 
-        int contentStart = normalized.indexOf('\n');
-        int contentEnd = normalized.lastIndexOf("```");
-        if (contentStart < 0 || contentEnd <= contentStart) {
-            throw new IllegalStateException("Bedrock facts response has an invalid JSON code fence");
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int index = objectStart; index < normalized.length(); index++) {
+            char current = normalized.charAt(index);
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (current == '\\') {
+                    escaped = true;
+                } else if (current == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (current == '"') {
+                inString = true;
+            } else if (current == '{') {
+                depth++;
+            } else if (current == '}') {
+                depth--;
+                if (depth == 0) return normalized.substring(objectStart, index + 1);
+            }
         }
-        return normalized.substring(contentStart + 1, contentEnd).strip();
+        throw new IllegalStateException("Bedrock facts response has an incomplete JSON object");
     }
 
     private String requireModelId() {

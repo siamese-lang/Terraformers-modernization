@@ -28,14 +28,16 @@ class BedrockArchitectureFactsExtractorTest {
     }
 
     @Test
-    void acceptsBareAndCaseVariantJsonFences() throws Exception {
+    void acceptsFenceVariantsAndCompactJson() throws Exception {
         BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
         when(client.invokeModel(any(InvokeModelRequest.class))).thenReturn(
                 response("```\n{\"summary\":\"bare fence\",\"components\":[\"EKS\"]}\n```"),
-                response("```JSON\n{\"summary\":\"uppercase fence\",\"components\":[\"RDS\"]}\n```\nGenerated facts"));
+                response("```JSON\n{\"summary\":\"uppercase fence\",\"components\":[\"RDS\"]}\n```\nGenerated facts"),
+                response("```json{\"summary\":\"compact {facts}\",\"components\":[\"S3\"]}```"));
 
         assertThat(extractor(client).extract(source()).summary()).isEqualTo("bare fence");
         assertThat(extractor(client).extract(source()).summary()).isEqualTo("uppercase fence");
+        assertThat(extractor(client).extract(source()).summary()).isEqualTo("compact {facts}");
     }
 
     @Test
