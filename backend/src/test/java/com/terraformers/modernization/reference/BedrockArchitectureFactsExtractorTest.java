@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectMetadata;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
@@ -38,6 +41,21 @@ class BedrockArchitectureFactsExtractorTest {
         assertThat(extractor(client).extract(source()).summary()).isEqualTo("bare fence");
         assertThat(extractor(client).extract(source()).summary()).isEqualTo("uppercase fence");
         assertThat(extractor(client).extract(source()).summary()).isEqualTo("compact {facts}");
+    }
+
+    @Test
+    void requestsBoundedFactsWithEnoughOutputBudget() throws Exception {
+        BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+        when(client.invokeModel(any(InvokeModelRequest.class))).thenReturn(response("{\"summary\":\"x\",\"components\":[\"EKS\"]}"));
+
+        extractor(client).extract(source());
+
+        ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
+        verify(client).invokeModel(captor.capture());
+        JsonNode request = new ObjectMapper().readTree(captor.getValue().body().asUtf8String());
+        assertThat(request.path("max_tokens").asInt()).isEqualTo(800);
+        String prompt = request.path("messages").path(0).path("content").path(1).path("text").asText();
+        assertThat(prompt).contains("at most 8 strings", "under 60 characters");
     }
 
     @Test
