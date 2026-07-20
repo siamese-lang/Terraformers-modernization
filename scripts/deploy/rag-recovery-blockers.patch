@@ -1,0 +1,55 @@
+diff --git a/infra/terraform/bootstrap/aws-live-foundation/main.tf b/infra/terraform/bootstrap/aws-live-foundation/main.tf
+--- a/infra/terraform/bootstrap/aws-live-foundation/main.tf
++++ b/infra/terraform/bootstrap/aws-live-foundation/main.tf
+@@ -532,11 +532,6 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
+   statement {
+     sid       = "CreateAossManagedVpcEndpoint"
+     effect    = "Allow"
+     actions   = ["ec2:CreateVpcEndpoint"]
+     resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]
+-    condition {
+-      test     = "StringLike"
+-      variable = "ec2:VpceServiceName"
+-      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
+-    }
+   }
+
+diff --git a/infra/terraform/envs/rag-runtime/main.tf b/infra/terraform/envs/rag-runtime/main.tf
+--- a/infra/terraform/envs/rag-runtime/main.tf
++++ b/infra/terraform/envs/rag-runtime/main.tf
+@@ -26,7 +26,9 @@ locals {
+ resource "aws_security_group" "aoss_vpc_endpoint" {
+   name        = local.vpc_endpoint_name
+   description = "Only backend EKS traffic may reach the private AOSS endpoint."
+   vpc_id      = var.vpc_id
+ 
++  ingress = []
++
+   tags = merge(local.common_tags, { Name = local.vpc_endpoint_name })
+ }
+
+diff --git a/scripts/checks/approved-terraform-apply-contract-verification.py b/scripts/checks/approved-terraform-apply-contract-verification.py
+--- a/scripts/checks/approved-terraform-apply-contract-verification.py
++++ b/scripts/checks/approved-terraform-apply-contract-verification.py
+@@ -105,5 +105,5 @@ def verify_workflow() -> None:
+         "ec2:DescribeSubnets", "ec2:DescribeVpcEndpoints", "ec2:DescribeVpcs",
+         "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}",
+         "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*",
+-        "ec2:VpceServiceName", "com.amazonaws.ap-northeast-2.aoss*", "ec2:CreateAction",
++        "ec2:CreateAction",
+         "CreateVpcEndpoint", "route53:AssociateVPCWithHostedZone",
+@@ -133,6 +133,5 @@ def verify_workflow() -> None:
+     endpoint_statement = create_vpc_endpoint_statements["CreateAossManagedVpcEndpoint"]
+     contains(endpoint_statement, 'resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]')
+-    contains(endpoint_statement, 'test     = "StringLike"')
+-    contains(endpoint_statement, 'variable = "ec2:VpceServiceName"')
+-    contains(endpoint_statement, 'values   = ["com.amazonaws.ap-northeast-2.aoss*"]')
++    assert "ec2:VpceServiceName" not in endpoint_statement
++    assert "com.amazonaws.ap-northeast-2.aoss" not in endpoint_statement
+     route53_vpc_value = 'values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]'
+@@ -177,4 +176,5 @@ def verify_workflow() -> None:
+     rag_main = (ROOT / "infra/terraform/envs/rag-runtime/main.tf").read_text(encoding="utf-8")
+     aoss_security_group = rag_main.split('resource "aws_security_group" "aoss_vpc_endpoint" {', 1)[1].split("\n}\n", 1)[0]
+     assert "ingress {" not in aoss_security_group
++    contains(aoss_security_group, "ingress = []")
+     backend_rule = rag_main.split('resource "aws_vpc_security_group_ingress_rule" "aoss_from_backend" {', 1)[1].split("\n}\n", 1)[0]
