@@ -8,12 +8,11 @@ metadata:
 data:
   SPRING_PROFILES_ACTIVE: "prod"
 
-  # Adapter switches. Keep false for local/stub deployment; enable deliberately in AWS runtime.
+  # Runtime defaults. Local and base deployments keep external adapters disabled.
   S3_READER_ENABLED: "false"
   S3_WRITER_ENABLED: "false"
   BEDROCK_PROVIDER_ENABLED: "false"
-  BEDROCK_EMBEDDING_ENABLED: "false"
-  OPENSEARCH_RETRIEVER_ENABLED: "false"
+  RETRIEVAL_MODE: "DISABLED"
   ANALYSIS_SQS_PUBLISHER_ENABLED: "false"
 
   # Non-secret runtime defaults.
