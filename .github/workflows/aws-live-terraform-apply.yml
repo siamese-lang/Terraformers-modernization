@@ -304,7 +304,9 @@ jobs:
                 ;;
               rag-runtime-reviewed-recovery)
                 echo 'approved_action=create-and-read'
-                echo 'approved_resource_count=18'
+                approved_resource_count="$(python3 -c 'import json; print(json.load(open("artifacts/aws-live-terraform-apply/plan-risk-summary.json", encoding="utf-8"))["resource_change_count"])')"
+                [[ "${approved_resource_count}" =~ ^[1-9][0-9]*$ ]] || { echo 'verified recovery resource count is invalid.' >&2; exit 1; }
+                echo "approved_resource_count=${approved_resource_count}"
                 echo 'environment_gate=aws-live-apply'
                 ;;
               eks-runtime-backend-policy-update)

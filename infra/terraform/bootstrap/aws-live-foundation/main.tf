@@ -490,6 +490,140 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     resources = ["*"]
   }
 
+  # AOSS creates the underlying interface endpoint and private DNS records on
+  # behalf of the caller. Keep every EC2 authorization scoped to the approved
+  # RAG VPC and the AOSS regional endpoint service.
+  statement {
+    sid       = "CreateAossManagedVpcEndpointInApprovedVpc"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVpcEndpoint"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+  }
+
+  statement {
+    sid       = "CreateAossManagedVpcEndpointInApprovedSubnets"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVpcEndpoint"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:subnet/*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "ec2:Vpc"
+      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+    }
+  }
+
+  statement {
+    sid       = "CreateAossManagedVpcEndpointWithTaggedSecurityGroups"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVpcEndpoint"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:security-group/*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "ec2:Vpc"
+      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Component"
+      values   = ["rag-runtime"]
+    }
+  }
+
+  statement {
+    sid       = "CreateAossManagedVpcEndpoint"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVpcEndpoint"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]
+    condition {
+      test     = "StringLike"
+      variable = "ec2:VpceServiceName"
+      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
+    }
+  }
+
+  statement {
+    sid       = "TagAossManagedVpcEndpointAtCreation"
+    effect    = "Allow"
+    actions   = ["ec2:CreateTags"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:CreateAction"
+      values   = ["CreateVpcEndpoint"]
+    }
+  }
+
+  statement {
+    sid       = "ManageAossManagedVpcEndpoints"
+    effect    = "Allow"
+    actions   = ["ec2:DeleteVpcEndpoints", "ec2:ModifyVpcEndpoint"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]
+  }
+
+  statement {
+    sid       = "DescribeAossManagedVpcEndpointDependencies"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeVpcEndpoints", "ec2:DescribeVpcs"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "CreateAossPrivateHostedZone"
+    effect    = "Allow"
+    actions   = ["route53:CreateHostedZone"]
+    resources = ["*"]
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:VPCs"
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
+    }
+  }
+
+  statement {
+    sid       = "AssociateAossVpcWithPrivateHostedZone"
+    effect    = "Allow"
+    actions   = ["route53:AssociateVPCWithHostedZone"]
+    resources = ["arn:aws:route53:::hostedzone/*"]
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:VPCs"
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
+    }
+  }
+
+  statement {
+    sid       = "ManageAossPrivateDnsRecords"
+    effect    = "Allow"
+    actions   = ["route53:ChangeResourceRecordSets", "route53:DeleteHostedZone", "route53:GetHostedZone", "route53:ListResourceRecordSets"]
+    resources = ["arn:aws:route53:::hostedzone/*"]
+  }
+
+  statement {
+    sid       = "ReadAossPrivateDnsChanges"
+    effect    = "Allow"
+    actions   = ["route53:GetChange"]
+    resources = ["arn:aws:route53:::change/*"]
+  }
+
+  statement {
+    sid       = "ListAossPrivateDnsZonesByVpc"
+    effect    = "Allow"
+    actions   = ["route53:ListHostedZonesByVPC"]
+    resources = ["*"]
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:VPCs"
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
+    }
+  }
+
+  statement {
+    sid       = "ListAossPrivateDnsZonesByName"
+    effect    = "Allow"
+    actions   = ["route53:ListHostedZonesByName"]
+    resources = ["*"]
+  }
+
   statement {
     sid       = "CreateAossServiceLinkedRoleWhenAbsent"
     effect    = "Allow"

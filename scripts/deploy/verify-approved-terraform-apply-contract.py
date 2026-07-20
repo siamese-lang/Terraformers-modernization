@@ -53,19 +53,6 @@ RAG_RUNTIME_RESOURCES = {
         "data.aws_iam_policy_document.corpus_ingestion",
     )},
 }
-RAG_RUNTIME_RECOVERY_RESOURCES = {
-    address: contract for address, contract in RAG_RUNTIME_RESOURCES.items()
-    if address not in {
-        "aws_iam_role.codebuild_ingestion",
-        "aws_iam_role.corpus_ingestion",
-        "aws_opensearchserverless_security_policy.encryption",
-        "aws_s3_bucket.corpus",
-        "aws_s3_bucket_ownership_controls.corpus",
-        "aws_s3_bucket_public_access_block.corpus",
-        "aws_s3_bucket_versioning.corpus",
-    }
-}
-
 CONTRACTS = {
     "foundation-rag-apply-permission-create": "foundation",
     "foundation-rag-apply-permission-update": "foundation",
@@ -119,6 +106,42 @@ def check_blocked_types(actions: list[dict], allow_rag_security_groups: bool = F
             fail(f"blocked resource type changed: {resource_type}.")
 
 
+def check_rag_recovery_subset(summary: dict, txt: dict[str, str], actions: list[dict]) -> None:
+    """Accept a state-dependent create/read subset of the reviewed RAG plan."""
+    count = len(actions)
+    required = {key: value for key, value in BASE_REQUIRED_TXT_VALUES.items() if key != "high_cost_resource_count"}
+    required.update({"plan_stage": "rag-runtime", "update_resource_count": "0"})
+    for key, value in required.items():
+        if txt.get(key) != value:
+            fail(f"{key} must be {value!r}, got {txt.get(key)!r}.")
+    if txt.get("resource_change_count") != str(count):
+        fail("resource_change_count must match the reviewed recovery plan.")
+    if summary.get("stage") != "rag-runtime" or summary.get("resource_change_count") != count or summary.get("update_resource_count") != 0:
+        fail("summary stage or resource counts do not match the recovery plan.")
+    for key, message in (("destructive_resources", "delete actions are not allowed."), ("replacement_resources", "replacement actions are not allowed."), ("public_exposure_findings", "public exposure findings are not allowed."), ("optional_adapter_resources", "optional adapter resource changes are not allowed.")):
+        if summary.get(key):
+            fail(message)
+    high_cost = summary.get("high_cost_resources")
+    if high_cost not in ([], ["aws_opensearchserverless_collection.references"]):
+        fail("recovery may contain only the approved AOSS collection high-cost resource.")
+    if txt.get("high_cost_resource_count") != str(len(high_cost)):
+        fail("high_cost_resource_count must match the reviewed recovery plan.")
+
+    expected = RAG_RUNTIME_RESOURCES
+    managed_create_found = False
+    for item in actions:
+        address = str(item.get("address"))
+        if address not in expected:
+            fail(f"recovery resource is outside the approved RAG set: {address}.")
+        resource_type, expected_actions, _ = expected[address]
+        if item.get("type") != resource_type or item.get("actions") != expected_actions:
+            fail(f"recovery action does not match the approved RAG resource: {address}.")
+        if expected_actions == ["create"]:
+            managed_create_found = True
+    if not managed_create_found:
+        fail("recovery plan must include at least one managed resource create.")
+
+
 def main() -> int:
     args = parse_args()
     if args.stage != CONTRACTS[args.contract]: fail(f"contract {args.contract!r} requires stage {CONTRACTS[args.contract]!r}.")
@@ -144,12 +167,13 @@ def main() -> int:
         check_risk_gates(summary, txt, "eks-runtime", 1, 1)
         if actual_actions(actions) != {args.approved_resource: ("aws_iam_policy", ["update"], [args.approved_changed_path])}: fail("resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
-    else:
-        expected_resources = RAG_RUNTIME_RESOURCES if args.contract == "rag-runtime-reviewed-create" else RAG_RUNTIME_RECOVERY_RESOURCES
-        expected_count = 25 if args.contract == "rag-runtime-reviewed-create" else 18
-        check_risk_gates(summary, txt, "rag-runtime", expected_count, 0, RAG_REQUIRED_TXT_VALUES)
+    elif args.contract == "rag-runtime-reviewed-create":
+        check_risk_gates(summary, txt, "rag-runtime", 25, 0, RAG_REQUIRED_TXT_VALUES)
         if summary.get("high_cost_resources") != ["aws_opensearchserverless_collection.references"]: fail("rag-runtime must contain exactly the approved AOSS collection high-cost resource.")
-        if actual_actions(actions) != expected_resources: fail("rag-runtime resource_actions must exactly match the approved contract.")
+        if actual_actions(actions) != RAG_RUNTIME_RESOURCES: fail("rag-runtime resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions, allow_rag_security_groups=True)
+    else:
+        check_rag_recovery_subset(summary, txt, actions)
         check_blocked_types(actions, allow_rag_security_groups=True)
     print("approved_terraform_apply_contract=passed")
     return 0
