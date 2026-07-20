@@ -8,6 +8,7 @@
     "runtime-dependencies",
     "stateful-dependencies",
     "eks-runtime",
+    "rag-runtime",
     "frontend-delivery"
   ],
   "stages": [
@@ -34,7 +35,9 @@
       "kind": "terraform-plan",
       "plan_stage": "network",
       "terraform_directory": "infra/terraform/envs/aws-runtime-network",
-      "depends_on": ["00-state-and-identity-preflight"],
+      "depends_on": [
+        "00-state-and-identity-preflight"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
@@ -56,7 +59,9 @@
       "kind": "terraform-plan",
       "plan_stage": "runtime-dependencies",
       "terraform_directory": "infra/terraform/envs/backend-runtime-dependencies",
-      "depends_on": ["10-network-plan"],
+      "depends_on": [
+        "10-network-plan"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
@@ -77,7 +82,10 @@
       "kind": "terraform-plan",
       "plan_stage": "stateful-dependencies",
       "terraform_directory": "infra/terraform/envs/backend-stateful-dependencies",
-      "depends_on": ["10-network-plan", "20-runtime-dependencies-plan"],
+      "depends_on": [
+        "10-network-plan",
+        "20-runtime-dependencies-plan"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
@@ -98,7 +106,11 @@
       "kind": "terraform-plan",
       "plan_stage": "eks-runtime",
       "terraform_directory": "infra/terraform/envs/eks-runtime",
-      "depends_on": ["10-network-plan", "20-runtime-dependencies-plan", "30-stateful-dependencies-plan"],
+      "depends_on": [
+        "10-network-plan",
+        "20-runtime-dependencies-plan",
+        "30-stateful-dependencies-plan"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
@@ -115,9 +127,39 @@
       "rollback": "Discard the plan. Cluster replacement is not approved in the normal deployment path."
     },
     {
+      "id": "45-rag-runtime-plan",
+      "kind": "terraform-plan",
+      "plan_stage": "rag-runtime",
+      "terraform_directory": "infra/terraform/envs/rag-runtime",
+      "depends_on": [
+        "10-network-plan",
+        "40-eks-runtime-plan"
+      ],
+      "mutation_allowed": false,
+      "approval_required": false,
+      "success_evidence": [
+        "private AOSS collection and VPC endpoint are enumerated",
+        "no public access or Dashboards exposure",
+        "backend reader and CodeBuild writer identities remain separate",
+        "corpus bucket and VPC-enabled CodeBuild configuration are enumerated",
+        "no delete or replace action",
+        "AOSS collection is identified as high-cost"
+      ],
+      "stop_conditions": [
+        "delete or replace action",
+        "public AOSS access",
+        "identity separation lost",
+        "missing CodeBuild VPC configuration"
+      ],
+      "rollback": "Discard the plan. No apply is performed by this stage."
+    },
+    {
       "id": "50-image-publish",
       "kind": "future-approved-mutation",
-      "depends_on": ["40-eks-runtime-plan"],
+      "depends_on": [
+        "40-eks-runtime-plan",
+        "45-rag-runtime-plan"
+      ],
       "mutation_allowed": true,
       "approval_required": true,
       "success_evidence": [
@@ -135,7 +177,9 @@
     {
       "id": "60-cluster-operators-and-secrets",
       "kind": "future-approved-mutation",
-      "depends_on": ["40-eks-runtime-plan"],
+      "depends_on": [
+        "40-eks-runtime-plan"
+      ],
       "mutation_allowed": true,
       "approval_required": true,
       "success_evidence": [
@@ -153,7 +197,10 @@
     {
       "id": "70-backend-rollout",
       "kind": "future-approved-mutation",
-      "depends_on": ["50-image-publish", "60-cluster-operators-and-secrets"],
+      "depends_on": [
+        "50-image-publish",
+        "60-cluster-operators-and-secrets"
+      ],
       "mutation_allowed": true,
       "approval_required": true,
       "success_evidence": [
@@ -172,7 +219,9 @@
     {
       "id": "80-private-origin-reconciliation",
       "kind": "future-approved-mutation",
-      "depends_on": ["70-backend-rollout"],
+      "depends_on": [
+        "70-backend-rollout"
+      ],
       "mutation_allowed": true,
       "approval_required": true,
       "success_evidence": [
@@ -194,7 +243,9 @@
       "kind": "terraform-plan",
       "plan_stage": "frontend-delivery",
       "terraform_directory": "infra/terraform/envs/frontend-delivery",
-      "depends_on": ["80-private-origin-reconciliation"],
+      "depends_on": [
+        "80-private-origin-reconciliation"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
@@ -214,7 +265,9 @@
     {
       "id": "100-frontend-publish",
       "kind": "future-approved-mutation",
-      "depends_on": ["90-frontend-delivery-plan"],
+      "depends_on": [
+        "90-frontend-delivery-plan"
+      ],
       "mutation_allowed": true,
       "approval_required": true,
       "success_evidence": [
@@ -234,7 +287,9 @@
     {
       "id": "110-e2e-and-incident-evidence",
       "kind": "live-verification",
-      "depends_on": ["100-frontend-publish"],
+      "depends_on": [
+        "100-frontend-publish"
+      ],
       "mutation_allowed": false,
       "approval_required": false,
       "success_evidence": [
