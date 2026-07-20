@@ -47,8 +47,7 @@ public class BedrockArchitectureFactsExtractor {
                 if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) { textBlock = block; break; }
             }
             if (textBlock == null) throw new IllegalStateException("Bedrock facts response has no text block");
-            String text = textBlock.path("text").asText().strip();
-            if (text.startsWith("```json") && text.endsWith("```")) text = text.substring(7, text.length() - 3).strip();
+            String text = normalizeFactsJson(textBlock.path("text").asText());
             JsonNode facts = objectMapper.readTree(text);
             if (!facts.isObject()) throw new IllegalStateException("Bedrock facts response is not a JSON object");
             if (!facts.path("summary").isMissingNode() && !facts.path("summary").isTextual()) throw new IllegalStateException("Bedrock facts summary must be text");
@@ -59,6 +58,18 @@ public class BedrockArchitectureFactsExtractor {
         } catch (Exception exception) {
             throw new IllegalStateException("failed to extract architecture retrieval facts", exception);
         }
+    }
+
+    private String normalizeFactsJson(String responseText) {
+        String normalized = responseText.strip();
+        if (!normalized.startsWith("```")) return normalized;
+
+        int contentStart = normalized.indexOf('\n');
+        int contentEnd = normalized.lastIndexOf("```");
+        if (contentStart < 0 || contentEnd <= contentStart) {
+            throw new IllegalStateException("Bedrock facts response has an invalid JSON code fence");
+        }
+        return normalized.substring(contentStart + 1, contentEnd).strip();
     }
 
     private String requireModelId() {
