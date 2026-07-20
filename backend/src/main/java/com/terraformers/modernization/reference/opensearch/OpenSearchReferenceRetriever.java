@@ -4,16 +4,12 @@ import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import com.terraformers.modernization.reference.EmbeddingProvider;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceQuery;
-import com.terraformers.modernization.reference.ReferenceRetriever;
 import java.net.URI;
 import java.util.List;
-import java.util.stream.Collectors;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "terraformers.analysis", name = "opensearch-retriever-enabled", havingValue = "true")
-public class OpenSearchReferenceRetriever implements ReferenceRetriever {
+public class OpenSearchReferenceRetriever {
 
     private final EmbeddingProvider embeddingProvider;
     private final OpenSearchKnnQueryBuilder queryBuilder;
@@ -35,13 +31,11 @@ public class OpenSearchReferenceRetriever implements ReferenceRetriever {
         this.properties = properties;
     }
 
-    @Override
     public List<ReferenceDocument> retrieve(ReferenceQuery query) {
         requireRuntimeConfig();
 
-        String embeddingText = toEmbeddingText(query);
-        List<Float> vector = embeddingProvider.embed(embeddingText);
-        int topK = properties.getOpensearchTopK() > 0 ? properties.getOpensearchTopK() : query.limit();
+        List<Float> vector = embeddingProvider.embed(query.text());
+        int topK = properties.getOpensearchTopK();
         String body = queryBuilder.build(
                 properties.getVectorFieldName(),
                 properties.getContentFieldName(),
@@ -51,19 +45,6 @@ public class OpenSearchReferenceRetriever implements ReferenceRetriever {
         URI uri = OpenSearchEndpoint.searchUri(properties.getOpensearchEndpoint(), properties.getIndexName());
         String response = httpClient.post(uri, body, properties.getOpensearchServiceName());
         return responseParser.parse(response, properties.getContentFieldName());
-    }
-
-    private String toEmbeddingText(ReferenceQuery query) {
-        String services = query.detectedServices() == null || query.detectedServices().isEmpty()
-                ? "unknown-services"
-                : query.detectedServices().stream().collect(Collectors.joining(", "));
-        return "projectId=%s source=s3://%s/%s contentType=%s services=%s".formatted(
-                query.projectId(),
-                query.sourceBucket(),
-                query.sourceKey(),
-                query.contentType(),
-                services
-        );
     }
 
     private void requireRuntimeConfig() {
@@ -78,6 +59,18 @@ public class OpenSearchReferenceRetriever implements ReferenceRetriever {
         }
         if (isBlank(properties.getContentFieldName())) {
             throw new IllegalStateException("terraformers.analysis.content-field-name must be set when OpenSearch retriever is enabled");
+        }
+        if (isBlank(properties.getBedrockEmbeddingModelId())) {
+            throw new IllegalStateException("terraformers.analysis.bedrock-embedding-model-id must be set for active retrieval");
+        }
+        if (isBlank(properties.getOpensearchServiceName())) {
+            throw new IllegalStateException("terraformers.analysis.opensearch-service-name must be set for active retrieval");
+        }
+        if (properties.getOpensearchTopK() <= 0) {
+            throw new IllegalStateException("terraformers.analysis.opensearch-top-k must be positive for active retrieval");
+        }
+        if (properties.getExpectedVectorDimension() != null && properties.getExpectedVectorDimension() <= 0) {
+            throw new IllegalStateException("terraformers.analysis.expected-vector-dimension must be positive when set");
         }
     }
 

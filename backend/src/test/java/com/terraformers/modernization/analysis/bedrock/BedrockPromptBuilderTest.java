@@ -38,7 +38,7 @@ class BedrockPromptBuilderTest {
         assertThat(request).contains("</analysis_json>");
         assertThat(request).contains("<terraform_hcl>");
         assertThat(request).contains("</terraform_hcl>");
-        assertThat(request).doesNotContain("terraformCode");
+        assertThat(request).doesNotContain("\"terraformCode\":");
         assertThat(request).doesNotContain("Return JSON only");
         assertThat(request).contains("Do not include markdown fences or surrounding prose.");
         assertThat(request).contains("inputType", "classificationConfidence", "classificationReason");

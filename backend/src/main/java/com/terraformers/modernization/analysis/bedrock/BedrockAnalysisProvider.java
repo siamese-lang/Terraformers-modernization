@@ -7,6 +7,10 @@ import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceQuery;
 import com.terraformers.modernization.reference.ReferenceRetriever;
+import com.terraformers.modernization.reference.ArchitectureRetrievalFacts;
+import com.terraformers.modernization.reference.BedrockArchitectureFactsExtractor;
+import com.terraformers.modernization.reference.RetrievalMode;
+import com.terraformers.modernization.reference.RetrievalQueryTextBuilder;
 import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
@@ -14,6 +18,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
@@ -32,14 +37,18 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
     private final AnalysisRuntimeProperties properties;
     private final BedrockPromptBuilder promptBuilder;
     private final BedrockResponseParser responseParser;
+    private final BedrockArchitectureFactsExtractor factsExtractor;
+    private final RetrievalQueryTextBuilder queryTextBuilder;
 
+    @Autowired
     public BedrockAnalysisProvider(
             BedrockRuntimeClient bedrockRuntimeClient,
             ObjectReader objectReader,
             ReferenceRetriever referenceRetriever,
             AnalysisRuntimeProperties properties,
             BedrockPromptBuilder promptBuilder,
-            BedrockResponseParser responseParser
+            BedrockResponseParser responseParser, BedrockArchitectureFactsExtractor factsExtractor,
+            RetrievalQueryTextBuilder queryTextBuilder
     ) {
         this.bedrockRuntimeClient = bedrockRuntimeClient;
         this.objectReader = objectReader;
@@ -47,6 +56,8 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         this.properties = properties;
         this.promptBuilder = promptBuilder;
         this.responseParser = responseParser;
+        this.factsExtractor = factsExtractor;
+        this.queryTextBuilder = queryTextBuilder;
     }
 
     @Override
@@ -58,12 +69,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 context.sourceKey()
         ));
 
-        List<ReferenceDocument> references = referenceRetriever.retrieve(ReferenceQuery.fromObject(
-                context.projectId(),
-                source.metadata().bucket(),
-                source.metadata().key(),
-                source.metadata().contentType()
-        ));
+        List<ReferenceDocument> references = retrieveReferences(context, source);
 
         ParsedBedrockAnalysis parsed;
         try {
@@ -81,6 +87,26 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 parsed.warnings(),
                 references.stream().map(ReferenceDocument::id).toList()
         );
+    }
+
+    private List<ReferenceDocument> retrieveReferences(AnalysisRequestContext context, ObjectContent source) {
+        RetrievalMode mode = properties.getRetrievalMode();
+        if (mode == null) throw new IllegalStateException("terraformers.analysis.retrieval-mode must be set");
+        if (mode == RetrievalMode.DISABLED) return List.of();
+        long started = System.nanoTime();
+        try {
+            if (factsExtractor == null || queryTextBuilder == null) {
+                throw new IllegalStateException("architecture retrieval facts stage is not configured");
+            }
+            ArchitectureRetrievalFacts facts = factsExtractor.extract(source);
+            return referenceRetriever.retrieve(new ReferenceQuery(queryTextBuilder.build(facts), properties.getOpensearchTopK()));
+        } catch (RuntimeException exception) {
+            log.warn("reference retrieval outcome=failure analysisJobId={} projectId={} mode={} stage=facts modelId={} index={} topK={} errorClass={} elapsedMs={}",
+                    context.jobId(), context.projectId(), mode, properties.getBedrockEmbeddingModelId(), properties.getIndexName(),
+                    properties.getOpensearchTopK(), exception.getClass().getName(), (System.nanoTime() - started) / 1_000_000);
+            if (mode == RetrievalMode.REQUIRED) throw exception;
+            return List.of();
+        }
     }
 
     private ParsedBedrockAnalysis invokeAndParse(

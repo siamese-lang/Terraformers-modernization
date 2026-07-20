@@ -1,6 +1,8 @@
 package com.terraformers.modernization.config;
 
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
+import com.terraformers.modernization.analysis.AnalysisMode;
+import com.terraformers.modernization.reference.RetrievalMode;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.ApplicationArguments;
@@ -31,13 +33,16 @@ public class RuntimeAdapterContractValidator implements ApplicationRunner {
     List<String> findMissingEnabledAdapterSettings() {
         List<String> missing = new ArrayList<>();
 
+        if (properties.getMode() == AnalysisMode.EXTERNAL_PYTHON_LEGACY) {
+            missing.add("ANALYSIS_MODE_INTEGRATED_JAVA");
+        }
+
         if (properties.isBedrockProviderEnabled()) {
             requireText(missing, "BEDROCK_MODEL_ID", properties.getBedrockModelId());
         }
-        if (properties.isBedrockEmbeddingEnabled()) {
+        if (properties.getRetrievalMode() != null && properties.getRetrievalMode() != RetrievalMode.DISABLED) {
+            if (!properties.isBedrockProviderEnabled()) missing.add("BEDROCK_PROVIDER_ENABLED");
             requireText(missing, "BEDROCK_EMBEDDING_MODEL_ID", properties.getBedrockEmbeddingModelId());
-        }
-        if (properties.isOpensearchRetrieverEnabled()) {
             requireText(missing, "OPENSEARCH_ENDPOINT", properties.getOpensearchEndpoint());
             requireText(missing, "INDEX_NAME", properties.getIndexName());
             requireText(missing, "VECTOR_FIELD_NAME", properties.getVectorFieldName());

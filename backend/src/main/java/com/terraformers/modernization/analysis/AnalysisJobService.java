@@ -63,7 +63,10 @@ public class AnalysisJobService {
         entity.setSourceKey(sourceFile.getS3Key());
         entity.setCorrelationId(request.correlationId());
         entity.setStatus(AnalysisJobStatus.PENDING);
-        entity.setAnalysisMode(properties.getMode());
+        if (properties.getMode() == AnalysisMode.EXTERNAL_PYTHON_LEGACY) {
+            throw new IllegalStateException("EXTERNAL_PYTHON_LEGACY is not a supported runtime for new analysis jobs");
+        }
+        entity.setAnalysisMode(AnalysisMode.INTEGRATED_JAVA);
 
         AnalysisJobEntity saved = repository.save(entity);
         schedule(saved.getId());

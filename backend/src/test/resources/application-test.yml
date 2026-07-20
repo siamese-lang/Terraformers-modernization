@@ -28,7 +28,6 @@ terraformers:
   analysis:
     mode: integrated-java
     bedrock-provider-enabled: false
-    bedrock-embedding-enabled: false
-    opensearch-retriever-enabled: false
+    retrieval-mode: disabled
     result-key-prefix: analysis-results
     sqs-publisher-enabled: false

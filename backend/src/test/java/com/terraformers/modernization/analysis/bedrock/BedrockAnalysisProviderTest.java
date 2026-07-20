@@ -16,6 +16,8 @@ import com.terraformers.modernization.analysis.AnalysisResult;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceRetriever;
+import com.terraformers.modernization.reference.BedrockArchitectureFactsExtractor;
+import com.terraformers.modernization.reference.RetrievalQueryTextBuilder;
 import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectMetadata;
 import com.terraformers.modernization.storage.ObjectReader;
@@ -46,6 +48,7 @@ class BedrockAnalysisProviderTest {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockModelId("configured-model-id");
         properties.setBedrockMaxTokens(2048);
+        properties.setRetrievalMode(com.terraformers.modernization.reference.RetrievalMode.DISABLED);
 
         BedrockAnalysisProvider provider = new BedrockAnalysisProvider(
                 client,
@@ -53,7 +56,9 @@ class BedrockAnalysisProviderTest {
                 referenceRetriever(),
                 properties,
                 new BedrockPromptBuilder(objectMapper),
-                new BedrockResponseParser(objectMapper)
+                new BedrockResponseParser(objectMapper),
+                new BedrockArchitectureFactsExtractor(client, objectMapper, properties),
+                new RetrievalQueryTextBuilder()
         );
 
         AnalysisResult result = provider.analyze(context());
@@ -66,12 +71,14 @@ class BedrockAnalysisProviderTest {
         assertThat(body.path("messages").get(0).path("content").get(0).path("type").asText()).isEqualTo("image");
         assertThat(body.toString()).contains("<analysis_json>");
         assertThat(body.toString()).contains("<terraform_hcl>");
-        assertThat(body.toString()).doesNotContain("terraformCode");
+        assertThat(body.toString()).doesNotContain("\"terraformCode\":");
+        assertThat(body.toString()).doesNotContain("Use private subnets");
         assertThat(result.provider()).isEqualTo("bedrock:configured-model-id");
         assertThat(result.explanation()).isEqualTo("Private web stack");
         assertThat(result.components()).containsExactly("VPC", "ALB");
         assertThat(result.relationships()).containsExactly("ALB forwards to service");
         assertThat(result.terraformCode()).contains("resource \"aws_vpc\"");
+        assertThat(result.references()).isEmpty();
     }
 
     @Test
@@ -151,7 +158,8 @@ class BedrockAnalysisProviderTest {
         properties.setBedrockModelId("configured-model-id");
         properties.setBedrockMaxTokens(8192);
         return new BedrockAnalysisProvider(client, objectReader(), referenceRetriever(), properties,
-                new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper));
+                new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper),
+                new BedrockArchitectureFactsExtractor(client, objectMapper, properties), new RetrievalQueryTextBuilder());
     }
 
     private InvokeModelResponse response(String text, String stopReason, int outputTokens) throws Exception {

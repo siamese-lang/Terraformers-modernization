@@ -1,15 +1,14 @@
 package com.terraformers.modernization.analysis.bedrock;
 
 import java.time.Duration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 
 @Configuration
-@ConditionalOnProperty(prefix = "terraformers.analysis", name = "bedrock-provider-enabled", havingValue = "true")
 public class BedrockRuntimeConfiguration {
 
     static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(5);
@@ -18,6 +17,7 @@ public class BedrockRuntimeConfiguration {
     static final Duration API_CALL_TIMEOUT = Duration.ofSeconds(180);
 
     @Bean
+    @Lazy
     BedrockRuntimeClient bedrockRuntimeClient() {
         return BedrockRuntimeClient.builder()
                 .httpClientBuilder(ApacheHttpClient.builder()

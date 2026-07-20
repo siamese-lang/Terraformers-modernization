@@ -63,20 +63,19 @@ terraformers:
   analysis:
     mode: integrated-java
     bedrock-provider-enabled: ${BEDROCK_PROVIDER_ENABLED:false}
-    bedrock-embedding-enabled: ${BEDROCK_EMBEDDING_ENABLED:false}
+    retrieval-mode: ${RETRIEVAL_MODE:DISABLED}
     bedrock-model-id: ${BEDROCK_MODEL_ID:}
     bedrock-embedding-model-id: ${BEDROCK_EMBEDDING_MODEL_ID:}
     bedrock-max-tokens: ${BEDROCK_MAX_TOKENS:8192}
-    opensearch-retriever-enabled: ${OPENSEARCH_RETRIEVER_ENABLED:false}
     opensearch-endpoint: ${OPENSEARCH_ENDPOINT:}
     opensearch-service-name: ${OPENSEARCH_SERVICE_NAME:aoss}
     opensearch-top-k: ${OPENSEARCH_TOP_K:3}
     index-name: ${INDEX_NAME:}
     vector-field-name: ${VECTOR_FIELD_NAME:}
     content-field-name: ${CONTENT_FIELD_NAME:}
+    expected-vector-dimension: ${EXPECTED_VECTOR_DIMENSION:}
     result-bucket-name: ${ANALYSIS_RESULT_BUCKET_NAME:${S3_BUCKET_NAME}}
     result-key-prefix: ${ANALYSIS_RESULT_KEY_PREFIX:analysis-results}
-    external-python-service-url: ${PYTHON_ANALYSIS_SERVICE_URL:}
     sqs-publisher-enabled: ${ANALYSIS_SQS_PUBLISHER_ENABLED:false}
     progress-queue-url: ${AI_LOG_QUEUE_URL:}
     result-queue-url: ${TERRAFORM_LOG_QUEUE_URL:}

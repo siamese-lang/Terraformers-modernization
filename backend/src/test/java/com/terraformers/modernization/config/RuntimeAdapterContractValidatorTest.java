@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
+import com.terraformers.modernization.reference.RetrievalMode;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,7 @@ class RuntimeAdapterContractValidatorTest {
     void enabledAdaptersReportOnlyTheirMissingSettings() {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockProviderEnabled(true);
-        properties.setOpensearchRetrieverEnabled(true);
+        properties.setRetrievalMode(RetrievalMode.REQUIRED);
         properties.setSqsPublisherEnabled(true);
         properties.setOpensearchEndpoint("https://search.example.com");
         properties.setIndexName("terraform-reference");
@@ -33,6 +34,7 @@ class RuntimeAdapterContractValidatorTest {
         assertThat(validator.findMissingEnabledAdapterSettings())
                 .containsExactly(
                         "BEDROCK_MODEL_ID",
+                        "BEDROCK_EMBEDDING_MODEL_ID",
                         "VECTOR_FIELD_NAME",
                         "CONTENT_FIELD_NAME",
                         "AI_LOG_QUEUE_URL",
@@ -49,9 +51,8 @@ class RuntimeAdapterContractValidatorTest {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockProviderEnabled(true);
         properties.setBedrockModelId("bedrock-model");
-        properties.setBedrockEmbeddingEnabled(true);
         properties.setBedrockEmbeddingModelId("embedding-model");
-        properties.setOpensearchRetrieverEnabled(true);
+        properties.setRetrievalMode(RetrievalMode.REQUIRED);
         properties.setOpensearchEndpoint("https://search.example.com");
         properties.setIndexName("terraform-reference");
         properties.setVectorFieldName("vector");
