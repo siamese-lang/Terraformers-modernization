@@ -118,6 +118,8 @@ jobs:
                 echo 'apply_contract=foundation-apply-role-bootstrap' >> "${GITHUB_OUTPUT}"
               elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE ]]; then
                 echo 'apply_contract=foundation-rag-apply-permission-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE ]]; then
+                echo 'apply_contract=foundation-rag-apply-permission-update' >> "${GITHUB_OUTPUT}"
               else
                 echo 'approval_confirmation does not match a required foundation confirmation string.' >&2; exit 1
               fi
@@ -135,11 +137,16 @@ jobs:
               echo 'apply_contract=eks-runtime-backend-policy-update' >> "${GITHUB_OUTPUT}"
               ;;
             rag-runtime)
-              test "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE || { echo 'approval_confirmation does not match the required rag-runtime confirmation string.' >&2; exit 1; }
+              if [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE ]]; then
+                echo 'apply_contract=rag-runtime-reviewed-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_RECOVERY ]]; then
+                echo 'apply_contract=rag-runtime-reviewed-recovery' >> "${GITHUB_OUTPUT}"
+              else
+                echo 'approval_confirmation does not match a required rag-runtime confirmation string.' >&2; exit 1
+              fi
               echo 'tf_dir=infra/terraform/envs/rag-runtime' >> "${GITHUB_OUTPUT}"
               echo 'state_component=rag-runtime' >> "${GITHUB_OUTPUT}"
               echo 'tfvars_secret=AWS_LIVE_RAG_TFVARS_B64' >> "${GITHUB_OUTPUT}"
-              echo 'apply_contract=rag-runtime-reviewed-create' >> "${GITHUB_OUTPUT}"
               ;;
             *) echo 'apply_stage must be foundation, eks-runtime, or rag-runtime.' >&2; exit 1 ;;
           esac
@@ -266,7 +273,7 @@ jobs:
             echo 'terraform_destroy_executed=false'
             echo 'kubernetes_mutation_executed=false'
             echo 'raw_plan_uploaded=false'
-            if [[ "${APPLY_CONTRACT}" = foundation-rag-apply-permission-create ]]; then echo 'approved_action=create'; echo 'approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create'; echo 'approved_resource_count=1'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; echo 'foundation_permission_extension=external-temporary-bootstrap-required'; elif [[ "${APPLY_STAGE}" = foundation ]]; then echo 'approved_action=create'; echo 'approved_resource_count=4'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; elif [[ "${APPLY_STAGE}" = rag-runtime ]]; then echo 'approved_action=create-and-read'; echo 'approved_resource_count=25'; echo 'environment_gate=aws-live-apply'; else echo 'approved_resource=aws_iam_policy.backend_runtime_access'; echo 'approved_action=update'; echo 'approved_changed_path=policy'; echo 'environment_gate=aws-live-apply'; fi
+            if [[ "${APPLY_CONTRACT}" = foundation-rag-apply-permission-create ]]; then echo 'approved_action=create'; echo 'approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create'; echo 'approved_resource_count=1'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; echo 'foundation_permission_extension=external-temporary-bootstrap-required'; elif [[ "${APPLY_CONTRACT}" = foundation-rag-apply-permission-update ]]; then echo 'approved_action=update'; echo 'approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create'; echo 'approved_changed_path=policy'; echo 'approved_resource_count=1'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; echo 'foundation_permission_extension=external-temporary-bootstrap-required'; elif [[ "${APPLY_STAGE}" = foundation ]]; then echo 'approved_action=create'; echo 'approved_resource_count=4'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; elif [[ "${APPLY_CONTRACT}" = rag-runtime-reviewed-recovery ]]; then echo 'approved_action=create-and-read'; echo 'approved_resource_count=18'; echo 'environment_gate=aws-live-apply'; else echo 'approved_action=create-and-read'; echo 'approved_resource_count=25'; echo 'environment_gate=aws-live-apply'; fi
           } > artifacts/aws-live-terraform-apply/apply-summary.txt
 
       - name: Verify post-apply full plan has no changes

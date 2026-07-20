@@ -268,7 +268,7 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   statement {
     sid       = "ConfigureExactCorpusBucket"
     effect    = "Allow"
-    actions   = ["s3:CreateBucket", "s3:PutBucketOwnershipControls", "s3:PutBucketPublicAccessBlock", "s3:PutBucketEncryption", "s3:PutBucketVersioning", "s3:PutBucketTagging"]
+    actions   = ["s3:CreateBucket", "s3:PutBucketOwnershipControls", "s3:PutBucketPublicAccessBlock", "s3:PutEncryptionConfiguration", "s3:PutBucketVersioning", "s3:PutBucketTagging"]
     resources = ["arn:aws:s3:::${var.rag_runtime_corpus_bucket_name}"]
   }
 
@@ -455,6 +455,12 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
       variable = "aoss:collection"
       values   = ["terraformers-dev-refs"]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aoss:index"
+      values   = ["terraformers-dev-refs/terraformers-reference-v1"]
+    }
   }
 
   statement {
@@ -491,15 +497,28 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid       = "CreateTaggedSecurityGroupsInApprovedVpc"
+    sid       = "CreateSecurityGroupsInApprovedVpc"
     effect    = "Allow"
     actions   = ["ec2:CreateSecurityGroup"]
-    resources = ["*"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+  }
+
+  statement {
+    sid       = "CreateTaggedRagSecurityGroups"
+    effect    = "Allow"
+    actions   = ["ec2:CreateSecurityGroup"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:security-group/*"]
 
     condition {
-      test     = "ArnEquals"
-      variable = "ec2:Vpc"
-      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
     }
 
     condition {
@@ -507,13 +526,19 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
       variable = "aws:RequestTag/Component"
       values   = ["rag-runtime"]
     }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values   = ["Name", "Project", "Environment", "Component", "ManagedBy"]
+    }
   }
 
   statement {
     sid       = "TagRagSecurityGroupsAtCreation"
     effect    = "Allow"
     actions   = ["ec2:CreateTags"]
-    resources = ["*"]
+    resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:security-group/*"]
 
     condition {
       test     = "StringEquals"

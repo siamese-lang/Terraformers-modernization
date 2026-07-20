@@ -168,7 +168,10 @@ jobs:
           if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
             test -n "${EXPECTED_HEAD_SHA}" || { echo 'expected_head_sha is required for execute_approved_apply.' >&2; exit 1; }
             if [[ "${PLAN_STAGE}" = rag-runtime ]]; then
-              test "${APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE || { echo 'rag-runtime apply requires APPLY_REVIEWED_RAG_RUNTIME_CREATE.' >&2; exit 1; }
+              if [[ "${APPROVAL_CONFIRMATION}" != APPLY_REVIEWED_RAG_RUNTIME_CREATE && "${APPROVAL_CONFIRMATION}" != APPLY_REVIEWED_RAG_RUNTIME_RECOVERY ]]; then
+                echo 'rag-runtime apply requires APPLY_REVIEWED_RAG_RUNTIME_CREATE or APPLY_REVIEWED_RAG_RUNTIME_RECOVERY.' >&2
+                exit 1
+              fi
             fi
           fi
           echo 'approved_apply_dispatch_contract=valid'
