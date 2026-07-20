@@ -86,19 +86,13 @@ Older Terraformers, Infra-code, and rdb-refactor repositories are reuse-first de
 
 | Area | Current state | Remaining gap |
 |---|---|---|
-| Analysis ownership | `AnalysisRuntimeProperties` defaults to `INTEGRATED_JAVA`; a legacy Python mode and URL remain. | Confirm references and remove or isolate unused legacy configuration. |
-| Generation context | `BedrockAnalysisProvider` calls `ReferenceRetriever` before the Bedrock request and returns retrieved document IDs. | Preserve the boundary and prove retrieved content reaches the generation prompt. |
-| Embedding | `BedrockEmbeddingProvider` invokes a configured Bedrock embedding model. | Validate configuration and enforce embedding-dimension compatibility with the vector index. |
-| Lexical retrieval | `backend/src/main/java/com/terraformers/modernization/reference/OpenSearchReferenceRetriever.java` is `@Primary` and sends unsigned lexical `multi_match`. | Retire or make it non-selectable for the completed RAG path. |
-| Vector retrieval | `backend/src/main/java/com/terraformers/modernization/reference/opensearch/OpenSearchReferenceRetriever.java` embeds the query, builds k-NN search, and uses the signed client. | Make it the single selected runtime retriever and complete failure-policy tests. |
-| AWS request identity | `SignedOpenSearchHttpClient` uses the default credential provider and SigV4. | Prove EKS IRSA and the `aoss` signing service against the live collection. |
-| AOSS and corpus | No completed managed collection, compatible vector index, project-owned corpus, or repeatable ingestion path exists. | Implement and prove in Phase 3. |
-| Backend image publication | The image workflow can build, publish, and resolve an ECR digest through GitHub OIDC. | Record that digest in Git without directly mutating the cluster. |
-| Kubernetes image reference | `infra/kubernetes/base/backend-deployment.yaml` still contains a replacement image value. | Establish the canonical GitOps manifest and immutable digest update. |
-| ArgoCD | No completed Backend Application, reconciliation evidence, rollback, or self-heal proof exists. | Implement and prove in Phase 4. |
-| Operations | Existing probes and runtime evidence exist, but the full monitoring, continuity, failure, and recovery plan is incomplete. | Complete in Phase 6. |
-
-No current runtime may claim completed vector RAG until a live project-owned corpus is ingested and signed AOSS top-K results are shown to affect generation.
+| Analysis ownership | `INTEGRATED_JAVA` is the new Spring Boot analysis runtime. `EXTERNAL_PYTHON_LEGACY` remains only for historical DB hydration compatibility and is rejected for new runtime execution; there is no external Python URL/provider execution path. | Preserve the rejection boundary during live rollout. |
+| Generation and retrieval path | `RetrievalModeReferenceRetriever` is the single `ReferenceRetriever` policy bean. It implements architecture facts → embedding → signed `aoss` k-NN → retrieved references → generation prompt. The unsigned lexical retriever has been removed. | Prove the complete path against a live private collection. |
+| Embedding and vector contract | `BedrockEmbeddingProvider` uses the configured embedding model and expected vector dimension validation is implemented. | Create the compatible live index and prove IRSA-signed requests. |
+| Verification | Backend unit/static verification for the Spring Boot retrieval path passes in the Phase 2 baseline. | Run the expanded PR workflow checks and retain sanitized live evidence. |
+| AOSS and corpus | Phase 3 defines the private classic collection, reader/ingester identity boundary, index schema, and versioned project-owned corpus contract. | Apply only after review; create the index, ingest corpus documents, and validate live k-NN separately. |
+| Browser validation | Existing frontend functionality remains frozen. | Browser RAG E2E remains incomplete; the frontend browser smoke remains a prerequisite before a live Phase 3 apply. |
+| GitOps and operations | Immutable-digest GitOps and operations closure remain later roadmap items. | Complete ArgoCD, monitoring, continuity, rollback, and recovery evidence. |
 
 ## 5. Phase 0 — Close the frontend delivery baseline
 

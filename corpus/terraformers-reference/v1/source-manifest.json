@@ -1,13 +1,54 @@
 {
   "sources": [
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/vpc.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/lb.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/eks_cluster.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/db_subnet_group.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/cloudfront_distribution.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_DOC","sourceVersion":"v5.100.0","sourcePath":"website/docs/r/iam_role.html.markdown"},
-    {"sourceType":"AWS_PROVIDER_SCHEMA","sourceVersion":"v5.100.0","sourcePath":"internal/service/opensearchserverless/collection.go"},
-    {"sourceType":"MODULE_EXAMPLE","sourceVersion":"terraformers-reference-v1","sourcePath":"infra/terraform/envs/eks-runtime/main.tf"},
-    {"sourceType":"TERRAFORMERS_PATTERN","sourceVersion":"terraformers-reference-v1","sourcePath":"docs/source-rag-gitops-reuse-plan.md"}
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/vpc.html.markdown"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/eks-runtime/main.tf"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "docs/source-rag-gitops-reuse-plan.md"
+    },
+    {
+      "sourceType": "MODULE_EXAMPLE",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/eks-runtime/main.tf"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/db_subnet_group.html.markdown"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/sqs_queue.html.markdown"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/iam_role.html.markdown"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "internal/service/opensearchserverless/collection.go"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/rag-runtime/main.tf"
+    },
+    {
+      "sourceType": "MODULE_EXAMPLE",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/rag-runtime/outputs.tf"
+    }
   ]
 }
