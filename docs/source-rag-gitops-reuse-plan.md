@@ -461,3 +461,13 @@ After this documentation PR is merged:
    - preserving current product behavior and AnalysisJob/S3 result flow
 
 That Phase 2 PR must not change Terraform, AOSS resources, corpus ingestion, Kubernetes runtime configuration, ArgoCD, Backend image publication, frontend delivery, AWS resources, live deployment, or user-facing functionality.
+
+## 15. Phase 3 infrastructure and corpus foundation
+
+PR #55 completed Phase 2's Java/Spring signed vector retrieval path. The Phase 3 foundation adds a separately reviewable Terraform contract for one classic private OpenSearch Serverless `VECTORSEARCH` collection and a project-owned versioned corpus; it is not a live deployment or an alternate analysis service.
+
+The RAG root pins `hashicorp/aws` to `= 5.100.0`. It intentionally does not move other roots to provider 6.x or use NextGen collection groups. The collection has AWS-owned encryption, disabled standby replicas, explicit tags, and a private VPC endpoint. Its network policy contains only the collection resource and that endpoint—never public access, Dashboards exposure, or a Bedrock Knowledge Bases service exception.
+
+The backend's existing IRSA role gets read-only AOSS data access via a separate attached runtime policy. A GitHub Environment OIDC corpus-ingestion role has exact audience and subject conditions and scoped write access. The versioned corpus and index schema fix Titan v2 at 1024 dimensions, `terraformers-reference-v1`, `embedding`, and `content`. Actual index creation, upload, embedding, ingestion, signed live query, rollout, and browser E2E remain later boundaries.
+
+Before apply, review the Terraform plan and generate any lock file with the Terraform CLI rather than inventing checksums. After apply, use a short verification window and decide retention or cleanup; do not repeatedly destroy and recreate AOSS. Fix the first failing boundary only before continuing. Expected costs after apply are AOSS capacity/network, S3 version storage, and later Bedrock embedding calls. The still-unrecorded frontend browser smoke remains a prerequisite before a live Phase 3 apply.

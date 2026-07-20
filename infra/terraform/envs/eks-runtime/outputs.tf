@@ -78,3 +78,13 @@ output "cloudfront_origin_facing_prefix_list_id" {
   description = "AWS-managed CloudFront origin-facing prefix list allowed to reach the private backend ALB."
   value       = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id
 }
+
+output "cluster_primary_security_group_id" {
+  description = "AWS-managed primary security group ID for EKS cluster ENIs and private runtime integrations."
+  value       = aws_eks_cluster.backend.vpc_config[0].cluster_security_group_id
+}
+
+output "backend_irsa_role_name" {
+  description = "Name of the existing backend IRSA role for separately managed runtime policy attachments."
+  value       = aws_iam_role.backend_irsa.name
+}
