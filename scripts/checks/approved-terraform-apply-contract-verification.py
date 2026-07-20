@@ -99,6 +99,7 @@ def verify_workflow() -> None:
     foundation = (ROOT / "infra/terraform/bootstrap/aws-live-foundation/main.tf").read_text(encoding="utf-8")
     for required in (
         "terraformers-dev-backend-irsa-role", "iam:PolicyARN", "Terraformers", "rag-runtime",
+        "CreateExactCollectionAossAccessPolicy", "CreateExactIndexAossAccessPolicy",
         "aoss:collection", "aoss:index", "terraformers-dev-refs/terraformers-reference-v1",
         "s3:PutEncryptionConfiguration",
         "CreateSecurityGroupsInApprovedVpc", "CreateTaggedRagSecurityGroups",
@@ -110,6 +111,19 @@ def verify_workflow() -> None:
     ):
         contains(foundation, required)
     assert "s3:PutBucketEncryption" not in foundation
+    collection_access_policy_statement = foundation.split('sid       = "CreateExactCollectionAossAccessPolicy"', 1)[1].split('  statement {', 1)[0]
+    index_access_policy_statement = foundation.split('sid       = "CreateExactIndexAossAccessPolicy"', 1)[1].split('  statement {', 1)[0]
+    for statement in (collection_access_policy_statement, index_access_policy_statement):
+        contains(statement, 'actions   = ["aoss:CreateAccessPolicy"]')
+        contains(statement, 'resources = ["*"]')
+        contains(statement, 'test     = "StringEquals"')
+    contains(collection_access_policy_statement, 'variable = "aoss:collection"')
+    contains(collection_access_policy_statement, 'values   = ["terraformers-dev-refs"]')
+    assert 'aoss:index' not in collection_access_policy_statement
+    contains(index_access_policy_statement, 'variable = "aoss:index"')
+    contains(index_access_policy_statement, 'values   = ["terraformers-dev-refs/terraformers-reference-v1"]')
+    assert 'aoss:collection' not in index_access_policy_statement
+    assert 'sid       = "CreateExactAossAccessPolicy"' not in foundation
     vpc_statement = foundation.split('sid       = "CreateSecurityGroupsInApprovedVpc"', 1)[1].split('  statement {', 1)[0]
     tagged_sg_statement = foundation.split('sid       = "CreateTaggedRagSecurityGroups"', 1)[1].split('  statement {', 1)[0]
     assert "aws:RequestTag" not in vpc_statement

@@ -445,7 +445,7 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid       = "CreateExactAossAccessPolicy"
+    sid       = "CreateExactCollectionAossAccessPolicy"
     effect    = "Allow"
     actions   = ["aoss:CreateAccessPolicy"]
     resources = ["*"]
@@ -455,6 +455,13 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
       variable = "aoss:collection"
       values   = ["terraformers-dev-refs"]
     }
+  }
+
+  statement {
+    sid       = "CreateExactIndexAossAccessPolicy"
+    effect    = "Allow"
+    actions   = ["aoss:CreateAccessPolicy"]
+    resources = ["*"]
 
     condition {
       test     = "StringEquals"
