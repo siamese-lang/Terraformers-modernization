@@ -299,7 +299,7 @@ jobs:
                 ;;
               rag-runtime-reviewed-create)
                 echo 'approved_action=create-and-read'
-                echo 'approved_resource_count=25'
+                echo 'approved_resource_count=26'
                 echo 'environment_gate=aws-live-apply'
                 ;;
               rag-runtime-reviewed-recovery)

@@ -14,7 +14,7 @@ EVIDENCE_DIR = ROOT / "artifacts/approved-terraform-apply-contract"
 PLAN_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-plan.yml"
 APPLY_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-apply.yml"
 RAG_CREATES = {
-    "aws_codebuild_project.corpus_ingestion": "aws_codebuild_project", "aws_iam_policy.backend_rag_runtime": "aws_iam_policy", "aws_iam_policy.codebuild_ingestion": "aws_iam_policy", "aws_iam_policy.corpus_ingestion": "aws_iam_policy", "aws_iam_role.codebuild_ingestion": "aws_iam_role", "aws_iam_role.corpus_ingestion": "aws_iam_role", "aws_iam_role_policy_attachment.backend_rag_runtime": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.codebuild_ingestion": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.corpus_ingestion": "aws_iam_role_policy_attachment", "aws_opensearchserverless_access_policy.data": "aws_opensearchserverless_access_policy", "aws_opensearchserverless_collection.references": "aws_opensearchserverless_collection", "aws_opensearchserverless_security_policy.encryption": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_security_policy.network": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_vpc_endpoint.collection": "aws_opensearchserverless_vpc_endpoint", "aws_s3_bucket.corpus": "aws_s3_bucket", "aws_s3_bucket_ownership_controls.corpus": "aws_s3_bucket_ownership_controls", "aws_s3_bucket_public_access_block.corpus": "aws_s3_bucket_public_access_block", "aws_s3_bucket_server_side_encryption_configuration.corpus": "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_versioning.corpus": "aws_s3_bucket_versioning", "aws_security_group.aoss_vpc_endpoint": "aws_security_group", "aws_security_group.codebuild_ingestion": "aws_security_group", "aws_vpc_security_group_ingress_rule.aoss_from_codebuild": "aws_vpc_security_group_ingress_rule",
+    "aws_codebuild_project.corpus_ingestion": "aws_codebuild_project", "aws_iam_policy.backend_rag_runtime": "aws_iam_policy", "aws_iam_policy.codebuild_ingestion": "aws_iam_policy", "aws_iam_policy.corpus_ingestion": "aws_iam_policy", "aws_iam_role.codebuild_ingestion": "aws_iam_role", "aws_iam_role.corpus_ingestion": "aws_iam_role", "aws_iam_role_policy_attachment.backend_rag_runtime": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.codebuild_ingestion": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.corpus_ingestion": "aws_iam_role_policy_attachment", "aws_opensearchserverless_access_policy.data": "aws_opensearchserverless_access_policy", "aws_opensearchserverless_collection.references": "aws_opensearchserverless_collection", "aws_opensearchserverless_security_policy.encryption": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_security_policy.network": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_vpc_endpoint.collection": "aws_opensearchserverless_vpc_endpoint", "aws_s3_bucket.corpus": "aws_s3_bucket", "aws_s3_bucket_ownership_controls.corpus": "aws_s3_bucket_ownership_controls", "aws_s3_bucket_public_access_block.corpus": "aws_s3_bucket_public_access_block", "aws_s3_bucket_server_side_encryption_configuration.corpus": "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_versioning.corpus": "aws_s3_bucket_versioning", "aws_security_group.aoss_vpc_endpoint": "aws_security_group", "aws_security_group.codebuild_ingestion": "aws_security_group", "aws_vpc_security_group_ingress_rule.aoss_from_backend": "aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_ingress_rule.aoss_from_codebuild": "aws_vpc_security_group_ingress_rule",
 }
 RAG_READS = ("data.aws_iam_policy_document.backend_rag_runtime", "data.aws_iam_policy_document.codebuild_ingestion", "data.aws_iam_policy_document.corpus_ingestion")
 FOUNDATION = {
@@ -72,7 +72,7 @@ def verify_workflow() -> None:
             "approved_action=update", "approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create", "approved_changed_path=policy", "approved_resource_count=1", "environment_gate=aws-live-plan",
         ),
         "foundation-apply-role-bootstrap": ("approved_action=create", "approved_resource_count=4", "environment_gate=aws-live-plan"),
-        "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=25", "environment_gate=aws-live-apply"),
+        "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=26", "environment_gate=aws-live-apply"),
         "rag-runtime-reviewed-recovery": ("approved_action=create-and-read", "approved_resource_count=${approved_resource_count}", "environment_gate=aws-live-apply"),
         "eks-runtime-backend-policy-update": ("approved_resource=aws_iam_policy.backend_runtime_access", "approved_action=update", "approved_changed_path=policy", "environment_gate=aws-live-apply"),
     }
@@ -174,6 +174,19 @@ def verify_workflow() -> None:
     for forbidden in ("live.tfplan", "live-plan.json", "live.auto.tfvars", "backend.hcl", "post-apply-plan.txt"):
         assert forbidden not in upload, forbidden
 
+    rag_main = (ROOT / "infra/terraform/envs/rag-runtime/main.tf").read_text(encoding="utf-8")
+    aoss_security_group = rag_main.split('resource "aws_security_group" "aoss_vpc_endpoint" {', 1)[1].split("\n}\n", 1)[0]
+    assert "ingress {" not in aoss_security_group
+    backend_rule = rag_main.split('resource "aws_vpc_security_group_ingress_rule" "aoss_from_backend" {', 1)[1].split("\n}\n", 1)[0]
+    codebuild_rule = rag_main.split('resource "aws_vpc_security_group_ingress_rule" "aoss_from_codebuild" {', 1)[1].split("\n}\n", 1)[0]
+    for rule in (backend_rule, codebuild_rule):
+        contains(rule, "from_port                    = 443")
+        contains(rule, "to_port                      = 443")
+        contains(rule, 'ip_protocol                  = "tcp"')
+        assert "0.0.0.0/0" not in rule
+    contains(backend_rule, "referenced_security_group_id = var.eks_cluster_primary_security_group_id")
+    contains(codebuild_rule, "referenced_security_group_id = aws_security_group.codebuild_ingestion.id")
+
 
 def fixture(address: str, resource_type: str, actions: list[str]) -> dict:
     return {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": address, "type": resource_type, "change": {"actions": actions, "before": None if actions == ["create"] else {"policy": "before"}, "after": {"name": address}}}]}
@@ -260,10 +273,24 @@ def main() -> int:
     verify_contract(recovery, "rag-runtime-reviewed-recovery", "rag-runtime", True)
     recovery_existing = {**recovery, "resource_changes": [recovery_changes[1], recovery_changes[2]]}
     verify_contract(recovery_existing, "rag-runtime-reviewed-recovery", "rag-runtime", True)
+    recovery_migration = json.loads(json.dumps(recovery))
+    recovery_migration["resource_changes"].append({"address": "aws_security_group.aoss_vpc_endpoint", "type": "aws_security_group", "change": {"actions": ["update"], "before": {"ingress": [{"from_port": 443}]}, "after": {"ingress": []}}})
+    verify_contract(recovery_migration, "rag-runtime-reviewed-recovery", "rag-runtime", True)
     recovery_extra = json.loads(json.dumps(recovery)); recovery_extra["resource_changes"].append({"address": "aws_s3_bucket.extra", "type": "aws_s3_bucket", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
     verify_contract(recovery_extra, "rag-runtime-reviewed-recovery", "rag-runtime", False)
     recovery_update = json.loads(json.dumps(recovery)); recovery_update["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"name": "old"}, "after": {"name": "new"}}
     verify_contract(recovery_update, "rag-runtime-reviewed-recovery", "rag-runtime", False)
+    recovery_other_sg_update = json.loads(json.dumps(recovery_migration)); recovery_other_sg_update["resource_changes"][-1]["address"] = "aws_security_group.codebuild_ingestion"
+    verify_contract(recovery_other_sg_update, "rag-runtime-reviewed-recovery", "rag-runtime", False)
+    for attribute in ("tags", "description", "egress"):
+        recovery_wrong_migration_path = json.loads(json.dumps(recovery_migration))
+        recovery_wrong_migration_path["resource_changes"][-1]["change"] = {"actions": ["update"], "before": {attribute: "before"}, "after": {attribute: "after"}}
+        verify_contract(recovery_wrong_migration_path, "rag-runtime-reviewed-recovery", "rag-runtime", False)
+    recovery_multiple_migration_paths = json.loads(json.dumps(recovery_migration))
+    recovery_multiple_migration_paths["resource_changes"][-1]["change"] = {"actions": ["update"], "before": {"ingress": [], "description": "before"}, "after": {"ingress": [{"from_port": 443}], "description": "after"}}
+    verify_contract(recovery_multiple_migration_paths, "rag-runtime-reviewed-recovery", "rag-runtime", False)
+    recovery_two_updates = json.loads(json.dumps(recovery_migration)); recovery_two_updates["resource_changes"].append({"address": "aws_security_group.codebuild_ingestion", "type": "aws_security_group", "change": {"actions": ["update"], "before": {"description": "before"}, "after": {"description": "after"}}})
+    verify_contract(recovery_two_updates, "rag-runtime-reviewed-recovery", "rag-runtime", False)
     recovery_delete = json.loads(json.dumps(recovery)); recovery_delete["resource_changes"][0]["change"] = {"actions": ["delete", "create"], "before": {"name": "old"}, "after": {"name": "new"}}
     verify_contract(recovery_delete, "rag-runtime-reviewed-recovery", "rag-runtime", False, summary_success=False)
     recovery_high_cost = json.loads(json.dumps(recovery)); recovery_high_cost["resource_changes"].append({"address": "aws_nat_gateway.extra", "type": "aws_nat_gateway", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})

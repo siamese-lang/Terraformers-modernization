@@ -28,14 +28,6 @@ resource "aws_security_group" "aoss_vpc_endpoint" {
   description = "Only backend EKS traffic may reach the private AOSS endpoint."
   vpc_id      = var.vpc_id
 
-  ingress {
-    description     = "HTTPS from EKS cluster primary security group"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [var.eks_cluster_primary_security_group_id]
-  }
-
   tags = merge(local.common_tags, { Name = local.vpc_endpoint_name })
 }
 
@@ -299,6 +291,15 @@ resource "aws_vpc_security_group_ingress_rule" "aoss_from_codebuild" {
   to_port                      = 443
   ip_protocol                  = "tcp"
   description                  = "HTTPS from VPC-enabled corpus ingestion CodeBuild"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "aoss_from_backend" {
+  security_group_id            = aws_security_group.aoss_vpc_endpoint.id
+  referenced_security_group_id = var.eks_cluster_primary_security_group_id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  description                  = "HTTPS from EKS cluster primary security group"
 }
 
 resource "aws_iam_role" "codebuild_ingestion" {
