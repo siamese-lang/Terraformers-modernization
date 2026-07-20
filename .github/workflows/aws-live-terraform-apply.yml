@@ -23,6 +23,7 @@ on:
         options:
           - foundation
           - eks-runtime
+          - rag-runtime
         default: eks-runtime
       approved_resource_address:
         description: Reviewed eks-runtime resource address.
@@ -128,7 +129,14 @@ jobs:
               echo 'tfvars_secret=AWS_LIVE_EKS_TFVARS_B64' >> "${GITHUB_OUTPUT}"
               echo 'apply_contract=eks-runtime-backend-policy-update' >> "${GITHUB_OUTPUT}"
               ;;
-            *) echo 'apply_stage must be foundation or eks-runtime.' >&2; exit 1 ;;
+            rag-runtime)
+              test "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE || { echo 'approval_confirmation does not match the required rag-runtime confirmation string.' >&2; exit 1; }
+              echo 'tf_dir=infra/terraform/envs/rag-runtime' >> "${GITHUB_OUTPUT}"
+              echo 'state_component=rag-runtime' >> "${GITHUB_OUTPUT}"
+              echo 'tfvars_secret=AWS_LIVE_RAG_TFVARS_B64' >> "${GITHUB_OUTPUT}"
+              echo 'apply_contract=rag-runtime-reviewed-create' >> "${GITHUB_OUTPUT}"
+              ;;
+            *) echo 'apply_stage must be foundation, eks-runtime, or rag-runtime.' >&2; exit 1 ;;
           esac
 
       - name: Checkout
@@ -169,6 +177,7 @@ jobs:
           APPLY_STAGE: ${{ inputs.apply_stage }}
           FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
           EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
         run: |
           set -euo pipefail
           case "${APPLY_STAGE}" in
@@ -179,6 +188,10 @@ jobs:
             eks-runtime)
               test -n "${EKS_TFVARS_B64}" || { echo 'AWS_LIVE_EKS_TFVARS_B64 secret is required.' >&2; exit 1; }
               TFVARS_B64="${EKS_TFVARS_B64}"
+              ;;
+            rag-runtime)
+              test -n "${RAG_TFVARS_B64}" || { echo 'AWS_LIVE_RAG_TFVARS_B64 secret is required.' >&2; exit 1; }
+              TFVARS_B64="${RAG_TFVARS_B64}"
               ;;
           esac
           printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
@@ -248,7 +261,7 @@ jobs:
             echo 'terraform_destroy_executed=false'
             echo 'kubernetes_mutation_executed=false'
             echo 'raw_plan_uploaded=false'
-            if [[ "${APPLY_STAGE}" = foundation ]]; then echo 'approved_action=create'; echo 'approved_resource_count=4'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; else echo 'approved_resource=aws_iam_policy.backend_runtime_access'; echo 'approved_action=update'; echo 'approved_changed_path=policy'; echo 'environment_gate=aws-live-apply'; fi
+            if [[ "${APPLY_STAGE}" = foundation ]]; then echo 'approved_action=create'; echo 'approved_resource_count=4'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; elif [[ "${APPLY_STAGE}" = rag-runtime ]]; then echo 'approved_action=create-and-read'; echo 'approved_resource_count=25'; echo 'environment_gate=aws-live-apply'; else echo 'approved_resource=aws_iam_policy.backend_runtime_access'; echo 'approved_action=update'; echo 'approved_changed_path=policy'; echo 'environment_gate=aws-live-apply'; fi
           } > artifacts/aws-live-terraform-apply/apply-summary.txt
 
       - name: Verify post-apply full plan has no changes

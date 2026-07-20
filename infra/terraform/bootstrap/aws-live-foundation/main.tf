@@ -263,3 +263,138 @@ resource "aws_iam_role_policy" "terraform_apply_iam_mutation" {
   role   = aws_iam_role.terraform_apply.id
   policy = data.aws_iam_policy_document.terraform_apply_iam_mutation.json
 }
+
+data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
+  statement {
+    sid    = "CreateAndConfigureExactCorpusBucket"
+    effect = "Allow"
+    actions = [
+      "s3:CreateBucket",
+      "s3:PutBucketOwnershipControls",
+      "s3:PutBucketPublicAccessBlock",
+      "s3:PutBucketEncryption",
+      "s3:PutBucketVersioning",
+      "s3:PutBucketTagging",
+    ]
+    resources = ["arn:aws:s3:::${var.rag_runtime_corpus_bucket_name}"]
+  }
+
+  statement {
+    sid    = "CreateExactRagIamRolesAndPolicies"
+    effect = "Allow"
+    actions = ["iam:CreateRole", "iam:TagRole"]
+    resources = [
+      "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-corpus-ingestion",
+      "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild",
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+
+  statement {
+    sid     = "CreateExactRagIamPolicies"
+    effect  = "Allow"
+    actions = ["iam:CreatePolicy", "iam:TagPolicy"]
+    resources = [
+      "arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-backend-aoss",
+      "arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-codebuild",
+      "arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-corpus-ingestion",
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+
+  statement {
+    sid    = "AttachExactRagPolicies"
+    effect = "Allow"
+    actions = ["iam:AttachRolePolicy"]
+    resources = [
+      "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-corpus-ingestion",
+      "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild",
+      "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-backend-aoss",
+    ]
+  }
+
+  statement {
+    sid    = "PassOnlyExactCodeBuildExecutionRole"
+    effect  = "Allow"
+    actions = ["iam:PassRole"]
+    resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["codebuild.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid    = "CreateExactIngestionProject"
+    effect  = "Allow"
+    actions = ["codebuild:CreateProject", "codebuild:TagResource"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+
+  statement {
+    sid    = "CreateRagAossResources"
+    effect  = "Allow"
+    actions = [
+      "aoss:CreateCollection",
+      "aoss:CreateSecurityPolicy",
+      "aoss:CreateAccessPolicy",
+      "aoss:CreateVpcEndpoint",
+      "aoss:TagResource",
+    ]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+
+  statement {
+    sid    = "CreateTaggedSecurityGroupsInExactVpc"
+    effect  = "Allow"
+    actions = ["ec2:CreateSecurityGroup"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:Vpc"
+      values   = [var.rag_runtime_vpc_id]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+
+  statement {
+    sid    = "TagAndAuthorizeRagSecurityGroups"
+    effect  = "Allow"
+    actions = ["ec2:CreateTags", "ec2:AuthorizeSecurityGroupIngress"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = ["terraformers-modernization"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "terraform_apply_rag_runtime_create" {
+  name   = "terraformers-live-apply-rag-runtime-create"
+  role   = aws_iam_role.terraform_apply.id
+  policy = data.aws_iam_policy_document.terraform_apply_rag_runtime_create.json
+}
