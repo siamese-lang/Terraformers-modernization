@@ -69,7 +69,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 context.sourceKey()
         ));
 
-        List<ReferenceDocument> references = retrieveReferences(source);
+        List<ReferenceDocument> references = retrieveReferences(context, source);
 
         ParsedBedrockAnalysis parsed;
         try {
@@ -89,10 +89,11 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         );
     }
 
-    private List<ReferenceDocument> retrieveReferences(ObjectContent source) {
+    private List<ReferenceDocument> retrieveReferences(AnalysisRequestContext context, ObjectContent source) {
         RetrievalMode mode = properties.getRetrievalMode();
         if (mode == null) throw new IllegalStateException("terraformers.analysis.retrieval-mode must be set");
         if (mode == RetrievalMode.DISABLED) return List.of();
+        long started = System.nanoTime();
         try {
             if (factsExtractor == null || queryTextBuilder == null) {
                 throw new IllegalStateException("architecture retrieval facts stage is not configured");
@@ -100,10 +101,10 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             ArchitectureRetrievalFacts facts = factsExtractor.extract(source);
             return referenceRetriever.retrieve(new ReferenceQuery(queryTextBuilder.build(facts), properties.getOpensearchTopK()));
         } catch (RuntimeException exception) {
+            log.warn("reference retrieval outcome=failure analysisJobId={} projectId={} mode={} stage=facts modelId={} index={} topK={} errorClass={} elapsedMs={}",
+                    context.jobId(), context.projectId(), mode, properties.getBedrockEmbeddingModelId(), properties.getIndexName(),
+                    properties.getOpensearchTopK(), exception.getClass().getName(), (System.nanoTime() - started) / 1_000_000);
             if (mode == RetrievalMode.REQUIRED) throw exception;
-            log.warn("reference retrieval outcome=failure mode={} modelId={} index={} topK={} errorClass={}", mode,
-                    properties.getBedrockEmbeddingModelId(), properties.getIndexName(), properties.getOpensearchTopK(),
-                    exception.getClass().getName());
             return List.of();
         }
     }
