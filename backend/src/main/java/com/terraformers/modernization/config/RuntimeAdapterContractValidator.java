@@ -1,6 +1,7 @@
 package com.terraformers.modernization.config;
 
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
+import com.terraformers.modernization.analysis.AnalysisMode;
 import com.terraformers.modernization.reference.RetrievalMode;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,10 @@ public class RuntimeAdapterContractValidator implements ApplicationRunner {
 
     List<String> findMissingEnabledAdapterSettings() {
         List<String> missing = new ArrayList<>();
+
+        if (properties.getMode() == AnalysisMode.EXTERNAL_PYTHON_LEGACY) {
+            missing.add("ANALYSIS_MODE_INTEGRATED_JAVA");
+        }
 
         if (properties.isBedrockProviderEnabled()) {
             requireText(missing, "BEDROCK_MODEL_ID", properties.getBedrockModelId());

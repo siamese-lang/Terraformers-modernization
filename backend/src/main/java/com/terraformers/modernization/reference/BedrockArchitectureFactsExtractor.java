@@ -71,7 +71,10 @@ public class BedrockArchitectureFactsExtractor {
         if (node.isMissingNode()) return List.of();
         if (!node.isArray()) throw new IllegalStateException("Bedrock facts collection must be an array");
         java.util.ArrayList<String> values = new java.util.ArrayList<>();
-        node.forEach(value -> values.add(value.asText("")));
+        node.forEach(value -> {
+            if (!value.isTextual()) throw new IllegalStateException("Bedrock facts collection elements must be text");
+            values.add(value.asText());
+        });
         return values;
     }
 }

@@ -44,11 +44,12 @@ public class RetrievalModeReferenceRetriever implements ReferenceRetriever {
                     documents.size(), documents.stream().map(ReferenceDocument::id).toList(), elapsedMillis(started));
             return documents;
         } catch (RuntimeException exception) {
+            log.warn("reference retrieval outcome=failure mode={} stage=search modelId={} index={} topK={} errorClass={} elapsedMs={}",
+                    mode, properties.getBedrockEmbeddingModelId(), properties.getIndexName(), properties.getOpensearchTopK(),
+                    exception.getClass().getName(), elapsedMillis(started));
             if (mode == RetrievalMode.REQUIRED) {
                 throw exception;
             }
-            log.warn("reference retrieval outcome=failure mode={} errorClass={} elapsedMs={}",
-                    mode, exception.getClass().getName(), elapsedMillis(started));
             return List.of();
         }
     }
