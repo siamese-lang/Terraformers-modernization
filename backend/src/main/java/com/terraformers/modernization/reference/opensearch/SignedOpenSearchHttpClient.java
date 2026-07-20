@@ -7,7 +7,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -38,13 +41,7 @@ public class SignedOpenSearchHttpClient {
 
     public String post(URI uri, String body, String serviceName) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        SdkHttpFullRequest unsignedRequest = SdkHttpFullRequest.builder()
-                .method(SdkHttpMethod.POST)
-                .uri(uri)
-                .putHeader("Host", uri.getHost())
-                .putHeader("Content-Type", "application/json")
-                .contentStreamProvider(() -> new ByteArrayInputStream(bytes))
-                .build();
+        SdkHttpFullRequest unsignedRequest = buildUnsignedRequest(uri, bytes);
 
         SdkHttpFullRequest signedRequest = signer.sign(unsignedRequest, Aws4SignerParams.builder()
                 .awsCredentials(credentialsProvider.resolveCredentials())
@@ -76,6 +73,25 @@ public class SignedOpenSearchHttpClient {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("OpenSearch query interrupted", exception);
+        }
+    }
+
+    static SdkHttpFullRequest buildUnsignedRequest(URI uri, byte[] bytes) {
+        return SdkHttpFullRequest.builder()
+                .method(SdkHttpMethod.POST)
+                .uri(uri)
+                .putHeader("Host", uri.getHost())
+                .putHeader("Content-Type", "application/json")
+                .putHeader("X-Amz-Content-Sha256", sha256Hex(bytes))
+                .contentStreamProvider(() -> new ByteArrayInputStream(bytes))
+                .build();
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable for OpenSearch request signing", exception);
         }
     }
 
