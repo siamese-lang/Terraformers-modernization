@@ -317,9 +317,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid = "AttachOnlyBackendRagPolicy"
-    effect = "Allow"
-    actions = ["iam:AttachRolePolicy"]
+    sid       = "AttachOnlyBackendRagPolicy"
+    effect    = "Allow"
+    actions   = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-backend-irsa-role"]
     condition {
       test     = "ArnEquals"
@@ -328,9 +328,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     }
   }
   statement {
-    sid = "AttachOnlyCorpusIngestionPolicy"
-    effect = "Allow"
-    actions = ["iam:AttachRolePolicy"]
+    sid       = "AttachOnlyCorpusIngestionPolicy"
+    effect    = "Allow"
+    actions   = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-corpus-ingestion"]
     condition {
       test     = "ArnEquals"
@@ -339,9 +339,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     }
   }
   statement {
-    sid = "AttachOnlyCodeBuildPolicy"
-    effect = "Allow"
-    actions = ["iam:AttachRolePolicy"]
+    sid       = "AttachOnlyCodeBuildPolicy"
+    effect    = "Allow"
+    actions   = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
     condition {
       test     = "ArnEquals"
@@ -350,9 +350,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     }
   }
   statement {
-    sid = "PassOnlyCodeBuildRole"
-    effect = "Allow"
-    actions = ["iam:PassRole"]
+    sid       = "PassOnlyCodeBuildRole"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
     condition {
       test     = "StringEquals"
@@ -389,9 +389,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid     = "CreateExactAossCollection"
-    effect  = "Allow"
-    actions = ["aoss:CreateCollection"]
+    sid       = "CreateExactAossCollection"
+    effect    = "Allow"
+    actions   = ["aoss:CreateCollection"]
     resources = ["*"]
 
     condition {
@@ -414,9 +414,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid     = "TagRagAossResources"
-    effect  = "Allow"
-    actions = ["aoss:TagResource"]
+    sid       = "TagRagAossResources"
+    effect    = "Allow"
+    actions   = ["aoss:TagResource"]
     resources = ["*"]
 
     condition {
@@ -445,9 +445,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid     = "CreateExactAossAccessPolicy"
-    effect  = "Allow"
-    actions = ["aoss:CreateAccessPolicy"]
+    sid       = "CreateExactAossAccessPolicy"
+    effect    = "Allow"
+    actions   = ["aoss:CreateAccessPolicy"]
     resources = ["*"]
 
     condition {
@@ -458,9 +458,9 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid     = "CreateExactAossSecurityPolicy"
-    effect  = "Allow"
-    actions = ["aoss:CreateSecurityPolicy"]
+    sid       = "CreateExactAossSecurityPolicy"
+    effect    = "Allow"
+    actions   = ["aoss:CreateSecurityPolicy"]
     resources = ["*"]
 
     condition {
