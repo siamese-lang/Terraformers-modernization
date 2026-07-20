@@ -534,11 +534,6 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     effect    = "Allow"
     actions   = ["ec2:CreateVpcEndpoint"]
     resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]
-    condition {
-      test     = "StringLike"
-      variable = "ec2:VpceServiceName"
-      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
-    }
   }
 
   statement {
