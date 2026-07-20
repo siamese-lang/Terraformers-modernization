@@ -78,6 +78,9 @@ require_command python3
 
 cd "${REPO_ROOT}"
 
+echo "[runtime-contract] verifying versioned RAG corpus contract"
+python3 scripts/checks/rag-corpus-contract-verification.py
+
 echo "[runtime-contract] verifying persistence guardrails"
 bash scripts/checks/flyway-migration-uniqueness.sh
 python3 scripts/checks/terraform-plan-public-cidr-regression-verification.py

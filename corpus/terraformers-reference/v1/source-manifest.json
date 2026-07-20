@@ -1,0 +1,44 @@
+{
+  "sources": [
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/vpc.html.markdown"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/eks-runtime/main.tf"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "docs/source-rag-gitops-reuse-plan.md"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/db_subnet_group.html.markdown"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/sqs_queue.html.markdown"
+    },
+    {
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0",
+      "sourcePath": "website/docs/r/iam_role.html.markdown"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/rag-runtime/main.tf"
+    },
+    {
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v1",
+      "sourcePath": "infra/terraform/envs/rag-runtime/outputs.tf"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ TERRAFORM_DIRS=(
   "${REPO_ROOT}/infra/terraform/envs/backend-stateful-dependencies"
   "${REPO_ROOT}/infra/terraform/envs/eks-runtime"
   "${REPO_ROOT}/infra/terraform/envs/frontend-delivery"
+  "${REPO_ROOT}/infra/terraform/envs/rag-runtime"
 )
 
 require_command() {

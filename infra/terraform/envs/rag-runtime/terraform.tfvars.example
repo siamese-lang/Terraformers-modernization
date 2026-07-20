@@ -1,0 +1,17 @@
+aws_region  = "ap-northeast-2"
+environment = "dev"
+name_prefix = "terraformers"
+
+vpc_id = "<vpc-id>"
+private_subnet_ids = [
+  "<private-subnet-id-a>",
+  "<private-subnet-id-b>",
+]
+eks_cluster_primary_security_group_id = "<eks-cluster-primary-security-group-id>"
+backend_irsa_role_name                 = "<backend-irsa-role-name>"
+backend_irsa_role_arn                  = "<backend-irsa-role-arn>"
+github_oidc_provider_arn               = "<github-oidc-provider-arn>"
+corpus_bucket_name                     = "<globally-unique-corpus-bucket-name>"
+
+# This bucket is exclusively for the versioned reference corpus, not state, uploads, results, or secrets.
+corpus_prefix = "terraformers-reference/v1/"
