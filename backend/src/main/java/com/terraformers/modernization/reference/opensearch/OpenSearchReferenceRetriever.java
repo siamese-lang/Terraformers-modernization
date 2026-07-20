@@ -6,7 +6,6 @@ import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceQuery;
 import java.net.URI;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -35,8 +34,7 @@ public class OpenSearchReferenceRetriever {
     public List<ReferenceDocument> retrieve(ReferenceQuery query) {
         requireRuntimeConfig();
 
-        String embeddingText = toEmbeddingText(query);
-        List<Float> vector = embeddingProvider.embed(embeddingText);
+        List<Float> vector = embeddingProvider.embed(query.text());
         int topK = properties.getOpensearchTopK();
         String body = queryBuilder.build(
                 properties.getVectorFieldName(),
@@ -47,19 +45,6 @@ public class OpenSearchReferenceRetriever {
         URI uri = OpenSearchEndpoint.searchUri(properties.getOpensearchEndpoint(), properties.getIndexName());
         String response = httpClient.post(uri, body, properties.getOpensearchServiceName());
         return responseParser.parse(response, properties.getContentFieldName());
-    }
-
-    private String toEmbeddingText(ReferenceQuery query) {
-        String services = query.detectedServices() == null || query.detectedServices().isEmpty()
-                ? "unknown-services"
-                : query.detectedServices().stream().collect(Collectors.joining(", "));
-        return "projectId=%s source=s3://%s/%s contentType=%s services=%s".formatted(
-                query.projectId(),
-                query.sourceBucket(),
-                query.sourceKey(),
-                query.contentType(),
-                services
-        );
     }
 
     private void requireRuntimeConfig() {

@@ -65,6 +65,6 @@ class OpenSearchReferenceRetrieverTest {
     }
 
     private ReferenceQuery query() {
-        return new ReferenceQuery("project", "bucket", "key", "image/png", List.of("VPC"), 2);
+        return new ReferenceQuery("VPC private subnet to RDS", 2);
     }
 }

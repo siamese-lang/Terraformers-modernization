@@ -29,12 +29,7 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 context.sourceKey()
         ));
 
-        List<ReferenceDocument> references = referenceRetriever.retrieve(ReferenceQuery.fromObject(
-                context.projectId(),
-                metadata.bucket(),
-                metadata.key(),
-                metadata.contentType()
-        ));
+        List<ReferenceDocument> references = referenceRetriever.retrieve(new ReferenceQuery("stub architecture", 3));
 
         String terraformDraft = """
                 terraform {

@@ -25,8 +25,11 @@ public class RetrievalModeReferenceRetriever implements ReferenceRetriever {
     @Override
     public List<ReferenceDocument> retrieve(ReferenceQuery query) {
         RetrievalMode mode = properties.getRetrievalMode();
+        if (mode == null) {
+            throw new IllegalStateException("terraformers.analysis.retrieval-mode must be set");
+        }
         if (mode == RetrievalMode.DISABLED) {
-            log.info("reference retrieval outcome=disabled mode={} projectId={}", mode, query.projectId());
+            log.info("reference retrieval outcome=disabled mode={}", mode);
             return List.of();
         }
         long started = System.nanoTime();
@@ -35,8 +38,8 @@ public class RetrievalModeReferenceRetriever implements ReferenceRetriever {
             if (mode == RetrievalMode.REQUIRED && documents.isEmpty()) {
                 throw new IllegalStateException("required reference retrieval returned no documents");
             }
-            log.info("reference retrieval outcome={} mode={} projectId={} modelId={} index={} topK={} hitCount={} documentIds={} elapsedMs={}",
-                    documents.isEmpty() ? "empty" : "success", mode, query.projectId(),
+            log.info("reference retrieval outcome={} mode={} modelId={} index={} topK={} hitCount={} documentIds={} elapsedMs={}",
+                    documents.isEmpty() ? "empty" : "success", mode,
                     properties.getBedrockEmbeddingModelId(), properties.getIndexName(), properties.getOpensearchTopK(),
                     documents.size(), documents.stream().map(ReferenceDocument::id).toList(), elapsedMillis(started));
             return documents;
@@ -44,8 +47,8 @@ public class RetrievalModeReferenceRetriever implements ReferenceRetriever {
             if (mode == RetrievalMode.REQUIRED) {
                 throw exception;
             }
-            log.warn("reference retrieval outcome=failure mode={} projectId={} errorClass={} elapsedMs={}",
-                    mode, query.projectId(), exception.getClass().getName(), elapsedMillis(started));
+            log.warn("reference retrieval outcome=failure mode={} errorClass={} elapsedMs={}",
+                    mode, exception.getClass().getName(), elapsedMillis(started));
             return List.of();
         }
     }

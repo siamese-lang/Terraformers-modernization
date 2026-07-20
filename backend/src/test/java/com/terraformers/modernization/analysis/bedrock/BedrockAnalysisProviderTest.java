@@ -46,6 +46,7 @@ class BedrockAnalysisProviderTest {
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         properties.setBedrockModelId("configured-model-id");
         properties.setBedrockMaxTokens(2048);
+        properties.setRetrievalMode(com.terraformers.modernization.reference.RetrievalMode.DISABLED);
 
         BedrockAnalysisProvider provider = new BedrockAnalysisProvider(
                 client,
@@ -67,13 +68,13 @@ class BedrockAnalysisProviderTest {
         assertThat(body.toString()).contains("<analysis_json>");
         assertThat(body.toString()).contains("<terraform_hcl>");
         assertThat(body.toString()).doesNotContain("terraformCode");
-        assertThat(body.toString()).contains("Use private subnets");
+        assertThat(body.toString()).doesNotContain("Use private subnets");
         assertThat(result.provider()).isEqualTo("bedrock:configured-model-id");
         assertThat(result.explanation()).isEqualTo("Private web stack");
         assertThat(result.components()).containsExactly("VPC", "ALB");
         assertThat(result.relationships()).containsExactly("ALB forwards to service");
         assertThat(result.terraformCode()).contains("resource \"aws_vpc\"");
-        assertThat(result.references()).containsExactly("ref-1");
+        assertThat(result.references()).isEmpty();
     }
 
     @Test

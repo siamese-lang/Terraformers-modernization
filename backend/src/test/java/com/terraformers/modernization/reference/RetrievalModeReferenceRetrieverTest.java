@@ -14,7 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class RetrievalModeReferenceRetrieverTest {
-    private final ReferenceQuery query = new ReferenceQuery("project", "bucket", "key", "image/png", List.of("VPC"), 3);
+    private final ReferenceQuery query = new ReferenceQuery("VPC private subnet to RDS", 3);
 
     @Test
     void requiredPropagatesFailuresAndRejectsEmptyResults() {
