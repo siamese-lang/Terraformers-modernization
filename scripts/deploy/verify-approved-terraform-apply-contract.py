@@ -13,6 +13,7 @@ BASE_REQUIRED_TXT_VALUES = {
     "optional_adapter_resource_count": "0",
     "high_cost_resource_count": "0",
 }
+RAG_REQUIRED_TXT_VALUES = {**BASE_REQUIRED_TXT_VALUES, "high_cost_resource_count": "1"}
 BLOCKED_TYPE_PREFIXES = ("aws_security_group", "aws_vpc_security_group_")
 BLOCKED_TYPES = {"aws_eks_cluster", "aws_eks_node_group"}
 FOUNDATION_RESOURCES = {
@@ -21,9 +22,42 @@ FOUNDATION_RESOURCES = {
     "aws_iam_role_policy.terraform_apply_state_access": "aws_iam_role_policy",
     "aws_iam_role_policy_attachment.terraform_apply_read_only": "aws_iam_role_policy_attachment",
 }
+RAG_RUNTIME_RESOURCES = {
+    **{address: (resource_type, ["create"], []) for address, resource_type in {
+        "aws_codebuild_project.corpus_ingestion": "aws_codebuild_project",
+        "aws_iam_policy.backend_rag_runtime": "aws_iam_policy",
+        "aws_iam_policy.codebuild_ingestion": "aws_iam_policy",
+        "aws_iam_policy.corpus_ingestion": "aws_iam_policy",
+        "aws_iam_role.codebuild_ingestion": "aws_iam_role",
+        "aws_iam_role.corpus_ingestion": "aws_iam_role",
+        "aws_iam_role_policy_attachment.backend_rag_runtime": "aws_iam_role_policy_attachment",
+        "aws_iam_role_policy_attachment.codebuild_ingestion": "aws_iam_role_policy_attachment",
+        "aws_iam_role_policy_attachment.corpus_ingestion": "aws_iam_role_policy_attachment",
+        "aws_opensearchserverless_access_policy.data": "aws_opensearchserverless_access_policy",
+        "aws_opensearchserverless_collection.references": "aws_opensearchserverless_collection",
+        "aws_opensearchserverless_security_policy.encryption": "aws_opensearchserverless_security_policy",
+        "aws_opensearchserverless_security_policy.network": "aws_opensearchserverless_security_policy",
+        "aws_opensearchserverless_vpc_endpoint.collection": "aws_opensearchserverless_vpc_endpoint",
+        "aws_s3_bucket.corpus": "aws_s3_bucket",
+        "aws_s3_bucket_ownership_controls.corpus": "aws_s3_bucket_ownership_controls",
+        "aws_s3_bucket_public_access_block.corpus": "aws_s3_bucket_public_access_block",
+        "aws_s3_bucket_server_side_encryption_configuration.corpus": "aws_s3_bucket_server_side_encryption_configuration",
+        "aws_s3_bucket_versioning.corpus": "aws_s3_bucket_versioning",
+        "aws_security_group.aoss_vpc_endpoint": "aws_security_group",
+        "aws_security_group.codebuild_ingestion": "aws_security_group",
+        "aws_vpc_security_group_ingress_rule.aoss_from_codebuild": "aws_vpc_security_group_ingress_rule",
+    }.items()},
+    **{address: ("aws_iam_policy_document", ["read"], []) for address in (
+        "data.aws_iam_policy_document.backend_rag_runtime",
+        "data.aws_iam_policy_document.codebuild_ingestion",
+        "data.aws_iam_policy_document.corpus_ingestion",
+    )},
+}
 CONTRACTS = {
+    "foundation-rag-apply-permission-create": "foundation",
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
+    "rag-runtime-reviewed-create": "rag-runtime",
 }
 
 
@@ -39,82 +73,64 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_properties(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line and "=" in line:
-            key, value = line.split("=", 1)
-            values[key] = value
-    return values
+    return dict(line.split("=", 1) for line in path.read_text(encoding="utf-8").splitlines() if line and "=" in line)
 
 
 def fail(message: str) -> None:
     raise SystemExit(f"ERROR: {message}")
 
 
-def check_risk_gates(summary: dict, txt: dict[str, str], stage: str, count: int, updates: int) -> None:
-    required = dict(BASE_REQUIRED_TXT_VALUES)
-    required.update({"plan_stage": stage, "resource_change_count": str(count), "update_resource_count": str(updates)})
-    for key, expected in required.items():
-        if txt.get(key) != expected:
-            fail(f"{key} must be {expected!r}, got {txt.get(key)!r}.")
-    if summary.get("stage") != stage:
-        fail(f"summary stage must be {stage!r}.")
-    if summary.get("resource_change_count") != count or summary.get("update_resource_count") != updates:
-        fail("summary resource counts do not match the approved contract.")
-    for key, message in (
-        ("destructive_resources", "delete actions are not allowed."),
-        ("replacement_resources", "replacement actions are not allowed."),
-        ("public_exposure_findings", "public exposure findings are not allowed."),
-        ("optional_adapter_resources", "optional adapter resource changes are not allowed."),
-        ("high_cost_resources", "high-cost resource changes are not allowed."),
-    ):
-        if summary.get(key):
-            fail(message)
+def check_risk_gates(summary: dict, txt: dict[str, str], stage: str, count: int, updates: int, required: dict[str, str] = BASE_REQUIRED_TXT_VALUES) -> None:
+    expected = dict(required)
+    expected.update({"plan_stage": stage, "resource_change_count": str(count), "update_resource_count": str(updates)})
+    for key, value in expected.items():
+        if txt.get(key) != value:
+            fail(f"{key} must be {value!r}, got {txt.get(key)!r}.")
+    if summary.get("stage") != stage or summary.get("resource_change_count") != count or summary.get("update_resource_count") != updates:
+        fail("summary stage or resource counts do not match the approved contract.")
+    for key, message in (("destructive_resources", "delete actions are not allowed."), ("replacement_resources", "replacement actions are not allowed."), ("public_exposure_findings", "public exposure findings are not allowed."), ("optional_adapter_resources", "optional adapter resource changes are not allowed.")):
+        if summary.get(key): fail(message)
 
 
-def check_blocked_types(actions: list[dict]) -> None:
+def actual_actions(actions: list[dict]) -> dict[str, tuple[object, object, object]]:
+    return {str(item.get("address")): (item.get("type"), item.get("actions"), item.get("changed_attribute_paths")) for item in actions}
+
+
+def check_blocked_types(actions: list[dict], allow_rag_security_groups: bool = False) -> None:
+    allowed = {"aws_security_group", "aws_vpc_security_group_ingress_rule"} if allow_rag_security_groups else set()
     for item in actions:
         resource_type = str(item.get("type", ""))
-        if resource_type in BLOCKED_TYPES or resource_type.startswith(BLOCKED_TYPE_PREFIXES):
+        if (resource_type in BLOCKED_TYPES or resource_type.startswith(BLOCKED_TYPE_PREFIXES)) and resource_type not in allowed:
             fail(f"blocked resource type changed: {resource_type}.")
 
 
 def main() -> int:
     args = parse_args()
-    expected_stage = CONTRACTS[args.contract]
-    if args.stage != expected_stage:
-        fail(f"contract {args.contract!r} requires stage {expected_stage!r}.")
-    txt = read_properties(args.summary_txt)
-    summary = json.loads(args.summary_json.read_text(encoding="utf-8"))
+    if args.stage != CONTRACTS[args.contract]: fail(f"contract {args.contract!r} requires stage {CONTRACTS[args.contract]!r}.")
+    txt, summary = read_properties(args.summary_txt), json.loads(args.summary_json.read_text(encoding="utf-8"))
     actions = summary.get("resource_actions") or []
-
-    if args.contract == "foundation-apply-role-bootstrap":
+    if args.contract == "foundation-rag-apply-permission-create":
+        check_risk_gates(summary, txt, "foundation", 1, 0)
+        expected = {"aws_iam_role_policy.terraform_apply_rag_runtime_create": ("aws_iam_role_policy", ["create"], [])}
+        if actual_actions(actions) != expected: fail("foundation RAG permission resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "foundation-apply-role-bootstrap":
         check_risk_gates(summary, txt, "foundation", 4, 0)
-        actual = {
-            item.get("address"): {
-                "type": item.get("type"), "actions": item.get("actions"),
-                "changed_attribute_paths": item.get("changed_attribute_paths"),
-            }
-            for item in actions
-        }
-        expected = {
-            address: {"type": resource_type, "actions": ["create"], "changed_attribute_paths": []}
-            for address, resource_type in FOUNDATION_RESOURCES.items()
-        }
-        if actual != expected:
-            fail(f"foundation resource_actions must exactly match {expected!r}, got {actual!r}.")
-    else:
-        if not args.approved_resource or not args.approved_changed_path:
-            fail("--approved-resource and --approved-changed-path are required for eks-runtime contract.")
+        expected = {address: (kind, ["create"], []) for address, kind in FOUNDATION_RESOURCES.items()}
+        if actual_actions(actions) != expected: fail("foundation resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "eks-runtime-backend-policy-update":
+        if not args.approved_resource or not args.approved_changed_path: fail("--approved-resource and --approved-changed-path are required for eks-runtime contract.")
         check_risk_gates(summary, txt, "eks-runtime", 1, 1)
-        expected = [{"address": args.approved_resource, "actions": ["update"], "changed_attribute_paths": [args.approved_changed_path]}]
-        actual = [{"address": item.get("address"), "actions": item.get("actions"), "changed_attribute_paths": item.get("changed_attribute_paths")} for item in actions]
-        if actual != expected:
-            fail(f"resource_actions must exactly match {expected!r}, got {actual!r}.")
-    check_blocked_types(actions)
+        if actual_actions(actions) != {args.approved_resource: ("aws_iam_policy", ["update"], [args.approved_changed_path])}: fail("resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    else:
+        check_risk_gates(summary, txt, "rag-runtime", 25, 0, RAG_REQUIRED_TXT_VALUES)
+        if summary.get("high_cost_resources") != ["aws_opensearchserverless_collection.references"]: fail("rag-runtime must contain exactly the approved AOSS collection high-cost resource.")
+        if actual_actions(actions) != RAG_RUNTIME_RESOURCES: fail("rag-runtime resource_actions must exactly match the approved 22 creates and 3 reads.")
+        check_blocked_types(actions, allow_rag_security_groups=True)
     print("approved_terraform_apply_contract=passed")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -127,3 +127,25 @@ variable "common_tags" {
     ManagedBy   = "terraform-bootstrap"
   }
 }
+
+variable "rag_runtime_corpus_bucket_name" {
+  description = "Exact corpus bucket the approved rag-runtime apply may create and configure."
+  type        = string
+  default     = "terraformers-dev-rag-corpus-024863981627"
+
+  validation {
+    condition     = var.rag_runtime_corpus_bucket_name == "terraformers-dev-rag-corpus-024863981627"
+    error_message = "rag_runtime_corpus_bucket_name must be terraformers-dev-rag-corpus-024863981627."
+  }
+}
+
+variable "rag_runtime_vpc_id" {
+  description = "Approved VPC ID for the rag-runtime security groups."
+  type        = string
+  default     = "vpc-02bb053a410ec298d"
+
+  validation {
+    condition     = var.rag_runtime_vpc_id == "vpc-02bb053a410ec298d"
+    error_message = "rag_runtime_vpc_id must be the approved VPC vpc-02bb053a410ec298d."
+  }
+}

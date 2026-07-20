@@ -153,24 +153,32 @@ jobs:
           EXECUTE_LIVE_PLAN: ${{ inputs.execute_live_plan }}
           EXECUTE_APPROVED_APPLY: ${{ inputs.execute_approved_apply }}
           PLAN_STAGE: ${{ inputs.plan_stage }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          APPROVAL_CONFIRMATION: ${{ inputs.approval_confirmation }}
         run: |
           set -euo pipefail
           if [[ "${EXECUTE_LIVE_PLAN}" = 'true' && "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
             echo 'execute_live_plan and execute_approved_apply must not both be true.' >&2
             exit 1
           fi
-          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' && "${PLAN_STAGE}" != 'eks-runtime' ]]; then
-            echo 'execute_approved_apply requires plan_stage=eks-runtime.' >&2
+          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' && "${PLAN_STAGE}" != 'eks-runtime' && "${PLAN_STAGE}" != 'rag-runtime' ]]; then
+            echo 'execute_approved_apply requires plan_stage=eks-runtime or rag-runtime.' >&2
             exit 1
+          fi
+          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
+            test -n "${EXPECTED_HEAD_SHA}" || { echo 'expected_head_sha is required for execute_approved_apply.' >&2; exit 1; }
+            if [[ "${PLAN_STAGE}" = rag-runtime ]]; then
+              test "${APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE || { echo 'rag-runtime apply requires APPLY_REVIEWED_RAG_RUNTIME_CREATE.' >&2; exit 1; }
+            fi
           fi
           echo 'approved_apply_dispatch_contract=valid'
 
   approved-live-terraform-apply:
-    name: Call approved eks-runtime apply workflow
+    name: Call approved Terraform apply workflow
     needs:
       - execution-plan-contract
       - validate-approved-apply-dispatch
-    if: ${{ inputs.execute_approved_apply && !inputs.execute_live_plan && inputs.plan_stage == 'eks-runtime' }}
+    if: ${{ inputs.execute_approved_apply && !inputs.execute_live_plan && (inputs.plan_stage == 'eks-runtime' || inputs.plan_stage == 'rag-runtime') }}
     permissions:
       contents: read
       id-token: write

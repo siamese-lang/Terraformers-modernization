@@ -13,6 +13,10 @@ VERIFIER = ROOT / "scripts/deploy/verify-approved-terraform-apply-contract.py"
 EVIDENCE_DIR = ROOT / "artifacts/approved-terraform-apply-contract"
 PLAN_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-plan.yml"
 APPLY_WORKFLOW = ROOT / ".github/workflows/aws-live-terraform-apply.yml"
+RAG_CREATES = {
+    "aws_codebuild_project.corpus_ingestion": "aws_codebuild_project", "aws_iam_policy.backend_rag_runtime": "aws_iam_policy", "aws_iam_policy.codebuild_ingestion": "aws_iam_policy", "aws_iam_policy.corpus_ingestion": "aws_iam_policy", "aws_iam_role.codebuild_ingestion": "aws_iam_role", "aws_iam_role.corpus_ingestion": "aws_iam_role", "aws_iam_role_policy_attachment.backend_rag_runtime": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.codebuild_ingestion": "aws_iam_role_policy_attachment", "aws_iam_role_policy_attachment.corpus_ingestion": "aws_iam_role_policy_attachment", "aws_opensearchserverless_access_policy.data": "aws_opensearchserverless_access_policy", "aws_opensearchserverless_collection.references": "aws_opensearchserverless_collection", "aws_opensearchserverless_security_policy.encryption": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_security_policy.network": "aws_opensearchserverless_security_policy", "aws_opensearchserverless_vpc_endpoint.collection": "aws_opensearchserverless_vpc_endpoint", "aws_s3_bucket.corpus": "aws_s3_bucket", "aws_s3_bucket_ownership_controls.corpus": "aws_s3_bucket_ownership_controls", "aws_s3_bucket_public_access_block.corpus": "aws_s3_bucket_public_access_block", "aws_s3_bucket_server_side_encryption_configuration.corpus": "aws_s3_bucket_server_side_encryption_configuration", "aws_s3_bucket_versioning.corpus": "aws_s3_bucket_versioning", "aws_security_group.aoss_vpc_endpoint": "aws_security_group", "aws_security_group.codebuild_ingestion": "aws_security_group", "aws_vpc_security_group_ingress_rule.aoss_from_codebuild": "aws_vpc_security_group_ingress_rule",
+}
+RAG_READS = ("data.aws_iam_policy_document.backend_rag_runtime", "data.aws_iam_policy_document.codebuild_ingestion", "data.aws_iam_policy_document.corpus_ingestion")
 FOUNDATION = {
     "aws_iam_role.terraform_apply": "aws_iam_role",
     "aws_iam_role_policy.terraform_apply_iam_mutation": "aws_iam_role_policy",
@@ -36,17 +40,17 @@ def verify_workflow() -> None:
     apply = APPLY_WORKFLOW.read_text(encoding="utf-8")
     plan = PLAN_WORKFLOW.read_text(encoding="utf-8")
     for text in (
-        "- foundation", "- eks-runtime", "default: eks-runtime",
+        "- foundation", "- eks-runtime", "- rag-runtime", "default: eks-runtime",
         "CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}",
         "foundation apply requires workflow_dispatch.",
         "${GITHUB_REPOSITORY}/.github/workflows/aws-live-terraform-apply.yml@",
         "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
-        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_IN_PLACE_UPDATE",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "foundation-rag-apply-permission-create", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "rag-runtime-reviewed-create",
         "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
         "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
-        "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}",
+        "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}", "RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}", "AWS_LIVE_RAG_TFVARS_B64 secret is required.",
         "AWS_LIVE_FOUNDATION_TFVARS_B64 secret is required.",
         "temporary_bootstrap_permission_cleanup=external-required",
         "post_apply_full_plan=no-changes",
@@ -54,8 +58,22 @@ def verify_workflow() -> None:
         contains(apply, text)
     contains(plan, "uses: ./.github/workflows/aws-live-terraform-apply.yml")
     assert "foundation apply requires workflow_dispatch." not in plan
-    contains(plan, "inputs.plan_stage == 'eks-runtime'")
-    contains(plan, "execute_approved_apply requires plan_stage=eks-runtime.")
+    contains(plan, "inputs.plan_stage == 'eks-runtime' || inputs.plan_stage == 'rag-runtime'")
+    contains(plan, "execute_approved_apply requires plan_stage=eks-runtime or rag-runtime.")
+    contains(plan, "APPLY_REVIEWED_RAG_RUNTIME_CREATE")
+    contains(plan, "expected_head_sha is required for execute_approved_apply.")
+    foundation = (ROOT / "infra/terraform/bootstrap/aws-live-foundation/main.tf").read_text(encoding="utf-8")
+    for required in (
+        "terraformers-dev-backend-irsa-role", "iam:PolicyARN", "Terraformers", "rag-runtime",
+        "aoss:collection", "terraformers-dev-refs",
+        "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}",
+        "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress",
+        "AWSServiceRoleForAmazonOpenSearchServerless", "observability.aoss.amazonaws.com",
+        "arn:aws:codebuild:ap-northeast-2:${var.expected_aws_account_id}:project/terraformers-dev-refs-ingestion",
+    ):
+        contains(foundation, required)
+    for forbidden in (":role/terraformers-dev-refs-backend-aoss",):
+        assert forbidden not in foundation, forbidden
     for forbidden in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
         assert forbidden not in apply, forbidden
     upload = apply.split("Upload sanitized apply evidence", 1)[1]
@@ -67,11 +85,11 @@ def fixture(address: str, resource_type: str, actions: list[str]) -> dict:
     return {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": address, "type": resource_type, "change": {"actions": actions, "before": None if actions == ["create"] else {"policy": "before"}, "after": {"name": address}}}]}
 
 
-def verify_contract(plan: dict, contract: str, stage: str, success: bool, extra: list[str] | None = None) -> None:
+def verify_contract(plan: dict, contract: str, stage: str, success: bool, extra: list[str] | None = None, summary_success: bool = True) -> None:
     path = EVIDENCE_DIR / f"{contract}-{stage}.json"
     output = EVIDENCE_DIR / f"{contract}-{stage}-summary"
     path.write_text(json.dumps(plan), encoding="utf-8")
-    run([sys.executable, str(SUMMARIZER), "--plan-json", str(path), "--output-dir", str(output), "--stage", stage])
+    run([sys.executable, str(SUMMARIZER), "--plan-json", str(path), "--output-dir", str(output), "--stage", stage], summary_success)
     args = [sys.executable, str(VERIFIER), "--summary-json", str(output / "plan-risk-summary.json"), "--summary-txt", str(output / "plan-risk-summary.txt"), "--contract", contract, "--stage", stage]
     run(args + (extra or []), success)
 
@@ -95,16 +113,46 @@ def main() -> int:
     wrong = json.loads(json.dumps(positive)); wrong["resource_changes"][0]["address"] = "aws_iam_role.wrong"
     verify_contract(wrong, "foundation-apply-role-bootstrap", "foundation", False)
 
+
+    foundation_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": "aws_iam_role_policy.terraform_apply_rag_runtime_create", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "terraformers-live-apply-rag-runtime-create"}}}]}
+    verify_contract(foundation_permission, "foundation-rag-apply-permission-create", "foundation", True)
+    wrong_permission = json.loads(json.dumps(foundation_permission)); wrong_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
+    verify_contract(wrong_permission, "foundation-rag-apply-permission-create", "foundation", False)
+
     eks = fixture("aws_iam_policy.backend_runtime_access", "aws_iam_policy", ["update"])
     eks["resource_changes"][0]["change"]["after"] = {"policy": "after"}
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", True, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "policy"])
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", False, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "tags.Owner"])
 
+    rag_changes = [
+        {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
+        for address, kind in RAG_CREATES.items()
+    ] + [
+        {"address": address, "type": "aws_iam_policy_document", "change": {"actions": ["read"], "before": None, "after": {"json": "redacted"}}}
+        for address in RAG_READS
+    ]
+    rag = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": rag_changes}
+    verify_contract(rag, "rag-runtime-reviewed-create", "rag-runtime", True)
+    extra_high_cost = json.loads(json.dumps(rag)); extra_high_cost["resource_changes"].append({"address": "aws_nat_gateway.extra", "type": "aws_nat_gateway", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
+    verify_contract(extra_high_cost, "rag-runtime-reviewed-create", "rag-runtime", False)
+    extra = json.loads(json.dumps(rag)); extra["resource_changes"].append({"address": "aws_s3_bucket.extra", "type": "aws_s3_bucket", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
+    verify_contract(extra, "rag-runtime-reviewed-create", "rag-runtime", False)
+    verify_contract({**rag, "resource_changes": rag_changes[:-1]}, "rag-runtime-reviewed-create", "rag-runtime", False)
+    update = json.loads(json.dumps(rag)); update["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"name": "old"}, "after": {"name": "new"}}
+    verify_contract(update, "rag-runtime-reviewed-create", "rag-runtime", False)
+    delete = json.loads(json.dumps(rag)); delete["resource_changes"][0]["change"] = {"actions": ["delete", "create"], "before": {"name": "old"}, "after": {"name": "new"}}
+    verify_contract(delete, "rag-runtime-reviewed-create", "rag-runtime", False, summary_success=False)
+    public = json.loads(json.dumps(rag)); public["resource_changes"][-1]["change"]["after"] = {"cidr_ipv4": "0.0.0.0/0"}
+    public["resource_changes"][-1]["type"] = "aws_vpc_security_group_ingress_rule"
+    verify_contract(public, "rag-runtime-reviewed-create", "rag-runtime", False, summary_success=False)
+    unapproved_sg = json.loads(json.dumps(rag)); unapproved_sg["resource_changes"].append({"address": "aws_security_group.unapproved", "type": "aws_security_group", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
+    verify_contract(unapproved_sg, "rag-runtime-reviewed-create", "rag-runtime", False)
+
     summary = [
         "approved_terraform_apply_contract_verification=passed",
         "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
         "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
-        "foundation_negative_wrong_address=passed", "eks_runtime_positive_and_negative_verification=passed",
+        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed",
         "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
     ]
     (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
