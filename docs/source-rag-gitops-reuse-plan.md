@@ -1,141 +1,434 @@
-# Phase 1: RAG·AOSS·ArgoCD Source Reuse Plan
+# Terraformers RAG and GitOps Completion Plan
 
-## 1. Purpose and project identity
+## 1. Purpose
 
-Terraformers-modernization is the operational modernization of the 2024 AWS Cloud School five-person **Terraformers** team project, not a replacement product. Bedrock embedding, OpenSearch/AOSS vector retrieval whose documents are supplied to generation, EKS backend, S3/CloudFront, Terraform-managed AWS resources, ECR publishing, immutable-digest GitOps, ArgoCD sync, runtime-digest verification, and Git-revert rollback are required completion evidence. OpenSearch and ArgoCD are therefore required completion items, not optional historical documentation.
+Terraformers-modernization is the operational modernization of the 2024 AWS Cloud School Terraformers team project. It is not a replacement product and does not add a second analysis service or a separate demonstration UI.
 
-This Phase 1 change is an evidence and decision inventory only. It neither changes runtime, Terraform, workflows, nor Kubernetes resources.
+The project is complete only when the existing architecture-image analysis flow is proven through the following operating chain:
 
-## 2. Inspection scope and exact commits
+1. The Spring Boot Backend owns the analysis job lifecycle.
+2. Bedrock analyzes the uploaded architecture image.
+3. The Backend creates an embedding for retrieval.
+4. OpenSearch Serverless returns relevant project-owned Terraform reference documents through vector k-NN search.
+5. Retrieved documents are supplied to the Terraform generation context.
+6. GitHub Actions publishes the Backend image to ECR with an immutable digest.
+7. The digest is recorded in Git-managed Kubernetes manifests.
+8. ArgoCD reconciles the manifest to EKS.
+9. Git, ArgoCD, Deployment, and Pod runtime digests are verified to match.
+10. Browser smoke, Git-revert rollback, and ArgoCD self-heal are demonstrated.
 
-| Repository | Requested commit | Read-only availability result | Evidence used in this plan |
-|---|---|---|---|
-| `siamese-lang/Terraformers-modernization` | `1c7377747fd2921f3f174c51f22167b1af5ead83` | present locally; `HEAD` resolved exactly to it before branch creation | source and manifests at that commit |
-| `AWS-Terraformers/Terraformers` | `4081f2f8181b197608cbeb3c6c10ccd12edb384e` | not present locally; read-only HTTPS clone was refused by the environment proxy (403) | path-level inventory recorded below, and prior in-repository source-audit references; no latest revision was substituted |
-| `AWS-Terraformers/Infra-code` | `a4aeda2b8a7a82888bc61c299deab97d9cbeb8cb` | not present locally; same proxy refusal | path-level inventory recorded below, and prior in-repository source-audit references; no latest revision was substituted |
-| `siamese-lang/rdb-refactor` | `46eeeeb505f996d6316ea22ae54d9db62c9cf1e7` | not present locally; same proxy refusal | current repository's reuse audit; no latest revision was substituted |
+OpenSearch and ArgoCD are required completion items, not optional documentation or historical references.
 
-The unavailable three commits are explicitly retained as the intended inspection baselines, rather than silently mixing another revision. Before Phase 2--4 implementation, an environment with read-only access must re-run the path checks at these exact SHAs and replace any path-level legacy observations that cannot be independently reproduced.
+## 2. Fixed architecture decisions
 
-## 3. Runtime-path determination method
+### 2.1 Spring Boot remains the analysis runtime
 
-A source file is treated as runtime only when an entrypoint, deployment manifest, workflow, controller call chain, or Spring bean selection reaches it. A copied directory, unused class, or Terraform module is not runtime merely because it exists. The determination order is: (1) container `CMD`/`ENTRYPOINT`; (2) upload controller-to-service call chain; (3) active Spring conditional beans and `@Primary`; (4) deployed manifest/workflow references; and (5) tests/configuration only as supporting evidence.
+The current Java/Spring Backend remains the canonical analysis runtime. The former separated Python analysis service is not restored as the default runtime.
 
-## 4. Original Terraformers RAG inventory
+The existing `AnalysisMode` continues to describe analysis ownership:
 
-| Exact path at `4081f2…` | Observed/required determination | Runtime connection evidence | Classification | Current treatment |
-|---|---|---|---|---|
-| `python/Dockerfile` | The Dockerfile entrypoint is the controlling evidence for the historical Python container; it must decide historical runtime, not the presence of other Python files. | Must be verified by `CMD`/`ENTRYPOINT` at the stated SHA; unavailable in this environment. | `NOT_ACTUALLY_IN_RUNTIME` pending exact-entrypoint verification | Do not restore Python as default runtime. |
-| `python/bedrock.py`, `python/bedrock_v5.py` | Alternative implementations are code presence, not proof that the image invoked either one. | No locally reproducible container-entrypoint evidence. | `NOT_ACTUALLY_IN_RUNTIME` | Reuse only the embedding → retrieval → context concept after source verification. |
-| `backend/mini/src/main/java/com/amazoonS3/mini/controller/FileUploadController.java` | Upload path must be followed from request handler to the actual analysis invocation. | The existence of `InfrastructureAnalysisService` alone does not establish this call. | `NOT_ACTUALLY_IN_RUNTIME` pending call-chain verification | Phase 2 retains Backend-owned lifecycle. |
-| `backend/mini/src/main/java/com/amazoonS3/mini/service/InfrastructureAnalysisService.java` | It contains a historical RAG flow, but whether upload invoked it is an independent question. | No locally reproducible controller call-chain evidence. | `REUSE_CONCEPT_ONLY` | Reuse the bounded RAG sequence only; do not copy its credentials/logging/client construction. |
-| `backend/mini/src/rag-using-langchain-amazon-bedrock-and-opensearch/` | External sample directory with a public endpoint and external dataset; it is not a Terraformers production corpus/runtime proof. | Its separate sample location is not an application entrypoint. | `REMOVE`, `NOT_ACTUALLY_IN_RUNTIME` | Do not restore it; build a curated, project-owned corpus in Phase 3. |
+- `INTEGRATED_JAVA`
+- `EXTERNAL_PYTHON_LEGACY`
 
-Legacy patterns to remove when the exact source is available include static access keys, credentials copied into Java system properties, TLS hostname-verification bypass, hard-coded account/role/endpoint values, and logging of sensitive content.
+Phase 2 must inspect the remaining legacy Python mode and URL references. Unused legacy paths should be removed or clearly isolated, but Python service deployment is not part of the completion plan.
 
-## 5. Infra-code AOSS inventory
+### 2.2 Existing user functionality is frozen
 
-| Exact path at `a4aeda…` | Observed design unit | Runtime connection evidence | Classification | Current treatment |
-|---|---|---|---|---|
-| `modules/aoss/` | AOSS collection plus encryption, network, and data-access-policy topology; vector index mapping/dimension must be read together with the writer. | Terraform topology is infrastructure intent, not proof of a populated live index. | `MODERNIZE` | Retain topology concepts; define index mapping and dimension from the chosen embedding model; private/restricted network and least-privilege data access only. |
-| `modules/bedrock/` | Bedrock permissions/configuration concept. | Module existence does not connect embedding to a live k-NN index. | `REUSE_CONCEPT_ONLY` | Use IRSA credential chain and narrow Bedrock permissions. |
-| `kubernetes/` AOSS-related configuration | Backend runtime configuration/identity connection. | Must be traced to a ServiceAccount and deployed workload. | `MODERNIZE` | Add only in Phase 3 after collection, policy, index, corpus, and ingestion exist. |
+No new user-facing feature is required. The project must preserve the existing upload, project list, project detail, analysis result, collaboration, authorization, and deletion flows.
 
-A public AOSS network policy is not reusable. AOSS requests require the backend workload's IRSA-based default credential chain and SigV4 signing (`aoss`), with no static keys.
+RAG and GitOps work must be proven through the existing product path rather than through a separate test-only UI.
 
-## 6. Infra-code ArgoCD and workflow inventory
+### 2.3 Reuse current implementations before adding new ones
 
-| Exact path at `a4aeda…` | Observed design unit | Runtime connection evidence | Classification | Current treatment |
-|---|---|---|---|---|
-| `modules/argocd/` | ArgoCD Application(s), including Backend/Bedrock Application intent and automated sync, prune, and self-heal concepts. | An Application only connects if it tracks the actual repository and manifest path. | `MODERNIZE` | Reuse automated sync/prune/selfHeal concept; bind it to this repository's actual GitOps path in Phase 4. |
-| `.github/workflows/terraform-cicd.yml` | Terraform CI/CD workflow. Auto-approve or direct cluster mutation is not immutable-digest GitOps. | No manifest digest commit plus Argo Application tracking establishes the required chain. | `REUSE_CONCEPT_ONLY` | Keep validation concepts only; no static AWS keys, PAT, auto-approve, or direct `kubectl` deployment. |
-| `kubernetes/` ArgoCD ingress/manifests | Public ingress and `--insecure` are legacy exposure choices. | Ingress settings do not prove reconciliation. | `REMOVE` | Private/authenticated operational access; no public ingress or `--insecure`. |
-| ECR/EKS/IAM/Secrets configuration | ECR, EKS, IAM, and Secret boundaries are reusable topology inputs. | Static AWS credential Secrets and GitHub PAT are not runtime identity evidence acceptable today. | `MODERNIZE`, `REMOVE` | GitHub OIDC for publish; IRSA for runtime; secret references only. |
+The following current boundaries are the starting point and should be reused unless a concrete defect requires a bounded change:
 
-## 7. rdb-refactor reuse inventory
+- `backend/src/main/java/com/terraformers/modernization/analysis/AnalysisRuntimeProperties.java`
+- `backend/src/main/java/com/terraformers/modernization/analysis/AnalysisMode.java`
+- `backend/src/main/java/com/terraformers/modernization/analysis/bedrock/BedrockAnalysisProvider.java`
+- `backend/src/main/java/com/terraformers/modernization/analysis/bedrock/BedrockPromptBuilder.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/ReferenceRetriever.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/ReferenceQuery.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/ReferenceDocument.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/BedrockEmbeddingProvider.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/opensearch/OpenSearchReferenceRetriever.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/opensearch/OpenSearchKnnQueryBuilder.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/opensearch/OpenSearchResponseParser.java`
+- `backend/src/main/java/com/terraformers/modernization/reference/opensearch/SignedOpenSearchHttpClient.java`
+- the existing `AnalysisJob` lifecycle and S3 source/result flow
+- the existing Terraform stages and Kubernetes base/overlay structure
+- `.github/workflows/backend-image-publish.yml`
+- `.github/workflows/frontend-delivery.yml`
 
-`rdb-refactor` at `46eeeeb505f996d6316ea22ae54d9db62c9cf1e7` remains the canonical reference for RDB/domain/persistence: users/identity mapping, projects, ownership, file tree, runs, collaboration, foreign keys, status/soft-delete, and persistence access patterns. Classification: `REUSE_AS_IS` for the canonical domain decision, with normal modernization adaptation where current package boundaries require it.
+Older Terraformers, Infra-code, and rdb-refactor implementations are design references only. They do not override the current Spring Boot ownership model or justify restoring unsafe deployment patterns.
 
-Any copied Terraformers Python RAG code, copied/modified AOSS module, modified ArgoCD module, or operational document in that repository is **not** canonical runtime merely because it was copied. Classification: `NOT_ACTUALLY_IN_RUNTIME` plus `REUSE_CONCEPT_ONLY` until exact-sha source and active deployment links are verified. It cannot override the current Backend ownership decision.
+The following legacy patterns must not be reused:
 
-## 8. Current Modernization inventory
+- static AWS access keys
+- credentials copied into process or Java system properties
+- TLS certificate or hostname verification bypass
+- hard-coded account, role, endpoint, or image values
+- public OpenSearch or ArgoCD administration endpoints
+- GitHub personal access tokens stored in cluster Secrets
+- Terraform auto-approve as the normal release path
+- direct `kubectl apply` or `kubectl set image` from the image workflow
+- logs containing prompts, embedding vectors, retrieved document text, generated Terraform, or Secrets
 
-| Exact current path | Observed behavior and connection | Classification | Treatment |
-|---|---|---|---|
-| `backend/src/main/java/com/terraformers/modernization/analysis/AnalysisRuntimeProperties.java` | Has Bedrock embedding/OpenSearch settings and an external-Python legacy URL, but `AnalysisMode` contains only `INTEGRATED_JAVA` and `EXTERNAL_PYTHON_LEGACY`; REQUIRED/OPTIONAL/DISABLED do not exist. | `MODERNIZE` | Add a separate retrieval-mode contract in Phase 2; do not overload analysis ownership mode. |
-| `backend/src/main/java/com/terraformers/modernization/analysis/bedrock/BedrockAnalysisProvider.java` and `backend/src/main/java/com/terraformers/modernization/analysis/bedrock/BedrockPromptBuilder.java` | Retrieves `ReferenceDocument`s before building the Bedrock prompt; reference content is included in the prompt. | `REUSE_AS_IS` | Preserve this Backend-owned connection, with safe metadata-only observability. |
-| `backend/src/main/java/com/terraformers/modernization/reference/ReferenceRetriever.java`, `backend/src/main/java/com/terraformers/modernization/reference/ReferenceQuery.java`, and `backend/src/main/java/com/terraformers/modernization/reference/ReferenceDocument.java` | Stable retrieval port/query/document boundary. | `REUSE_AS_IS` | Retain and extend for vector retrieval. |
-| `backend/src/main/java/com/terraformers/modernization/reference/BedrockEmbeddingProvider.java` | Invokes Bedrock embedding, conditionally enabled. | `MODERNIZE` | Inject/configure client and prove model dimension/index compatibility. |
-| `backend/src/main/java/com/terraformers/modernization/reference/OpenSearchReferenceRetriever.java` | `@Primary` bean sends an unsigned lexical `multi_match` HTTP query. This wins bean selection when enabled. | `MODERNIZE` | Replace/retire as active path; lexical retrieval is not completed vector RAG. |
-| `backend/src/main/java/com/terraformers/modernization/reference/opensearch/OpenSearchReferenceRetriever.java`, `OpenSearchKnnQueryBuilder.java`, `OpenSearchResponseParser.java`, and `SignedOpenSearchHttpClient.java` | Builds k-NN query after `EmbeddingProvider.embed`; signs with SigV4 and default credential provider. It is not `@Primary`, so it is not the selected production retriever while the lexical bean exists. | `MODERNIZE`, `NOT_ACTUALLY_IN_RUNTIME` | Make one tested vector adapter the selected path in Phase 2; use IRSA in Phase 3. |
-| `infra/terraform/` and `infra/kubernetes/` | Terraform stages and backend Kustomize base/overlays exist; backend image is a placeholder/tag, not an ArgoCD-tracked digest. | `MODERNIZE` | Retain existing topology; add AOSS and GitOps only in later phases. |
-| `.github/workflows/backend-image-publish.yml` | Builds/pushes with GitHub OIDC and resolves a digest, but does not update a Git manifest. | `MODERNIZE` | Phase 4 commits an immutable digest update and lets ArgoCD reconcile it. |
-| `.github/workflows/frontend-delivery.yml` | Separate frontend delivery workflow exists; it is not Backend ArgoCD GitOps. | `REUSE_AS_IS` | Keep its scope separate. |
+## 3. Current implementation baseline
 
-No managed corpus or ingestion path exists in the current repository. Consequently, no current runtime can claim live top-K vector retrieval evidence.
-
-## 9. Classification matrix
-
-The five labels are applied consistently above: `REUSE_AS_IS` preserves a verified boundary; `REUSE_CONCEPT_ONLY` preserves intent but not implementation; `MODERNIZE` changes an implementation to meet the target; `REMOVE` forbids a legacy pattern; `NOT_ACTUALLY_IN_RUNTIME` denies runtime status without an active path. Each row identifies repository, requested/inspected commit, exact path, observed behavior, and connection evidence; unavailable external evidence is marked rather than inferred.
-
-## 10. Current-to-target gap matrix
-
-| Required target | Current state | Gap / owning phase |
+| Area | Current state | Remaining gap |
 |---|---|---|
-| Backend-owned RAG context | Prompt receives references. | Make the selected retriever vector-based and mode-governed: Phase 2. |
-| Bedrock embedding → OpenSearch k-NN | Components exist but lexical bean is primary. | One selected tested vector path: Phase 2. |
-| AOSS collection/index/corpus | No current AOSS infrastructure, managed corpus, or ingestion. | Collection/policies/IRSA/index/ingestion/live retrieval: Phase 3. |
-| Immutable digest GitOps | Publish resolves digest but does not update manifest. | Digest commit, Application tracking, sync and verification: Phase 4. |
-| ArgoCD sync/self-heal/rollback | No current ArgoCD Application. | Install/Application/sync/health/digest proof/revert rollback: Phase 4. |
+| Analysis ownership | `AnalysisRuntimeProperties` defaults to `INTEGRATED_JAVA`; a legacy Python mode and URL remain. | Confirm references and remove or isolate unused legacy configuration. |
+| Generation context | `BedrockAnalysisProvider` calls `ReferenceRetriever` before building the Bedrock request and returns retrieved document IDs with the analysis result. | Preserve this boundary and prove retrieved content reaches the generation prompt. |
+| Embedding | `BedrockEmbeddingProvider` invokes a configured Bedrock embedding model. | Validate configuration and enforce embedding-dimension compatibility with the vector index. |
+| Lexical retrieval | `backend/.../reference/OpenSearchReferenceRetriever.java` is `@Primary` and sends an unsigned lexical `multi_match` request. | Retire or make it non-selectable for the completed RAG path. |
+| Vector retrieval | `backend/.../reference/opensearch/OpenSearchReferenceRetriever.java` embeds the query, builds k-NN search, and uses the signed OpenSearch client. | Make this the single selected runtime retriever and complete tests and failure policy. |
+| AWS request identity | `SignedOpenSearchHttpClient` uses the AWS default credential provider and SigV4 signing. | Prove the EKS workload uses IRSA and the `aoss` signing service against the live collection. |
+| AOSS and corpus | No current managed collection, compatible vector index, project-owned corpus, or repeatable ingestion path is complete. | Implement in Phase 3. |
+| Backend image publication | The image workflow can build, publish, and resolve an ECR digest through GitHub OIDC. | Record that digest in the Git-managed manifest without directly mutating the cluster. |
+| Kubernetes image reference | `infra/kubernetes/base/backend-deployment.yaml` still contains a replacement image value rather than the completed GitOps digest chain. | Establish the canonical manifest path and immutable digest update. |
+| ArgoCD | No completed Backend Application, reconciliation evidence, rollback, or self-heal proof exists. | Implement in Phase 4. |
 
-## 11. Accepted modernization decisions
+No current runtime may claim completed vector RAG until a live project-owned corpus is ingested and the signed AOSS top-K result is shown to affect generation.
 
-1. Spring Boot Backend continues to own the analysis lifecycle; Python is never the default runtime.
-2. Preserve the `ReferenceRetriever` to Bedrock prompt connection.
-3. Treat lexical OpenSearch as incomplete, not vector RAG.
-4. Use Bedrock embedding plus OpenSearch k-NN, AOSS SigV4, IRSA, curated corpus, and safe metadata-only logs.
-5. Reuse AOSS topology and Argo automated-sync/prune/selfHeal concepts, not unsafe implementation details.
+## 4. Phase 2 — Complete the Spring Boot vector RAG path
 
-## 12. Explicitly rejected legacy patterns
+### 4.1 Goal
 
-Rejected: static access keys; System-property credential copying; TLS hostname bypass; hard-coded accounts, roles, endpoints, or images; public AOSS/Argo ingress; `--insecure`; GitHub PAT; static AWS credential Secrets; Terraform auto-approve; direct `kubectl` mutation as deployment; and logging prompts, embedding vectors, retrieved document text, whole OpenSearch responses, Terraform text, or Secrets.
+Complete one clear Java/Spring retrieval path using the existing Bedrock embedding, vector k-NN, signed OpenSearch client, and Bedrock prompt integration. This phase changes Backend code and tests only.
 
-## 13. Phase 2 Backend-owned RAG boundary
+### 4.2 Required work
 
-Phase 2 owns retrieval-query construction, Bedrock embedding, a single vector-retrieval adapter, generation-context integration, unit/integration tests, and safe observability metadata. It reuses the existing `AnalysisJob` lifecycle, S3 source/result flow, `ReferenceRetriever` port, Bedrock prompt builder, k-NN query builder, response parser, and SigV4 client; it does not introduce a second adapter, Python service, UI, workflow, or deployment structure.
+1. Inspect the two OpenSearch retrievers and their conditional bean selection.
+2. Make the existing vector retriever the single selected `ReferenceRetriever` when retrieval is enabled.
+3. Remove, retire, or explicitly isolate the lexical `@Primary` implementation so it cannot silently replace vector search.
+4. Keep the existing reference port, document model, prompt builder, response parser, k-NN builder, and signed client where they already satisfy the target.
+5. Introduce a retrieval-specific mode rather than overloading `AnalysisMode`.
+6. Validate required configuration before an analysis starts.
+7. Define failure behavior for embedding, OpenSearch request, response parsing, and empty results.
+8. Add safe retrieval observability using metadata only.
+9. Inspect the remaining external-Python legacy references and remove or isolate unused paths without restoring a Python service.
+10. Add regression coverage proving the existing upload and analysis lifecycle still behaves correctly.
 
-`AnalysisMode` continues to describe analysis ownership. Phase 2 adds a distinct `RagMode`/`RetrievalMode`, rather than conflating the two:
+### 4.3 Retrieval mode contract
+
+Use a separate `RagMode` or `RetrievalMode` with the following behavior:
 
 | Mode | Required behavior |
 |---|---|
-| `REQUIRED` | embedding or retrieval failure fails the analysis job; use for the live E2E contract. |
-| `OPTIONAL` | generation can continue without references after a retrieval failure; record only failure class, latency, hit count, and document IDs when available. |
-| `DISABLED` | do not invoke embedding or OpenSearch; use for local and limited verification. |
+| `REQUIRED` | Embedding or retrieval failure fails the analysis job. This is the production live-E2E contract. |
+| `OPTIONAL` | Retrieval failure permits generation without references. Record sanitized failure metadata only. |
+| `DISABLED` | Do not call the embedding model or OpenSearch. Use for local and constrained verification. |
 
-Completion requires tests proving that only the vector retriever is selected, the embedding reaches the k-NN request, retrieved documents reach the Bedrock prompt, all three modes behave as specified, and prompt/vector/retrieved-document/Terraform content is absent from logs. This phase does not provision AOSS, ingest a corpus, install ArgoCD, or run live AWS E2E.
+The implementation must not treat an empty top-K result as a successful REQUIRED retrieval unless the contract explicitly defines that outcome and tests it.
 
-## 14. Phase 3 AOSS and corpus boundary
+### 4.4 Safe observability
 
-Phase 3 owns Terraform AOSS encryption/network/data policies, Backend IRSA, vector index/mapping/dimension, curated corpus and idempotent ingestion, live top-K retrieval, REQUIRED browser E2E, cost control, and cleanup. It does not implement GitOps reconciliation.
+Permitted fields include:
 
-The corpus is project-owned and versioned/provenanced. It is limited to Terraformers-relevant patterns such as VPC/subnets, ALB/target groups, EKS/node groups, RDS subnet/security groups, S3/CloudFront, SQS, OpenSearch, IAM/IRSA, security-group relationships, tags, and outputs. Each document has a stable ID, title, supported services, architecture pattern, Terraform guidance, security considerations, and source version. It contains no credentials, account identifiers, endpoints, state, or user uploads. Phase 3 evidence includes collection/index creation, dimension/mapping compatibility, static-key absence, IRSA signed request, corpus checksum/version/document count, top-K IDs for representative queries, saved retrieved-document IDs, context-supported generated output, REQUIRED failure behavior, and cleanup/cost records.
+- analysis job ID
+- project ID
+- retrieval mode
+- embedding model ID
+- index alias or version
+- top-K request value
+- hit count
+- retrieved document IDs
+- request outcome
+- error class
+- elapsed time
 
-## 15. Phase 4 GitOps boundary
+Do not log source images, prompts, embedding vectors, retrieved document text, OpenSearch response bodies, generated Terraform, credentials, or Secrets.
 
-Phase 4 owns ArgoCD installation and version pinning, private/authenticated operational access, the Backend Application pointing to this repository/revision/manifest path, automated sync/prune/selfHeal, image-publish immutable digest update, concurrency and self-trigger loop protection, least-privilege Git change authority, Synced/Healthy evidence, runtime digest equality, browser smoke, Git-revert rollback, and self-heal. It does not use direct `kubectl` mutation as the release mechanism.
+### 4.5 Completion criteria
 
-The required release chain is GitHub Actions build → GitHub OIDC ECR login → immutable ECR digest resolution → approved Git manifest digest update → ArgoCD reconciliation → EKS rollout. The workflow must not use `kubectl set image` or `kubectl apply` to deploy the Backend. Completion requires the same digest in ECR, Git, Deployment, and Pod image ID; ArgoCD `Synced` and `Healthy`; CloudFront browser smoke; a Git revert to the prior digest; and a deliberate drift corrected by self-heal.
+Phase 2 is complete when tests prove all of the following:
 
-## 16. Cost, security, and cleanup considerations
+- exactly one vector retriever is selected when retrieval is enabled
+- the embedding result reaches the k-NN request builder
+- the signed OpenSearch request path is used
+- retrieved `ReferenceDocument` content reaches the Bedrock prompt builder
+- retrieved document IDs remain in the analysis result
+- REQUIRED, OPTIONAL, and DISABLED behave as specified
+- invalid endpoint, index, field, model, or mode configuration fails predictably
+- prompt, vector, retrieved text, and generated Terraform do not appear in logs
+- existing upload, analysis-job, result-storage, and result-query behavior does not regress
 
-AOSS capacity, Bedrock invocations, EKS nodes, ECR images, S3/CloudFront delivery, and data ingestion must have explicit environment-scoped cost and cleanup evidence. Least-privilege IRSA and OIDC replace long-lived credentials. Store no secrets in manifests, Git history, logs, or evidence. Collect only request IDs, mode, status, latency, hit count, index alias/version, and digest-safe metadata.
+### 4.6 Out of scope
 
-## 17. Evidence still required before project completion
+Phase 2 does not:
 
-Completion needs: exact-source reinspection of the three unavailable commits; embedding dimension/index mapping proof; curated corpus and ingestion provenance; live signed AOSS top-K retrieval with context reflected in generation; IRSA/access-policy/network proof; Terraform evidence; ECR digest-to-Git manifest commit; ArgoCD Synced/Healthy and self-heal evidence; runtime image digest equality; browser smoke; and a demonstrated Git-revert rollback.
+- create AOSS resources
+- ingest a live corpus
+- change Terraform or Kubernetes runtime configuration
+- install ArgoCD
+- change the image publication workflow
+- add user-facing features
+- deploy or run live AWS E2E
 
-Evidence records must distinguish `source merged`, `image published`, `manifest updated`, `ArgoCD synced`, `workload healthy`, `runtime digest matched`, `browser E2E passed`, `rollback passed`, and `self-heal passed`. They may contain commit SHA, workflow run ID, ECR repository/digest, ArgoCD status, Deployment generation, Pod image ID, analysis job ID, retrieval mode/hit count/document ID, corpus version, latency, and success/failure state. They must not contain access keys, tokens, passwords, kubeconfig, raw tfvars, tfstate, Terraform plan JSON, embeddings, prompts, retrieved text, generated Terraform text, or user-upload originals.
+## 5. Phase 3 — Provision AOSS and prove live RAG
 
-## 18. Out of scope for this PR
+### 5.1 Goal
 
-No Backend/Frontend/Python code, Terraform, Kubernetes/Helm manifest, GitHub Actions, script, dependency, secret, AWS resource, Terraform operation, kubectl/helm mutation, deployment, merge, or PR-time runtime change is made here. This PR changes only this inventory document.
+Provision the minimum secure OpenSearch Serverless environment, ingest a project-owned Terraform reference corpus, and prove that the existing Backend performs live vector retrieval through IRSA.
+
+### 5.2 Required infrastructure
+
+Integrate the following into the current Terraform structure rather than creating an unrelated stack:
+
+- AOSS encryption policy
+- restricted network policy
+- least-privilege data access policy
+- `VECTORSEARCH` collection
+- vector index and mapping
+- Backend IRSA permissions
+- runtime endpoint and index configuration
+- outputs needed for bounded deployment and verification
+
+The embedding model output dimension and index vector dimension must be one explicit contract. A model or dimension change must fail validation rather than producing an incompatible live index.
+
+Public AOSS access is not the default target. Where an AWS service constraint requires a specific network path, document the exact boundary and keep administration and data access restricted.
+
+### 5.3 Project-owned corpus
+
+The corpus must be small, curated, versioned, and relevant to Terraformers. Candidate patterns include:
+
+- VPC and subnet layout
+- ALB and target groups
+- EKS and node groups
+- RDS subnet and security groups
+- S3 and CloudFront
+- SQS
+- OpenSearch
+- IAM roles and IRSA
+- security-group relationships
+- common tags and outputs
+
+Each document should contain:
+
+- stable document ID
+- title
+- supported AWS services
+- architecture pattern
+- Terraform guidance
+- security considerations
+- source version
+
+The corpus must not include credentials, account identifiers, live endpoints, tfstate, user uploads, or copied external sample datasets used without provenance.
+
+### 5.4 Ingestion requirements
+
+Provide a repeatable and idempotent ingestion path that records:
+
+- corpus version
+- checksum
+- document count
+- embedding model
+- vector dimension
+- target collection and index identifier
+- ingestion outcome
+
+Repeated ingestion of the same corpus version must not create uncontrolled duplicate documents.
+
+### 5.5 Live verification
+
+The live E2E must prove the following chain:
+
+1. The Backend Pod uses its ServiceAccount and IRSA, not static credentials.
+2. The Backend calls the configured Bedrock embedding model.
+3. The signed request reaches the AOSS vector index using the `aoss` signing service.
+4. A representative query returns top-K project-owned document IDs.
+5. Retrieved documents are supplied to generation.
+6. The analysis result stores retrieved document IDs.
+7. The generated result is accessible through the existing CloudFront product flow.
+8. In REQUIRED mode, an intentional retrieval failure produces the defined failed-job behavior.
+
+### 5.6 Completion evidence
+
+- reviewed Terraform plan scope
+- collection and index creation result
+- encryption, network, and data access policy identifiers
+- Backend IAM role and ServiceAccount association
+- absence of static AWS keys
+- corpus version, checksum, and document count
+- live retrieval mode, hit count, and document IDs
+- analysis job ID and outcome
+- browser upload, analysis, and result-query result
+- cost and cleanup record
+
+### 5.7 Cost and cleanup
+
+Before applying AOSS changes, document:
+
+- expected collection capacity cost
+- expected verification duration
+- Bedrock invocation scope
+- whether the collection and corpus will remain after validation
+- cleanup order for index, collection, policies, and temporary evidence
+- data that must be retained before cleanup
+
+Do not repeatedly destroy and recreate the entire environment to diagnose one failure. Fix the first actual failing boundary and repeat only the necessary verification.
+
+## 6. Phase 4 — Complete immutable-digest ArgoCD GitOps
+
+### 6.1 Goal
+
+Make Git the desired-state source for the Backend image and make ArgoCD the release reconciler. GitHub Actions publishes the image and records the digest in Git; it does not directly deploy the Backend.
+
+### 6.2 Required release chain
+
+1. GitHub Actions builds the Backend image.
+2. GitHub OIDC authorizes ECR publication.
+3. The workflow pushes the image and resolves its immutable digest.
+4. The approved GitOps manifest is updated to that digest.
+5. The Git change is committed through a bounded branch or approved automation path.
+6. ArgoCD tracks the actual repository, revision, and manifest path.
+7. ArgoCD reconciles the change to EKS.
+8. The Application becomes `Synced` and `Healthy`.
+9. The Git digest, Deployment image, and Pod runtime image ID are verified to match.
+10. The existing CloudFront product path passes smoke verification.
+
+The workflow must not deploy the Backend with `kubectl apply`, `kubectl set image`, or an equivalent direct mutation.
+
+### 6.3 ArgoCD requirements
+
+- pin the ArgoCD version
+- define the installation and upgrade boundary
+- avoid a public internet-facing administration endpoint
+- use authenticated operational access
+- configure the Backend Application against the actual repository and canonical manifest path
+- enable automated sync, prune, and self-heal only after the tracked scope is reviewed
+- avoid GitHub PAT and static AWS credentials in cluster Secrets
+- protect the image-update workflow against concurrent runs and self-trigger loops
+- keep frontend S3/CloudFront delivery separate from Backend GitOps
+
+### 6.4 Rollback and self-heal
+
+Rollback proof must use Git history:
+
+1. Record the current Git and runtime digest.
+2. Publish and reconcile a new Backend digest.
+3. Confirm browser smoke and runtime digest equality.
+4. Revert the manifest commit to the prior digest.
+5. Confirm ArgoCD returns to `Synced` and `Healthy`.
+6. Confirm the previous runtime digest is restored.
+7. Repeat browser smoke.
+
+Self-heal proof must create a bounded, reversible drift in a field owned by the Application and show that ArgoCD restores the Git value. The test must not expose public traffic, alter Secrets, or create uncontrolled downtime.
+
+### 6.5 Completion evidence
+
+- workflow run ID
+- source commit SHA
+- ECR repository and digest
+- manifest-update commit SHA
+- ArgoCD Application revision
+- `Synced` and `Healthy` status
+- Deployment generation
+- Pod image ID
+- browser smoke result
+- rollback commit and restored digest
+- self-heal observation
+
+## 7. Final integrated completion scenario
+
+The project may claim completion only after one integrated scenario proves:
+
+1. An authenticated user uploads an architecture image through the existing CloudFront entry.
+2. The Backend creates an analysis job and reads the source from S3.
+3. Bedrock analyzes the architecture input.
+4. Bedrock embedding and AOSS top-K vector retrieval run in REQUIRED mode.
+5. Project-owned reference document IDs are returned.
+6. Retrieved content is supplied to generation.
+7. Terraform output is generated and stored through the existing result flow.
+8. The user reads the result through the existing project UI.
+9. A new Backend image is published to ECR.
+10. Its immutable digest is recorded in the Git manifest.
+11. ArgoCD reconciles the manifest to EKS.
+12. ArgoCD is `Synced` and `Healthy`.
+13. Git, Deployment, and Pod runtime digests match.
+14. The existing CloudFront smoke scenario passes.
+15. A Git revert restores the prior digest.
+16. ArgoCD reconciles the rollback and the product still works.
+17. A bounded drift is corrected by ArgoCD self-heal.
+
+## 8. Evidence and security rules
+
+Evidence must distinguish these states rather than treating them as equivalent:
+
+- source merged
+- image published
+- manifest updated
+- ArgoCD synced
+- workload healthy
+- runtime digest matched
+- browser E2E passed
+- rollback passed
+- self-heal passed
+
+Evidence may include:
+
+- commit SHA
+- workflow run ID
+- ECR repository and digest
+- ArgoCD status and revision
+- Deployment generation
+- Pod image ID
+- analysis job ID
+- retrieval mode
+- hit count
+- retrieved document IDs
+- corpus version
+- elapsed time and outcome
+
+Evidence must not include:
+
+- access keys or tokens
+- passwords
+- kubeconfig
+- raw tfvars
+- tfstate
+- Terraform plan JSON
+- source images
+- prompts
+- embedding vectors
+- retrieved document text
+- generated Terraform text
+- user-uploaded original content
+
+## 9. Execution discipline
+
+- Work one phase at a time.
+- Prefer extending existing code and manifests over creating parallel implementations.
+- Do not add a new user feature to prove infrastructure work.
+- Do not automate live Terraform apply, ArgoCD installation, or cluster mutation before the relevant plan and scope are reviewed.
+- Diagnose the first actual failure rather than adding broad preflight gates or repeated recovery scripts.
+- Distinguish source merge, image publication, Git manifest update, ArgoCD reconciliation, runtime rollout, and browser verification.
+- Review cost, retention, and cleanup before creating cost-bearing resources.
+
+## 10. Immediate next PR
+
+The next implementation PR is Phase 2 only.
+
+Its scope is limited to:
+
+- resolve the current lexical/vector retriever bean-selection conflict
+- make the existing vector retriever the selected path
+- introduce the separate retrieval mode contract
+- implement REQUIRED, OPTIONAL, and DISABLED behavior
+- validate required retrieval configuration
+- add safe metadata-only observability
+- prove embedding → k-NN → retrieved documents → Bedrock prompt through tests
+- inspect and remove or isolate unused external-Python legacy references
+- preserve the current user-facing behavior and AnalysisJob/S3 result lifecycle
+
+The next PR must not change:
+
+- Terraform
+- AOSS resources or corpus ingestion
+- Kubernetes runtime configuration
+- ArgoCD
+- Backend image publication
+- frontend delivery
+- AWS resources
+- live deployment
+- user-facing functionality
