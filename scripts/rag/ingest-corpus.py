@@ -55,6 +55,30 @@ def ensure_version_checksum(receipt: dict[str, object] | None, corpus_version: s
         fail("corpus version checksum changed; bump corpus version")
 
 
+def wait_for_document_count(client: object, index_name: str, expected: int, timeout_seconds: int = 180) -> int:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        count = int(client.count(index=index_name)["count"])
+        if count == expected:
+            return count
+        if count > expected:
+            fail("target index document count exceeds expected document count")
+        if time.monotonic() >= deadline:
+            fail("target index document count did not converge before timeout")
+        time.sleep(10)
+
+
+def wait_for_knn_hits(client: object, index_name: str, vector_field: str, vector: list[float], timeout_seconds: int = 120) -> list[dict[str, object]]:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        hits = client.search(index=index_name, body={"size": 3, "query": {"knn": {vector_field: {"vector": vector, "k": 3}}}})["hits"]["hits"]
+        if hits:
+            return hits
+        if time.monotonic() >= deadline:
+            fail("representative k-NN query returned no hits before timeout")
+        time.sleep(10)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", type=Path, default=ROOT / "corpus/terraformers-reference/v1")
@@ -129,14 +153,9 @@ def main() -> None:
                 continue
             embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": document[args.content_field]}))["body"].read())["embedding"]
             client.index(index=args.index_name, body={**document, args.vector_field: embedding})
-        client.indices.refresh(index=args.index_name)
-    count = client.count(index=args.index_name)["count"]
-    if count != document_count:
-        fail("target index document count does not match expected document count")
+    count = wait_for_document_count(client, args.index_name, document_count)
     query_embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": documents[0][args.content_field]}))["body"].read())["embedding"]
-    hits = client.search(index=args.index_name, body={"size": 3, "query": {"knn": {args.vector_field: {"vector": query_embedding, "k": 3}}}})["hits"]["hits"]
-    if not hits:
-        fail("representative k-NN query returned no hits")
+    hits = wait_for_knn_hits(client, args.index_name, args.vector_field, query_embedding)
     receipt = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [str(hit.get("_source", {}).get("documentId", hit.get("_id", ""))) for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
     s3.put_object(Bucket=args.receipt_bucket, Key=args.receipt_key, Body=json.dumps(receipt, sort_keys=True).encode(), ContentType="application/json")
     log(**receipt)
