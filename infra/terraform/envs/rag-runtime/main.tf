@@ -100,8 +100,8 @@ data "aws_iam_policy_document" "backend_rag_runtime" {
   }
 
   statement {
-    sid       = "InvokeReferenceEmbeddingModel"
-    actions   = ["bedrock:InvokeModel"]
+    sid     = "InvokeReferenceEmbeddingModel"
+    actions = ["bedrock:InvokeModel"]
     resources = [
       "arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}",
     ]
