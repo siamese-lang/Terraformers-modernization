@@ -1,3 +1,9 @@
+data "aws_caller_identity" "current" {
+}
+
+data "aws_partition" "current" {
+}
+
 locals {
   collection_name    = "${var.name_prefix}-${var.environment}-refs"
   encryption_name    = "${var.name_prefix}-${var.environment}-rag-enc"
@@ -150,13 +156,41 @@ resource "aws_iam_role" "corpus_ingestion" {
 }
 
 data "aws_iam_policy_document" "corpus_ingestion" {
-  statement { sid = "CorpusPackageUploadOnly" actions = ["s3:GetObject", "s3:PutObject"] resources = ["${aws_s3_bucket.corpus.arn}/${var.corpus_prefix}packages/*"] }
-  statement { sid = "ReadCorpusPackagePrefix" actions = ["s3:ListBucket"] resources = [aws_s3_bucket.corpus.arn] condition { test = "StringLike" variable = "s3:prefix" values = ["${var.corpus_prefix}packages/*"] } }
-  statement { sid = "StartExactIngestionBuild" actions = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"] resources = [aws_codebuild_project.corpus_ingestion.arn] }
+  statement {
+    sid       = "CorpusPackageUploadOnly"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.corpus.arn}/${var.corpus_prefix}packages/*"]
+  }
+
+  statement {
+    sid       = "ReadCorpusPackagePrefix"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.corpus.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${var.corpus_prefix}packages/*"]
+    }
+  }
+
+  statement {
+    sid       = "StartExactIngestionBuild"
+    actions   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
+    resources = [aws_codebuild_project.corpus_ingestion.arn]
+  }
 }
 
-resource "aws_iam_policy" "corpus_ingestion" { name = "${local.collection_name}-corpus-ingestion" description = "GitHub OIDC dispatcher: package upload and CodeBuild status only." policy = data.aws_iam_policy_document.corpus_ingestion.json tags = local.common_tags }
-resource "aws_iam_role_policy_attachment" "corpus_ingestion" { role = aws_iam_role.corpus_ingestion.name policy_arn = aws_iam_policy.corpus_ingestion.arn }
+resource "aws_iam_policy" "corpus_ingestion" {
+  name        = "${local.collection_name}-corpus-ingestion"
+  description = "GitHub OIDC dispatcher: package upload and CodeBuild status only."
+  policy      = data.aws_iam_policy_document.corpus_ingestion.json
+  tags        = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "corpus_ingestion" {
+  role       = aws_iam_role.corpus_ingestion.name
+  policy_arn = aws_iam_policy.corpus_ingestion.arn
+}
 
 resource "aws_opensearchserverless_access_policy" "data" {
   name = local.data_policy_name
@@ -274,15 +308,85 @@ resource "aws_iam_role" "codebuild_ingestion" {
 }
 
 data "aws_iam_policy_document" "codebuild_ingestion" {
-  statement { sid = "CorpusPackagesAndReceipts" actions = ["s3:GetObject", "s3:PutObject"] resources = ["${aws_s3_bucket.corpus.arn}/${var.corpus_prefix}*"] }
-  statement { sid = "ListCorpusPrefix" actions = ["s3:ListBucket"] resources = [aws_s3_bucket.corpus.arn] condition { test = "StringLike" variable = "s3:prefix" values = ["${var.corpus_prefix}*"] } }
-  statement { sid = "InvokePinnedTitanEmbedding" actions = ["bedrock:InvokeModel"] resources = ["arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}"] }
-  statement { sid = "AossApiAccessToReferenceCollection" actions = ["aoss:APIAccessAll"] resources = [aws_opensearchserverless_collection.references.arn] }
-  statement { sid = "CodeBuildLogs" actions = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"] resources = ["*"] }
-  statement { sid = "VpcBuildEnis" actions = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs"] resources = ["*"] }
+  statement {
+    sid       = "CorpusPackagesAndReceipts"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.corpus.arn}/${var.corpus_prefix}*"]
+  }
+
+  statement {
+    sid       = "ListCorpusPrefix"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.corpus.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${var.corpus_prefix}*"]
+    }
+  }
+
+  statement {
+    sid       = "InvokePinnedTitanEmbedding"
+    actions   = ["bedrock:InvokeModel"]
+    resources = ["arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}"]
+  }
+
+  statement {
+    sid       = "AossApiAccessToReferenceCollection"
+    actions   = ["aoss:APIAccessAll"]
+    resources = [aws_opensearchserverless_collection.references.arn]
+  }
+
+  statement {
+    sid       = "CodeBuildLogs"
+    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "VpcBuildEnis"
+    actions = [
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:DescribeDhcpOptions",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeVpcs",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "AllowCodeBuildEniPermissionInPrivateSubnets"
+    actions   = ["ec2:CreateNetworkInterfacePermission"]
+    resources = ["arn:${data.aws_partition.current.partition}:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:AuthorizedService"
+      values   = ["codebuild.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnEquals"
+      variable = "ec2:Subnet"
+      values = [
+        for subnet_id in var.private_subnet_ids :
+        "arn:${data.aws_partition.current.partition}:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:subnet/${subnet_id}"
+      ]
+    }
+  }
 }
-resource "aws_iam_policy" "codebuild_ingestion" { name = "${local.collection_name}-codebuild" description = "Minimum private corpus ingestion executor permissions." policy = data.aws_iam_policy_document.codebuild_ingestion.json tags = local.common_tags }
-resource "aws_iam_role_policy_attachment" "codebuild_ingestion" { role = aws_iam_role.codebuild_ingestion.name policy_arn = aws_iam_policy.codebuild_ingestion.arn }
+
+resource "aws_iam_policy" "codebuild_ingestion" {
+  name        = "${local.collection_name}-codebuild"
+  description = "Minimum private corpus ingestion executor permissions."
+  policy      = data.aws_iam_policy_document.codebuild_ingestion.json
+  tags        = local.common_tags
+}
+resource "aws_iam_role_policy_attachment" "codebuild_ingestion" {
+  role       = aws_iam_role.codebuild_ingestion.name
+  policy_arn = aws_iam_policy.codebuild_ingestion.arn
+}
 
 resource "aws_codebuild_project" "corpus_ingestion" {
   name          = "${local.collection_name}-ingestion"
@@ -296,15 +400,45 @@ resource "aws_codebuild_project" "corpus_ingestion" {
     image        = "aws/codebuild/standard:7.0"
     type         = "LINUX_CONTAINER"
     privileged_mode = false
-    environment_variable { name = "CORPUS_BUCKET" value = aws_s3_bucket.corpus.bucket }
-    environment_variable { name = "COLLECTION_ENDPOINT" value = aws_opensearchserverless_collection.references.collection_endpoint }
-    environment_variable { name = "INDEX_NAME" value = local.index_name }
-    environment_variable { name = "VECTOR_FIELD" value = local.vector_field }
-    environment_variable { name = "CONTENT_FIELD" value = local.content_field }
-    environment_variable { name = "EMBEDDING_MODEL_ID" value = local.embedding_model_id }
-    environment_variable { name = "VECTOR_DIMENSION" value = tostring(local.vector_dimension) }
+    environment_variable {
+      name  = "CORPUS_BUCKET"
+      value = aws_s3_bucket.corpus.bucket
+    }
+    environment_variable {
+      name  = "COLLECTION_ENDPOINT"
+      value = aws_opensearchserverless_collection.references.collection_endpoint
+    }
+    environment_variable {
+      name  = "INDEX_NAME"
+      value = local.index_name
+    }
+    environment_variable {
+      name  = "VECTOR_FIELD"
+      value = local.vector_field
+    }
+    environment_variable {
+      name  = "CONTENT_FIELD"
+      value = local.content_field
+    }
+    environment_variable {
+      name  = "EMBEDDING_MODEL_ID"
+      value = local.embedding_model_id
+    }
+    environment_variable {
+      name  = "VECTOR_DIMENSION"
+      value = tostring(local.vector_dimension)
+    }
   }
-  vpc_config { vpc_id = var.vpc_id subnets = var.private_subnet_ids security_group_ids = [aws_security_group.codebuild_ingestion.id] }
-  logs_config { cloudwatch_logs { group_name = "/aws/codebuild/${local.collection_name}-ingestion" stream_name = "ingestion" } }
+  vpc_config {
+    vpc_id             = var.vpc_id
+    subnets            = var.private_subnet_ids
+    security_group_ids = [aws_security_group.codebuild_ingestion.id]
+  }
+  logs_config {
+    cloudwatch_logs {
+      group_name  = "/aws/codebuild/${local.collection_name}-ingestion"
+      stream_name = "ingestion"
+    }
+  }
   tags = local.common_tags
 }

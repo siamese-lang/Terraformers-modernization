@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline validation for the versioned, project-owned Terraform reference corpus."""
+import argparse
 import hashlib
 import json
 import re
@@ -7,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CORPUS = ROOT / "corpus" / "terraformers-reference" / "v1"
+DEFAULT_CORPUS = ROOT / "corpus" / "terraformers-reference" / "v1"
 REQUIRED_MANIFEST = {"corpusVersion", "awsProviderVersion", "embeddingModelId", "vectorDimension", "indexName", "vectorField", "contentField", "documentCount", "chunkCount", "checksumAlgorithm"}
 REQUIRED_DOCUMENT = {"documentId", "title", "documentType", "content", "services", "resourceTypes", "architecturePattern", "securityConsiderations", "sourceVersion", "providerVersion", "sourcePath", "corpusVersion"}
 TYPES = {"AWS_PROVIDER_DOC", "AWS_PROVIDER_SCHEMA", "MODULE_EXAMPLE", "TERRAFORMERS_PATTERN"}
@@ -42,8 +43,16 @@ def reject_forbidden(value, label):
         if regex.search(text):
             fail(f"{kind} is not permitted in {label}")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Validate the versioned Terraform reference corpus.")
+    parser.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS)
+    parser.add_argument("--summary-json", type=Path)
+    return parser.parse_args()
+
 def main():
-    manifest = load_json(CORPUS / "corpus-manifest.json")
+    args = parse_args()
+    corpus = args.corpus_dir.resolve()
+    manifest = load_json(corpus / "corpus-manifest.json")
     missing = sorted(REQUIRED_MANIFEST - set(manifest))
     if missing:
         fail(f"corpus manifest is missing required fields: {', '.join(missing)}")
@@ -53,7 +62,7 @@ def main():
     if manifest["checksumAlgorithm"] != "SHA-256":
         fail("checksumAlgorithm must be SHA-256")
 
-    source_manifest = load_json(CORPUS / "source-manifest.json")
+    source_manifest = load_json(corpus / "source-manifest.json")
     sources = source_manifest.get("sources")
     if not isinstance(sources, list) or not sources:
         fail("source manifest must contain sources")
@@ -76,7 +85,7 @@ def main():
 
     documents = []
     try:
-        lines = (CORPUS / "documents.jsonl").read_text(encoding="utf-8").splitlines()
+        lines = (corpus / "documents.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         fail(f"cannot read documents.jsonl: {exc.__class__.__name__}")
     for line_no, line in enumerate(lines, 1):
@@ -128,7 +137,7 @@ def main():
 
     if manifest["documentCount"] != len(documents) or manifest["chunkCount"] != len(documents):
         fail("manifest documentCount and chunkCount must equal JSONL chunk count")
-    schema = load_json(CORPUS / "index-schema.json")
+    schema = load_json(corpus / "index-schema.json")
     props = schema.get("mappings", {}).get("properties", {})
     vector = props.get(manifest["vectorField"], {})
     if schema.get("settings", {}).get("index", {}).get("knn") is not True or vector.get("type") != "knn_vector" or vector.get("dimension") != manifest["vectorDimension"]:
@@ -148,7 +157,11 @@ def main():
     sorted_documents = sorted(documents, key=lambda item: item["documentId"])
     checksum_input = {"corpusManifest": manifest, "sourceManifest": {"sources": sorted_sources}, "indexSchema": schema, "documents": sorted_documents}
     digest = hashlib.sha256(canonical(checksum_input).encode("utf-8")).hexdigest()
-    print(f"RAG corpus contract passed: corpusVersion={manifest['corpusVersion']} documents={len(documents)} chunks={len(documents)} sources={len(sources)} sha256={digest}")
+    summary = {"corpusVersion": manifest["corpusVersion"], "documentCount": len(documents), "chunkCount": len(documents), "sourceCount": len(sources), "sha256": digest}
+    if args.summary_json:
+        args.summary_json.parent.mkdir(parents=True, exist_ok=True)
+        args.summary_json.write_text(json.dumps(summary, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"RAG corpus contract passed: corpusVersion={summary['corpusVersion']} documents={summary['documentCount']} chunks={summary['chunkCount']} sources={summary['sourceCount']} sha256={summary['sha256']}")
 
 if __name__ == "__main__":
     main()

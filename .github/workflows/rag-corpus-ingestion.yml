@@ -45,9 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/checks/rag-corpus-contract-verification.py
-          CHECKSUM="$(sha256sum corpus/terraformers-reference/v1/documents.jsonl | awk '{print $1}')"
-          COUNT="$(wc -l < corpus/terraformers-reference/v1/documents.jsonl | tr -d ' ')"
-          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py
+          python3 scripts/checks/rag-corpus-contract-verification.py --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
+          python3 -m pip install --disable-pip-version-check --target artifacts/rag-corpus-ingestion/vendor -r scripts/rag/requirements.txt
+          CHECKSUM="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["sha256"])')"
+          COUNT="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["documentCount"])')"
+          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
           printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
