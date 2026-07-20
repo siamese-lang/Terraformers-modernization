@@ -1,79 +1,91 @@
 name: RAG Corpus Ingestion
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       execute_ingestion:
-        description: Upload the reviewed package and invoke the private CodeBuild executor.
-        type: boolean
         required: true
-        default: false
+        type: boolean
       expected_aws_account_id:
         required: false
+        type: string
         default: ''
       expected_head_sha:
         required: false
+        type: string
         default: ''
       approval_confirmation:
         required: false
+        type: string
         default: ''
 permissions:
   contents: read
-  id-token: write
-env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
 jobs:
-  ingest:
+  dry-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: aws-rag-corpus-ingestion
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.expected_head_sha || github.sha }}
-      - name: Validate inputs and exact checkout
+      - name: Validate and package ingestion contract
         run: |
           set -euo pipefail
           mkdir -p artifacts/rag-corpus-ingestion
-          if [[ '${{ inputs.execute_ingestion }}' == true ]]; then
-            test -n '${{ inputs.expected_aws_account_id }}'
-            test -n '${{ inputs.expected_head_sha }}'
-            test '${{ inputs.expected_head_sha }}' = "$(git rev-parse HEAD)"
-            test '${{ inputs.approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
-          fi
-      - name: Validate corpus and build deployment package
-        id: package
-        run: |
-          set -euo pipefail
-          python3 scripts/checks/rag-corpus-contract-verification.py
           python3 scripts/checks/rag-corpus-contract-verification.py --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
           python3 -m pip install --disable-pip-version-check --target artifacts/rag-corpus-ingestion/vendor -r scripts/rag/requirements.txt
           CHECKSUM="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["sha256"])')"
           COUNT="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["documentCount"])')"
           zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
           printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
-          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
-          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: rag-corpus-ingestion-evidence
+          path: artifacts/rag-corpus-ingestion/package-summary.txt
+          if-no-files-found: error
+  live-ingestion:
+    if: ${{ inputs.execute_ingestion }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: aws-rag-corpus-ingestion
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_head_sha }}
+      - name: Validate live ingestion inputs
+        run: |
+          set -euo pipefail
+          test -n '${{ inputs.expected_aws_account_id }}'
+          test -n '${{ inputs.expected_head_sha }}'
+          test '${{ inputs.expected_head_sha }}' = "$(git rev-parse HEAD)"
+          test '${{ inputs.approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
+      - name: Build private deployment package
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/rag-corpus-ingestion
+          python3 scripts/checks/rag-corpus-contract-verification.py --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
+          python3 -m pip install --disable-pip-version-check --target artifacts/rag-corpus-ingestion/vendor -r scripts/rag/requirements.txt
+          CHECKSUM="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["sha256"])')"
+          COUNT="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["documentCount"])')"
+          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
+          printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
       - name: Configure dispatcher role through OIDC
-        if: ${{ inputs.execute_ingestion }}
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_RAG_CORPUS_DISPATCHER_ROLE_ARN }}
           role-session-name: TerraformersRagDispatcher
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
           allowed-account-ids: ${{ inputs.expected_aws_account_id }}
       - name: Upload package and run private executor
-        if: ${{ inputs.execute_ingestion }}
         env:
           CORPUS_BUCKET: ${{ vars.AWS_RAG_CORPUS_BUCKET }}
           CODEBUILD_PROJECT: ${{ vars.AWS_RAG_INGESTION_CODEBUILD_PROJECT }}
-          CHECKSUM: ${{ steps.package.outputs.checksum }}
-          COUNT: ${{ steps.package.outputs.count }}
         run: |
           set -euo pipefail
           test -n "$CORPUS_BUCKET"; test -n "$CODEBUILD_PROJECT"
           test "$(aws sts get-caller-identity --query Account --output text)" = '${{ inputs.expected_aws_account_id }}'
-          KEY="terraformers-reference/v1/packages/${{ inputs.expected_head_sha }}.zip"
-          RECEIPT="terraformers-reference/v1/receipts/terraformers-reference-v1.json"
+          CHECKSUM="$(sed -n 's/^checksum=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"; COUNT="$(sed -n 's/^count=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
+          KEY="terraformers-reference/v1/packages/${{ inputs.expected_head_sha }}.zip"; RECEIPT="terraformers-reference/v1/receipts/terraformers-reference-v1.json"
           aws s3 cp artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "s3://${CORPUS_BUCKET}/${KEY}" --only-show-errors
           BUILD_ID="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --environment-variables-override name=PACKAGE_KEY,value="$KEY",type=PLAINTEXT name=EXPECTED_CHECKSUM,value="$CHECKSUM",type=PLAINTEXT name=EXPECTED_DOCUMENT_COUNT,value="$COUNT",type=PLAINTEXT name=RECEIPT_KEY,value="$RECEIPT",type=PLAINTEXT --query 'build.id' --output text)"
           for _ in $(seq 1 90); do STATUS="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"; [[ "$STATUS" =~ ^(SUCCEEDED|FAILED|FAULT|STOPPED|TIMED_OUT)$ ]] && break; sleep 20; done
@@ -82,6 +94,6 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: rag-corpus-ingestion-evidence
+          name: rag-corpus-ingestion-live-evidence
           path: artifacts/rag-corpus-ingestion/package-summary.txt
           if-no-files-found: error

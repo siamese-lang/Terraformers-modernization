@@ -34,11 +34,52 @@ on:
         required: true
         type: boolean
         default: false
+      run_rag_ingestion_contract:
+        type: boolean
+        required: true
+        default: false
+      execute_rag_ingestion:
+        type: boolean
+        required: true
+        default: false
+      rag_expected_aws_account_id:
+        required: false
+        default: ''
+      rag_expected_head_sha:
+        required: false
+        default: ''
+      rag_approval_confirmation:
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  validate-rag-ingestion-dispatch:
+    if: ${{ inputs.run_rag_ingestion_contract }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate RAG ingestion dispatch contract
+        run: |
+          set -euo pipefail
+          if [[ '${{ inputs.execute_rag_ingestion }}' == 'true' ]]; then
+            test -n '${{ inputs.rag_expected_aws_account_id }}'
+            test -n '${{ inputs.rag_expected_head_sha }}'
+            test '${{ inputs.rag_approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
+          fi
+
+  rag-corpus-ingestion:
+    needs: validate-rag-ingestion-dispatch
+    if: ${{ inputs.run_rag_ingestion_contract }}
+    uses: ./.github/workflows/rag-corpus-ingestion.yml
+    with:
+      execute_ingestion: ${{ inputs.execute_rag_ingestion }}
+      expected_aws_account_id: ${{ inputs.rag_expected_aws_account_id }}
+      expected_head_sha: ${{ inputs.rag_expected_head_sha }}
+      approval_confirmation: ${{ inputs.rag_approval_confirmation }}
+    secrets: inherit
+
   runtime-contract-verification:
     name: Runtime contract baseline
     runs-on: ubuntu-latest

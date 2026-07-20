@@ -393,7 +393,10 @@ resource "aws_codebuild_project" "corpus_ingestion" {
   description   = "VPC-only executor for versioned private RAG corpus ingestion."
   service_role  = aws_iam_role.codebuild_ingestion.arn
   build_timeout = 30
-  source { type = "NO_SOURCE" buildspec = file("${path.module}/buildspec-rag-ingestion.yml") }
+  source {
+    type      = "NO_SOURCE"
+    buildspec = file("${path.module}/buildspec-rag-ingestion.yml")
+  }
   artifacts { type = "NO_ARTIFACTS" }
   environment {
     compute_type = "BUILD_GENERAL1_SMALL"
