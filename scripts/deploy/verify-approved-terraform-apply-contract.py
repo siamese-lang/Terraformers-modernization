@@ -45,6 +45,7 @@ RAG_RUNTIME_RESOURCES = {
         "aws_s3_bucket_versioning.corpus": "aws_s3_bucket_versioning",
         "aws_security_group.aoss_vpc_endpoint": "aws_security_group",
         "aws_security_group.codebuild_ingestion": "aws_security_group",
+        "aws_vpc_security_group_ingress_rule.aoss_from_backend": "aws_vpc_security_group_ingress_rule",
         "aws_vpc_security_group_ingress_rule.aoss_from_codebuild": "aws_vpc_security_group_ingress_rule",
     }.items()},
     **{address: ("aws_iam_policy_document", ["read"], []) for address in (
@@ -110,13 +111,16 @@ def check_rag_recovery_subset(summary: dict, txt: dict[str, str], actions: list[
     """Accept a state-dependent create/read subset of the reviewed RAG plan."""
     count = len(actions)
     required = {key: value for key, value in BASE_REQUIRED_TXT_VALUES.items() if key != "high_cost_resource_count"}
-    required.update({"plan_stage": "rag-runtime", "update_resource_count": "0"})
+    update_count = sum(item.get("actions") == ["update"] for item in actions)
+    if update_count not in (0, 1):
+        fail("recovery may contain zero or one update resource.")
+    required.update({"plan_stage": "rag-runtime", "update_resource_count": str(update_count)})
     for key, value in required.items():
         if txt.get(key) != value:
             fail(f"{key} must be {value!r}, got {txt.get(key)!r}.")
     if txt.get("resource_change_count") != str(count):
         fail("resource_change_count must match the reviewed recovery plan.")
-    if summary.get("stage") != "rag-runtime" or summary.get("resource_change_count") != count or summary.get("update_resource_count") != 0:
+    if summary.get("stage") != "rag-runtime" or summary.get("resource_change_count") != count or summary.get("update_resource_count") != update_count:
         fail("summary stage or resource counts do not match the recovery plan.")
     for key, message in (("destructive_resources", "delete actions are not allowed."), ("replacement_resources", "replacement actions are not allowed."), ("public_exposure_findings", "public exposure findings are not allowed."), ("optional_adapter_resources", "optional adapter resource changes are not allowed.")):
         if summary.get(key):
@@ -134,9 +138,15 @@ def check_rag_recovery_subset(summary: dict, txt: dict[str, str], actions: list[
         if address not in expected:
             fail(f"recovery resource is outside the approved RAG set: {address}.")
         resource_type, expected_actions, _ = expected[address]
-        if item.get("type") != resource_type or item.get("actions") != expected_actions:
+        is_aoss_ingress_migration = (
+            address == "aws_security_group.aoss_vpc_endpoint"
+            and item.get("type") == "aws_security_group"
+            and item.get("actions") == ["update"]
+            and item.get("changed_attribute_paths") == ["ingress"]
+        )
+        if not is_aoss_ingress_migration and (item.get("type") != resource_type or item.get("actions") != expected_actions):
             fail(f"recovery action does not match the approved RAG resource: {address}.")
-        if expected_actions == ["create"]:
+        if item.get("actions") == ["create"]:
             managed_create_found = True
     if not managed_create_found:
         fail("recovery plan must include at least one managed resource create.")
@@ -168,7 +178,7 @@ def main() -> int:
         if actual_actions(actions) != {args.approved_resource: ("aws_iam_policy", ["update"], [args.approved_changed_path])}: fail("resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "rag-runtime-reviewed-create":
-        check_risk_gates(summary, txt, "rag-runtime", 25, 0, RAG_REQUIRED_TXT_VALUES)
+        check_risk_gates(summary, txt, "rag-runtime", 26, 0, RAG_REQUIRED_TXT_VALUES)
         if summary.get("high_cost_resources") != ["aws_opensearchserverless_collection.references"]: fail("rag-runtime must contain exactly the approved AOSS collection high-cost resource.")
         if actual_actions(actions) != RAG_RUNTIME_RESOURCES: fail("rag-runtime resource_actions must exactly match the approved contract.")
         check_blocked_types(actions, allow_rag_security_groups=True)
