@@ -104,7 +104,7 @@ def verify_workflow() -> None:
         "ec2:DescribeSubnets", "ec2:DescribeVpcEndpoints", "ec2:DescribeVpcs",
         "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}",
         "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*",
-        "ec2:VpceServiceName", "com.amazonaws.ap-northeast-2.aoss*", "ec2:CreateAction",
+        "ec2:CreateAction",
         "CreateVpcEndpoint", "route53:AssociateVPCWithHostedZone",
         "route53:ChangeResourceRecordSets", "route53:CreateHostedZone",
         "route53:DeleteHostedZone", "route53:GetChange", "route53:GetHostedZone",
@@ -132,9 +132,8 @@ def verify_workflow() -> None:
         assert "ec2:VpceServiceName" not in create_vpc_endpoint_statements[sid], sid
     endpoint_statement = create_vpc_endpoint_statements["CreateAossManagedVpcEndpoint"]
     contains(endpoint_statement, 'resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]')
-    contains(endpoint_statement, 'test     = "StringLike"')
-    contains(endpoint_statement, 'variable = "ec2:VpceServiceName"')
-    contains(endpoint_statement, 'values   = ["com.amazonaws.ap-northeast-2.aoss*"]')
+    assert "ec2:VpceServiceName" not in endpoint_statement
+    assert "com.amazonaws.ap-northeast-2.aoss" not in endpoint_statement
     route53_vpc_value = 'values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]'
     for sid, resource in (
         ("CreateAossPrivateHostedZone", 'resources = ["*"]'),
@@ -177,6 +176,7 @@ def verify_workflow() -> None:
     rag_main = (ROOT / "infra/terraform/envs/rag-runtime/main.tf").read_text(encoding="utf-8")
     aoss_security_group = rag_main.split('resource "aws_security_group" "aoss_vpc_endpoint" {', 1)[1].split("\n}\n", 1)[0]
     assert "ingress {" not in aoss_security_group
+    contains(aoss_security_group, "ingress = []")
     backend_rule = rag_main.split('resource "aws_vpc_security_group_ingress_rule" "aoss_from_backend" {', 1)[1].split("\n}\n", 1)[0]
     codebuild_rule = rag_main.split('resource "aws_vpc_security_group_ingress_rule" "aoss_from_codebuild" {', 1)[1].split("\n}\n", 1)[0]
     for rule in (backend_rule, codebuild_rule):

@@ -28,6 +28,8 @@ resource "aws_security_group" "aoss_vpc_endpoint" {
   description = "Only backend EKS traffic may reach the private AOSS endpoint."
   vpc_id      = var.vpc_id
 
+  ingress = []
+
   tags = merge(local.common_tags, { Name = local.vpc_endpoint_name })
 }
 
