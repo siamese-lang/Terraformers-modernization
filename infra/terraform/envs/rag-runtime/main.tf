@@ -85,27 +85,39 @@ resource "aws_opensearchserverless_collection" "references" {
       ])
       error_message = "All AOSS collection, policy, and VPC endpoint names must start with lowercase letters, use lowercase letters/numbers/hyphens only, and be 32 characters or fewer."
     }
+    precondition {
+      condition     = endswith(var.backend_irsa_role_arn, "/${var.backend_irsa_role_name}")
+      error_message = "backend_irsa_role_arn must end with /${var.backend_irsa_role_name}."
+    }
   }
 }
 
-data "aws_iam_policy_document" "backend_aoss" {
+data "aws_iam_policy_document" "backend_rag_runtime" {
   statement {
     sid       = "AossApiAccessToReferenceCollection"
     actions   = ["aoss:APIAccessAll"]
     resources = [aws_opensearchserverless_collection.references.arn]
   }
+
+  statement {
+    sid       = "InvokeReferenceEmbeddingModel"
+    actions   = ["bedrock:InvokeModel"]
+    resources = [
+      "arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}",
+    ]
+  }
 }
 
-resource "aws_iam_policy" "backend_aoss" {
+resource "aws_iam_policy" "backend_rag_runtime" {
   name        = "${local.collection_name}-backend-aoss"
   description = "AOSS API identity access for the backend reference reader."
-  policy      = data.aws_iam_policy_document.backend_aoss.json
+  policy      = data.aws_iam_policy_document.backend_rag_runtime.json
   tags        = local.common_tags
 }
 
-resource "aws_iam_role_policy_attachment" "backend_aoss" {
+resource "aws_iam_role_policy_attachment" "backend_rag_runtime" {
   role       = var.backend_irsa_role_name
-  policy_arn = aws_iam_policy.backend_aoss.arn
+  policy_arn = aws_iam_policy.backend_rag_runtime.arn
 }
 
 data "aws_iam_policy_document" "ingestion_assume" {

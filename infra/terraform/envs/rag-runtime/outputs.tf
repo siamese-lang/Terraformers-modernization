@@ -41,5 +41,5 @@ output "ingestion_role_arn" {
   value = aws_iam_role.corpus_ingestion.arn
 }
 output "backend_runtime_iam_policy_arn" {
-  value = aws_iam_policy.backend_aoss.arn
+  value = aws_iam_policy.backend_rag_runtime.arn
 }

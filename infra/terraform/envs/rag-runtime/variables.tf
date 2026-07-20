@@ -61,6 +61,11 @@ variable "corpus_bucket_name" {
 variable "corpus_prefix" {
   type    = string
   default = "terraformers-reference/v1/"
+
+  validation {
+    condition     = trimspace(var.corpus_prefix) != "" && !startswith(var.corpus_prefix, "/") && endswith(var.corpus_prefix, "/") && !strcontains(var.corpus_prefix, "..") && !can(regex("\\*|\\?|\\[", var.corpus_prefix))
+    error_message = "corpus_prefix must be nonblank, relative, end in '/', and not contain '..' or wildcard characters."
+  }
 }
 
 variable "tags" {

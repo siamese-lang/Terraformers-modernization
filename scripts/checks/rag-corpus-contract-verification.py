@@ -76,11 +76,19 @@ def main():
 
     documents = []
     try:
-        for line_no, line in enumerate((CORPUS / "documents.jsonl").read_text(encoding="utf-8").splitlines(), 1):
-            if line.strip():
-                documents.append(json.loads(line))
-    except json.JSONDecodeError as exc:
-        fail(f"documents.jsonl line {line_no}: {exc}")
+        lines = (CORPUS / "documents.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        fail(f"cannot read documents.jsonl: {exc.__class__.__name__}")
+    for line_no, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            document = json.loads(line)
+        except json.JSONDecodeError:
+            fail(f"documents.jsonl line {line_no} is not valid JSON")
+        if not isinstance(document, dict):
+            fail(f"documents.jsonl line {line_no} must be a JSON object")
+        documents.append(document)
 
     ids = set()
     for doc in documents:
@@ -102,8 +110,10 @@ def main():
         require_nonblank_string(doc["sourceVersion"], "sourceVersion")
         require_nonblank_string(doc["providerVersion"], "providerVersion")
         require_nonblank_string(doc["corpusVersion"], "corpusVersion")
+        if doc["providerVersion"] != manifest["awsProviderVersion"]:
+            fail(f"document {doc['documentId']} providerVersion must match manifest awsProviderVersion")
         if doc["documentType"] in PROVIDER_TYPES:
-            if doc["providerVersion"] != "5.100.0" or doc["sourceVersion"] != "v5.100.0":
+            if doc["sourceVersion"] != "v5.100.0":
                 fail(f"provider document {doc['documentId']} must use providerVersion 5.100.0 and sourceVersion v5.100.0")
         elif doc["sourceVersion"] != "terraformers-reference-v1":
             fail(f"project-owned document {doc['documentId']} must use sourceVersion terraformers-reference-v1")
@@ -127,7 +137,16 @@ def main():
         fail("index must use Faiss HNSW cosine similarity")
     if props.get(manifest["contentField"], {}).get("type") != "text" or props.get("title", {}).get("type") != "text":
         fail("title and content must be text fields")
-    checksum_input = {"corpusManifest": manifest, "sourceManifest": source_manifest, "indexSchema": schema, "documents": documents}
+    keyword_fields = {"documentId", "documentType", "sourceVersion", "sourcePath", "corpusVersion", "services", "resourceTypes", "architecturePattern", "securityConsiderations", "providerVersion"}
+    invalid_keyword_fields = sorted(field for field in keyword_fields if props.get(field, {}).get("type") != "keyword")
+    if invalid_keyword_fields:
+        fail(f"index metadata fields must be keyword: {', '.join(invalid_keyword_fields)}")
+    for source in sources:
+        if source["sourceType"] not in PROVIDER_TYPES and not (ROOT / source["sourcePath"]).is_file():
+            fail(f"project-owned source path does not exist: {source['sourcePath']}")
+    sorted_sources = sorted(sources, key=lambda item: (item["sourceType"], item["sourceVersion"], item["sourcePath"]))
+    sorted_documents = sorted(documents, key=lambda item: item["documentId"])
+    checksum_input = {"corpusManifest": manifest, "sourceManifest": {"sources": sorted_sources}, "indexSchema": schema, "documents": sorted_documents}
     digest = hashlib.sha256(canonical(checksum_input).encode("utf-8")).hexdigest()
     print(f"RAG corpus contract passed: corpusVersion={manifest['corpusVersion']} documents={len(documents)} chunks={len(documents)} sources={len(sources)} sha256={digest}")
 
