@@ -5,9 +5,13 @@ on:
   pull_request:
     branches:
       - main
+      - agent/rdb-domain-realignment
     paths:
       - "infra/terraform/**"
       - "scripts/checks/terraform-static-verification.sh"
+      - "scripts/checks/approved-terraform-apply-contract-verification.py"
+      - "scripts/deploy/verify-approved-terraform-apply-contract.py"
+      - ".github/workflows/aws-live-terraform-apply.yml"
       - ".github/workflows/terraform-static-verification.yml"
       - "docs/**"
 

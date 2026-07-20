@@ -53,11 +53,26 @@ RAG_RUNTIME_RESOURCES = {
         "data.aws_iam_policy_document.corpus_ingestion",
     )},
 }
+RAG_RUNTIME_RECOVERY_RESOURCES = {
+    address: contract for address, contract in RAG_RUNTIME_RESOURCES.items()
+    if address not in {
+        "aws_iam_role.codebuild_ingestion",
+        "aws_iam_role.corpus_ingestion",
+        "aws_opensearchserverless_security_policy.encryption",
+        "aws_s3_bucket.corpus",
+        "aws_s3_bucket_ownership_controls.corpus",
+        "aws_s3_bucket_public_access_block.corpus",
+        "aws_s3_bucket_versioning.corpus",
+    }
+}
+
 CONTRACTS = {
     "foundation-rag-apply-permission-create": "foundation",
+    "foundation-rag-apply-permission-update": "foundation",
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
     "rag-runtime-reviewed-create": "rag-runtime",
+    "rag-runtime-reviewed-recovery": "rag-runtime",
 }
 
 
@@ -114,6 +129,11 @@ def main() -> int:
         expected = {"aws_iam_role_policy.terraform_apply_rag_runtime_create": ("aws_iam_role_policy", ["create"], [])}
         if actual_actions(actions) != expected: fail("foundation RAG permission resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
+    elif args.contract == "foundation-rag-apply-permission-update":
+        check_risk_gates(summary, txt, "foundation", 1, 1)
+        expected = {"aws_iam_role_policy.terraform_apply_rag_runtime_create": ("aws_iam_role_policy", ["update"], ["policy"])}
+        if actual_actions(actions) != expected: fail("foundation RAG permission update resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
     elif args.contract == "foundation-apply-role-bootstrap":
         check_risk_gates(summary, txt, "foundation", 4, 0)
         expected = {address: (kind, ["create"], []) for address, kind in FOUNDATION_RESOURCES.items()}
@@ -125,9 +145,11 @@ def main() -> int:
         if actual_actions(actions) != {args.approved_resource: ("aws_iam_policy", ["update"], [args.approved_changed_path])}: fail("resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     else:
-        check_risk_gates(summary, txt, "rag-runtime", 25, 0, RAG_REQUIRED_TXT_VALUES)
+        expected_resources = RAG_RUNTIME_RESOURCES if args.contract == "rag-runtime-reviewed-create" else RAG_RUNTIME_RECOVERY_RESOURCES
+        expected_count = 25 if args.contract == "rag-runtime-reviewed-create" else 18
+        check_risk_gates(summary, txt, "rag-runtime", expected_count, 0, RAG_REQUIRED_TXT_VALUES)
         if summary.get("high_cost_resources") != ["aws_opensearchserverless_collection.references"]: fail("rag-runtime must contain exactly the approved AOSS collection high-cost resource.")
-        if actual_actions(actions) != RAG_RUNTIME_RESOURCES: fail("rag-runtime resource_actions must exactly match the approved 22 creates and 3 reads.")
+        if actual_actions(actions) != expected_resources: fail("rag-runtime resource_actions must exactly match the approved contract.")
         check_blocked_types(actions, allow_rag_security_groups=True)
     print("approved_terraform_apply_contract=passed")
     return 0
