@@ -121,8 +121,14 @@ def main() -> None:
     bedrock = boto3.client("bedrock-runtime")
     if not receipt:
         for document in documents:
+            existing = client.search(
+                index=args.index_name,
+                body={"size": 1, "_source": False, "query": {"term": {"documentId": document["documentId"]}}},
+            )["hits"]["hits"]
+            if existing:
+                continue
             embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": document[args.content_field]}))["body"].read())["embedding"]
-            client.index(index=args.index_name, id=document["documentId"], body={**document, args.vector_field: embedding})
+            client.index(index=args.index_name, body={**document, args.vector_field: embedding})
         client.indices.refresh(index=args.index_name)
     count = client.count(index=args.index_name)["count"]
     if count != document_count:
@@ -131,7 +137,7 @@ def main() -> None:
     hits = client.search(index=args.index_name, body={"size": 3, "query": {"knn": {args.vector_field: {"vector": query_embedding, "k": 3}}}})["hits"]["hits"]
     if not hits:
         fail("representative k-NN query returned no hits")
-    receipt = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [hit["_id"] for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
+    receipt = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [str(hit.get("_source", {}).get("documentId", hit.get("_id", ""))) for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
     s3.put_object(Bucket=args.receipt_bucket, Key=args.receipt_key, Body=json.dumps(receipt, sort_keys=True).encode(), ContentType="application/json")
     log(**receipt)
 
