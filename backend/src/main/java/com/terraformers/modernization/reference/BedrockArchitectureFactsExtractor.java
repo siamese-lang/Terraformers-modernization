@@ -16,6 +16,11 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 /** Bounded vision stage used only to derive retrieval facts, never Terraform. */
 @Component
 public class BedrockArchitectureFactsExtractor {
+    private static final int MAX_FACT_TOKENS = 800;
+    private static final String FACTS_PROMPT = "Return one compact JSON object only with keys summary,components,relationships,resourceTypes. "
+            + "Keep summary under 160 characters. Keep each array to at most 8 strings and each string under 60 characters. "
+            + "Describe architecture facts only; never generate Terraform, Markdown, or explanatory prose.";
+
     private final BedrockRuntimeClient client;
     private final ObjectMapper objectMapper;
     private final AnalysisRuntimeProperties properties;
@@ -31,15 +36,18 @@ public class BedrockArchitectureFactsExtractor {
         try {
             String mediaType = source.metadata().contentType();
             String request = objectMapper.writeValueAsString(Map.of(
-                    "anthropic_version", "bedrock-2023-05-31", "max_tokens", 300, "temperature", 0,
+                    "anthropic_version", "bedrock-2023-05-31", "max_tokens", MAX_FACT_TOKENS, "temperature", 0,
                     "messages", List.of(Map.of("role", "user", "content", List.of(
                             Map.of("type", "image", "source", Map.of("type", "base64", "media_type", mediaType,
                                     "data", Base64.getEncoder().encodeToString(source.bytes()))),
-                            Map.of("type", "text", "text", "Return JSON only: {summary,components,relationships,resourceTypes}. Describe architecture facts only; never generate Terraform."))))));
+                            Map.of("type", "text", "text", FACTS_PROMPT))))));
             String response = client.invokeModel(InvokeModelRequest.builder().modelId(requireModelId())
                     .contentType("application/json").accept("application/json").body(SdkBytes.fromUtf8String(request)).build())
                     .body().asUtf8String();
             JsonNode root = objectMapper.readTree(response);
+            if ("max_tokens".equals(root.path("stop_reason").asText())) {
+                throw new IllegalStateException("Bedrock facts response reached max_tokens");
+            }
             JsonNode content = root.path("content");
             if (!content.isArray()) throw new IllegalStateException("Bedrock facts response has no content array");
             JsonNode textBlock = null;
