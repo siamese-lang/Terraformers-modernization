@@ -277,9 +277,21 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     effect    = "Allow"
     actions   = ["iam:CreateRole", "iam:TagRole"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-corpus-ingestion", "arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
-    condition { test = "StringEquals" variable = "aws:RequestTag/Project" values = ["Terraformers"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Environment" values = ["dev"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Component" values = ["rag-runtime"] }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
   }
 
   statement {
@@ -287,9 +299,21 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     effect    = "Allow"
     actions   = ["iam:CreatePolicy", "iam:TagPolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-backend-aoss", "arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-codebuild", "arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-corpus-ingestion"]
-    condition { test = "StringEquals" variable = "aws:RequestTag/Project" values = ["Terraformers"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Environment" values = ["dev"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Component" values = ["rag-runtime"] }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
   }
 
   statement {
@@ -297,86 +321,236 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     effect = "Allow"
     actions = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-backend-irsa-role"]
-    condition { test = "ArnEquals" variable = "iam:PolicyARN" values = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-backend-aoss"] }
+    condition {
+      test     = "ArnEquals"
+      variable = "iam:PolicyARN"
+      values   = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-backend-aoss"]
+    }
   }
   statement {
     sid = "AttachOnlyCorpusIngestionPolicy"
     effect = "Allow"
     actions = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-corpus-ingestion"]
-    condition { test = "ArnEquals" variable = "iam:PolicyARN" values = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-corpus-ingestion"] }
+    condition {
+      test     = "ArnEquals"
+      variable = "iam:PolicyARN"
+      values   = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-corpus-ingestion"]
+    }
   }
   statement {
     sid = "AttachOnlyCodeBuildPolicy"
     effect = "Allow"
     actions = ["iam:AttachRolePolicy"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
-    condition { test = "ArnEquals" variable = "iam:PolicyARN" values = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-codebuild"] }
+    condition {
+      test     = "ArnEquals"
+      variable = "iam:PolicyARN"
+      values   = ["arn:aws:iam::${var.expected_aws_account_id}:policy/terraformers-dev-refs-codebuild"]
+    }
   }
   statement {
     sid = "PassOnlyCodeBuildRole"
     effect = "Allow"
     actions = ["iam:PassRole"]
     resources = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
-    condition { test = "StringEquals" variable = "iam:PassedToService" values = ["codebuild.amazonaws.com"] }
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["codebuild.amazonaws.com"]
+    }
   }
 
   statement {
-    sid = "CreateExactCodeBuildProject"
-    effect = "Allow"
-    actions = ["codebuild:CreateProject", "codebuild:TagResource"]
-    resources = ["arn:aws:codebuild:ap-northeast-2:${var.expected_aws_account_id}:project/terraformers-dev-refs-ingestion"]
-    condition { test = "StringEquals" variable = "aws:RequestTag/Project" values = ["Terraformers"] }
-    condition { test = "StringEquals" variable = "codebuild:serviceRole" values = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"] }
-    condition { test = "StringEquals" variable = "codebuild:vpcConfig.vpcId" values = [var.rag_runtime_vpc_id] }
+    sid     = "CreateExactCodeBuildProject"
+    effect  = "Allow"
+    actions = ["codebuild:CreateProject"]
+    resources = [
+      "arn:aws:codebuild:ap-northeast-2:${var.expected_aws_account_id}:project/terraformers-dev-refs-ingestion",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "codebuild:serviceRole"
+      values   = ["arn:aws:iam::${var.expected_aws_account_id}:role/terraformers-dev-refs-codebuild"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "codebuild:vpcConfig.vpcId"
+      values   = [var.rag_runtime_vpc_id]
+    }
   }
 
   statement {
-    sid = "CreateExactAossCollection"
-    effect = "Allow"
-    actions = ["aoss:CreateCollection", "aoss:TagResource"]
+    sid     = "CreateExactAossCollection"
+    effect  = "Allow"
+    actions = ["aoss:CreateCollection"]
     resources = ["*"]
-    condition { test = "StringEquals" variable = "aws:RequestTag/Project" values = ["Terraformers"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Environment" values = ["dev"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Component" values = ["rag-runtime"] }
-    condition { test = "StringEquals" variable = "aoss:collection" values = ["terraformers-dev-refs"] }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
   }
+
   statement {
-    sid = "CreateExactAossPolicies"
-    effect = "Allow"
-    actions = ["aoss:CreateAccessPolicy", "aoss:CreateSecurityPolicy"]
+    sid     = "TagRagAossResources"
+    effect  = "Allow"
+    actions = ["aoss:TagResource"]
     resources = ["*"]
-    condition { test = "StringEquals" variable = "aoss:collection" values = ["terraformers-dev-refs"] }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["Terraformers"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values   = ["Project", "Environment", "Component", "ManagedBy"]
+    }
   }
+
   statement {
-    sid = "CreateAossVpcEndpoint"
-    effect = "Allow"
-    actions = ["aoss:CreateVpcEndpoint"]
+    sid     = "CreateExactAossAccessPolicy"
+    effect  = "Allow"
+    actions = ["aoss:CreateAccessPolicy"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aoss:collection"
+      values   = ["terraformers-dev-refs"]
+    }
+  }
+
+  statement {
+    sid     = "CreateExactAossSecurityPolicy"
+    effect  = "Allow"
+    actions = ["aoss:CreateSecurityPolicy"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aoss:collection"
+      values   = ["terraformers-dev-refs"]
+    }
+  }
+
+  statement {
+    sid       = "CreateAossVpcEndpoint"
+    effect    = "Allow"
+    actions   = ["aoss:CreateVpcEndpoint"]
     resources = ["*"]
   }
+
   statement {
-    sid = "CreateAossServiceLinkedRoleWhenAbsent"
-    effect = "Allow"
-    actions = ["iam:CreateServiceLinkedRole"]
+    sid       = "CreateAossServiceLinkedRoleWhenAbsent"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
     resources = ["arn:aws:iam::*:role/aws-service-role/observability.aoss.amazonaws.com/AWSServiceRoleForAmazonOpenSearchServerless"]
-    condition { test = "StringEquals" variable = "iam:AWSServiceName" values = ["observability.aoss.amazonaws.com"] }
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["observability.aoss.amazonaws.com"]
+    }
   }
 
   statement {
-    sid = "CreateTaggedSecurityGroupsInApprovedVpc"
-    effect = "Allow"
-    actions = ["ec2:CreateSecurityGroup", "ec2:CreateTags"]
+    sid       = "CreateTaggedSecurityGroupsInApprovedVpc"
+    effect    = "Allow"
+    actions   = ["ec2:CreateSecurityGroup"]
     resources = ["*"]
-    condition { test = "ArnEquals" variable = "ec2:Vpc" values = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"] }
-    condition { test = "StringEquals" variable = "aws:RequestTag/Component" values = ["rag-runtime"] }
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ec2:Vpc"
+      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
   }
+
   statement {
-    sid = "ManageTaggedRagSecurityGroupRules"
-    effect = "Allow"
-    actions = ["ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress"]
+    sid       = "TagRagSecurityGroupsAtCreation"
+    effect    = "Allow"
+    actions   = ["ec2:CreateTags"]
     resources = ["*"]
-    condition { test = "StringEquals" variable = "aws:ResourceTag/Component" values = ["rag-runtime"] }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:CreateAction"
+      values   = ["CreateSecurityGroup"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["rag-runtime"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values   = ["Name", "Project", "Environment", "Component", "ManagedBy"]
+    }
   }
+
+  statement {
+    sid    = "ManageTaggedRagSecurityGroupRules"
+    effect = "Allow"
+    actions = [
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:AuthorizeSecurityGroupEgress",
+      "ec2:RevokeSecurityGroupEgress",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Component"
+      values   = ["rag-runtime"]
+    }
+  }
+
 }
 
 resource "aws_iam_role_policy" "terraform_apply_rag_runtime_create" {
