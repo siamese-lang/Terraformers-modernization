@@ -40,10 +40,22 @@ public class BedrockArchitectureFactsExtractor {
                     .contentType("application/json").accept("application/json").body(SdkBytes.fromUtf8String(request)).build())
                     .body().asUtf8String();
             JsonNode root = objectMapper.readTree(response);
-            String text = root.path("content").path(0).path("text").asText();
+            JsonNode content = root.path("content");
+            if (!content.isArray()) throw new IllegalStateException("Bedrock facts response has no content array");
+            JsonNode textBlock = null;
+            for (JsonNode block : content) {
+                if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) { textBlock = block; break; }
+            }
+            if (textBlock == null) throw new IllegalStateException("Bedrock facts response has no text block");
+            String text = textBlock.path("text").asText().strip();
+            if (text.startsWith("```json") && text.endsWith("```")) text = text.substring(7, text.length() - 3).strip();
             JsonNode facts = objectMapper.readTree(text);
-            return new ArchitectureRetrievalFacts(facts.path("summary").asText(""), strings(facts.path("components")),
+            if (!facts.isObject()) throw new IllegalStateException("Bedrock facts response is not a JSON object");
+            if (!facts.path("summary").isMissingNode() && !facts.path("summary").isTextual()) throw new IllegalStateException("Bedrock facts summary must be text");
+            ArchitectureRetrievalFacts result = new ArchitectureRetrievalFacts(facts.path("summary").asText(""), strings(facts.path("components")),
                     strings(facts.path("relationships")), strings(facts.path("resourceTypes")));
+            if (result.isEmpty()) throw new IllegalStateException("Bedrock facts response is empty");
+            return result;
         } catch (Exception exception) {
             throw new IllegalStateException("failed to extract architecture retrieval facts", exception);
         }
@@ -56,7 +68,8 @@ public class BedrockArchitectureFactsExtractor {
     }
 
     private List<String> strings(JsonNode node) {
-        if (!node.isArray()) return List.of();
+        if (node.isMissingNode()) return List.of();
+        if (!node.isArray()) throw new IllegalStateException("Bedrock facts collection must be an array");
         java.util.ArrayList<String> values = new java.util.ArrayList<>();
         node.forEach(value -> values.add(value.asText("")));
         return values;
