@@ -302,9 +302,9 @@ resource "aws_vpc_security_group_ingress_rule" "aoss_from_codebuild" {
 }
 
 resource "aws_iam_role" "codebuild_ingestion" {
-  name = "${local.collection_name}-codebuild"
+  name               = "${local.collection_name}-codebuild"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = { Service = "codebuild.amazonaws.com" }, Action = "sts:AssumeRole" }] })
-  tags = local.common_tags
+  tags               = local.common_tags
 }
 
 data "aws_iam_policy_document" "codebuild_ingestion" {
@@ -399,9 +399,9 @@ resource "aws_codebuild_project" "corpus_ingestion" {
   }
   artifacts { type = "NO_ARTIFACTS" }
   environment {
-    compute_type = "BUILD_GENERAL1_SMALL"
-    image        = "aws/codebuild/standard:7.0"
-    type         = "LINUX_CONTAINER"
+    compute_type    = "BUILD_GENERAL1_SMALL"
+    image           = "aws/codebuild/standard:7.0"
+    type            = "LINUX_CONTAINER"
     privileged_mode = false
     environment_variable {
       name  = "CORPUS_BUCKET"

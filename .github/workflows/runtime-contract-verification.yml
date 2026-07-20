@@ -72,6 +72,9 @@ jobs:
   rag-corpus-ingestion:
     needs: validate-rag-ingestion-dispatch
     if: ${{ inputs.run_rag_ingestion_contract }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/rag-corpus-ingestion.yml
     with:
       execute_ingestion: ${{ inputs.execute_rag_ingestion }}
