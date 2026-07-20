@@ -1,0 +1,85 @@
+name: RAG Corpus Ingestion
+on:
+  workflow_dispatch:
+    inputs:
+      execute_ingestion:
+        description: Upload the reviewed package and invoke the private CodeBuild executor.
+        type: boolean
+        required: true
+        default: false
+      expected_aws_account_id:
+        required: false
+        default: ''
+      expected_head_sha:
+        required: false
+        default: ''
+      approval_confirmation:
+        required: false
+        default: ''
+permissions:
+  contents: read
+  id-token: write
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: aws-rag-corpus-ingestion
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_head_sha || github.sha }}
+      - name: Validate inputs and exact checkout
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/rag-corpus-ingestion
+          if [[ '${{ inputs.execute_ingestion }}' == true ]]; then
+            test -n '${{ inputs.expected_aws_account_id }}'
+            test -n '${{ inputs.expected_head_sha }}'
+            test '${{ inputs.expected_head_sha }}' = "$(git rev-parse HEAD)"
+            test '${{ inputs.approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
+          fi
+      - name: Validate corpus and build deployment package
+        id: package
+        run: |
+          set -euo pipefail
+          python3 scripts/checks/rag-corpus-contract-verification.py
+          CHECKSUM="$(sha256sum corpus/terraformers-reference/v1/documents.jsonl | awk '{print $1}')"
+          COUNT="$(wc -l < corpus/terraformers-reference/v1/documents.jsonl | tr -d ' ')"
+          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py
+          printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+      - name: Configure dispatcher role through OIDC
+        if: ${{ inputs.execute_ingestion }}
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_RAG_CORPUS_DISPATCHER_ROLE_ARN }}
+          role-session-name: TerraformersRagDispatcher
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+      - name: Upload package and run private executor
+        if: ${{ inputs.execute_ingestion }}
+        env:
+          CORPUS_BUCKET: ${{ vars.AWS_RAG_CORPUS_BUCKET }}
+          CODEBUILD_PROJECT: ${{ vars.AWS_RAG_INGESTION_CODEBUILD_PROJECT }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          COUNT: ${{ steps.package.outputs.count }}
+        run: |
+          set -euo pipefail
+          test -n "$CORPUS_BUCKET"; test -n "$CODEBUILD_PROJECT"
+          test "$(aws sts get-caller-identity --query Account --output text)" = '${{ inputs.expected_aws_account_id }}'
+          KEY="terraformers-reference/v1/packages/${{ inputs.expected_head_sha }}.zip"
+          RECEIPT="terraformers-reference/v1/receipts/terraformers-reference-v1.json"
+          aws s3 cp artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "s3://${CORPUS_BUCKET}/${KEY}" --only-show-errors
+          BUILD_ID="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --environment-variables-override name=PACKAGE_KEY,value="$KEY",type=PLAINTEXT name=EXPECTED_CHECKSUM,value="$CHECKSUM",type=PLAINTEXT name=EXPECTED_DOCUMENT_COUNT,value="$COUNT",type=PLAINTEXT name=RECEIPT_KEY,value="$RECEIPT",type=PLAINTEXT --query 'build.id' --output text)"
+          for _ in $(seq 1 90); do STATUS="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"; [[ "$STATUS" =~ ^(SUCCEEDED|FAILED|FAULT|STOPPED|TIMED_OUT)$ ]] && break; sleep 20; done
+          printf 'build_id=%s\nbuild_status=%s\n' "$BUILD_ID" "$STATUS" >> artifacts/rag-corpus-ingestion/package-summary.txt
+          test "$STATUS" = SUCCEEDED
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: rag-corpus-ingestion-evidence
+          path: artifacts/rag-corpus-ingestion/package-summary.txt
+          if-no-files-found: error

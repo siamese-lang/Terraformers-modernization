@@ -43,3 +43,7 @@ output "ingestion_role_arn" {
 output "backend_runtime_iam_policy_arn" {
   value = aws_iam_policy.backend_rag_runtime.arn
 }
+output "codebuild_ingestion_project_name" { value = aws_codebuild_project.corpus_ingestion.name }
+output "codebuild_ingestion_project_arn" { value = aws_codebuild_project.corpus_ingestion.arn }
+output "codebuild_ingestion_role_arn" { value = aws_iam_role.codebuild_ingestion.arn }
+output "codebuild_ingestion_security_group_id" { value = aws_security_group.codebuild_ingestion.id }

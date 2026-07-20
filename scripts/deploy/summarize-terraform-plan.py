@@ -209,7 +209,7 @@ def main() -> int:
             replacements.append(address)
         if resource_type in HIGH_COST_TYPES:
             high_cost.append(address)
-        if resource_type.startswith(OPTIONAL_ADAPTER_PREFIXES):
+        if resource_type.startswith(OPTIONAL_ADAPTER_PREFIXES) and not (args.stage == "rag-runtime" and resource_type.startswith("aws_opensearchserverless_")):
             optional_adapters.append(address)
 
         after = change.get("after")

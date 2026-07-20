@@ -18,6 +18,7 @@ on:
           - stateful-dependencies
           - eks-runtime
           - frontend-delivery
+          - rag-runtime
         default: network
       expected_aws_account_id:
         description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.

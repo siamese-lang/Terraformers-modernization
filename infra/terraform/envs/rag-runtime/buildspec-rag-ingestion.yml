@@ -1,0 +1,11 @@
+version: 0.2
+phases:
+  install:
+    commands:
+  build:
+    commands:
+      - test -n "$PACKAGE_KEY"
+      - aws s3 cp "s3://${CORPUS_BUCKET}/${PACKAGE_KEY}" /tmp/ingestion-package.zip --only-show-errors
+      - unzip -q /tmp/ingestion-package.zip -d /tmp/ingestion
+      - python3 -m pip install --disable-pip-version-check -r /tmp/ingestion/scripts/rag/requirements.txt
+      - python3 /tmp/ingestion/scripts/rag/ingest-corpus.py --package /tmp/ingestion/corpus/terraformers-reference/v1 --expected-checksum "$EXPECTED_CHECKSUM" --expected-document-count "$EXPECTED_DOCUMENT_COUNT" --receipt-bucket "$CORPUS_BUCKET" --receipt-key "$RECEIPT_KEY"

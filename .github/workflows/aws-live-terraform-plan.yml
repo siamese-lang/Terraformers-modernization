@@ -19,6 +19,7 @@ on:
           - stateful-dependencies
           - eks-runtime
           - frontend-delivery
+          - rag-runtime
         default: network
       expected_aws_account_id:
         description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.
@@ -261,6 +262,7 @@ jobs:
           STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
           EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
           FRONTEND_TFVARS_B64: ${{ secrets.AWS_LIVE_FRONTEND_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
         run: |
           set -euo pipefail
           case '${{ inputs.plan_stage }}' in
@@ -288,6 +290,11 @@ jobs:
               TF_DIR='infra/terraform/envs/eks-runtime'
               TFVARS_B64="${EKS_TFVARS_B64}"
               STATE_COMPONENT='eks-runtime'
+              ;;
+            rag-runtime)
+              TF_DIR='infra/terraform/envs/rag-runtime'
+              TFVARS_B64="${RAG_TFVARS_B64}"
+              STATE_COMPONENT='rag-runtime'
               ;;
             frontend-delivery)
               TF_DIR='infra/terraform/envs/frontend-delivery'
