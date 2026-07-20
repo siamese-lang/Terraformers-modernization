@@ -498,11 +498,6 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
     effect    = "Allow"
     actions   = ["ec2:CreateVpcEndpoint"]
     resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
-    condition {
-      test     = "StringLike"
-      variable = "ec2:VpceServiceName"
-      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
-    }
   }
 
   statement {
@@ -514,11 +509,6 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
       test     = "ArnEquals"
       variable = "ec2:Vpc"
       values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
-    }
-    condition {
-      test     = "StringLike"
-      variable = "ec2:VpceServiceName"
-      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
     }
   }
 
@@ -536,11 +526,6 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
       test     = "StringEquals"
       variable = "aws:ResourceTag/Component"
       values   = ["rag-runtime"]
-    }
-    condition {
-      test     = "StringLike"
-      variable = "ec2:VpceServiceName"
-      values   = ["com.amazonaws.ap-northeast-2.aoss*"]
     }
   }
 
@@ -583,14 +568,26 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid       = "CreateAndAssociateAossPrivateDns"
+    sid       = "CreateAossPrivateHostedZone"
     effect    = "Allow"
-    actions   = ["route53:AssociateVPCWithHostedZone", "route53:CreateHostedZone"]
+    actions   = ["route53:CreateHostedZone"]
+    resources = ["*"]
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "route53:VPCs"
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
+    }
+  }
+
+  statement {
+    sid       = "AssociateAossVpcWithPrivateHostedZone"
+    effect    = "Allow"
+    actions   = ["route53:AssociateVPCWithHostedZone"]
     resources = ["arn:aws:route53:::hostedzone/*"]
     condition {
-      test     = "ForAllValues:ArnEquals"
+      test     = "ForAllValues:StringEquals"
       variable = "route53:VPCs"
-      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
     }
   }
 
@@ -609,15 +606,22 @@ data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   }
 
   statement {
-    sid       = "ListAossPrivateDnsZones"
+    sid       = "ListAossPrivateDnsZonesByVpc"
     effect    = "Allow"
-    actions   = ["route53:ListHostedZonesByName", "route53:ListHostedZonesByVPC"]
+    actions   = ["route53:ListHostedZonesByVPC"]
     resources = ["*"]
     condition {
-      test     = "ForAllValues:ArnEquals"
+      test     = "ForAllValues:StringEquals"
       variable = "route53:VPCs"
-      values   = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}"]
+      values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]
     }
+  }
+
+  statement {
+    sid       = "ListAossPrivateDnsZonesByName"
+    effect    = "Allow"
+    actions   = ["route53:ListHostedZonesByName"]
+    resources = ["*"]
   }
 
   statement {

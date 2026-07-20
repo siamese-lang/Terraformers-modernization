@@ -115,6 +115,39 @@ def verify_workflow() -> None:
     assert "s3:PutBucketEncryption" not in foundation
     for forbidden in ("AdministratorAccess", "AmazonEC2FullAccess", "AmazonRoute53FullAccess"):
         assert forbidden not in foundation, forbidden
+    create_vpc_endpoint_statements = {
+        sid: foundation.split(f'sid       = "{sid}"', 1)[1].split('  statement {', 1)[0]
+        for sid in (
+            "CreateAossManagedVpcEndpointInApprovedVpc",
+            "CreateAossManagedVpcEndpointInApprovedSubnets",
+            "CreateAossManagedVpcEndpointWithTaggedSecurityGroups",
+            "CreateAossManagedVpcEndpoint",
+        )
+    }
+    for sid in (
+        "CreateAossManagedVpcEndpointInApprovedVpc",
+        "CreateAossManagedVpcEndpointInApprovedSubnets",
+        "CreateAossManagedVpcEndpointWithTaggedSecurityGroups",
+    ):
+        assert "ec2:VpceServiceName" not in create_vpc_endpoint_statements[sid], sid
+    endpoint_statement = create_vpc_endpoint_statements["CreateAossManagedVpcEndpoint"]
+    contains(endpoint_statement, 'resources = ["arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc-endpoint/*"]')
+    contains(endpoint_statement, 'test     = "StringLike"')
+    contains(endpoint_statement, 'variable = "ec2:VpceServiceName"')
+    contains(endpoint_statement, 'values   = ["com.amazonaws.ap-northeast-2.aoss*"]')
+    route53_vpc_value = 'values   = ["VPCId=${var.rag_runtime_vpc_id},VPCRegion=ap-northeast-2"]'
+    for sid, resource in (
+        ("CreateAossPrivateHostedZone", 'resources = ["*"]'),
+        ("AssociateAossVpcWithPrivateHostedZone", 'resources = ["arn:aws:route53:::hostedzone/*"]'),
+        ("ListAossPrivateDnsZonesByVpc", 'resources = ["*"]'),
+    ):
+        statement = foundation.split(f'sid       = "{sid}"', 1)[1].split('  statement {', 1)[0]
+        contains(statement, resource)
+        contains(statement, 'test     = "ForAllValues:StringEquals"')
+        contains(statement, 'variable = "route53:VPCs"')
+        contains(statement, route53_vpc_value)
+        assert "ArnEquals" not in statement
+        assert "arn:aws:ec2:" not in statement
     collection_access_policy_statement = foundation.split('sid       = "CreateExactCollectionAossAccessPolicy"', 1)[1].split('  statement {', 1)[0]
     index_access_policy_statement = foundation.split('sid       = "CreateExactIndexAossAccessPolicy"', 1)[1].split('  statement {', 1)[0]
     for statement in (collection_access_policy_statement, index_access_policy_statement):
