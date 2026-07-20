@@ -47,7 +47,7 @@ def verify_workflow() -> None:
         "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
-        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "rag-runtime-reviewed-create",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "foundation-rag-apply-permission-create", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "rag-runtime-reviewed-create",
         "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
         "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
         "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}", "RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}", "AWS_LIVE_RAG_TFVARS_B64 secret is required.",
@@ -62,6 +62,18 @@ def verify_workflow() -> None:
     contains(plan, "execute_approved_apply requires plan_stage=eks-runtime or rag-runtime.")
     contains(plan, "APPLY_REVIEWED_RAG_RUNTIME_CREATE")
     contains(plan, "expected_head_sha is required for execute_approved_apply.")
+    foundation = (ROOT / "infra/terraform/bootstrap/aws-live-foundation/main.tf").read_text(encoding="utf-8")
+    for required in (
+        "terraformers-dev-backend-irsa-role", "iam:PolicyARN", "Terraformers", "rag-runtime",
+        "aoss:collection", "terraformers-dev-refs",
+        "arn:aws:ec2:ap-northeast-2:${var.expected_aws_account_id}:vpc/${var.rag_runtime_vpc_id}",
+        "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress",
+        "AWSServiceRoleForAmazonOpenSearchServerless", "observability.aoss.amazonaws.com",
+        "arn:aws:codebuild:ap-northeast-2:${var.expected_aws_account_id}:project/terraformers-dev-refs-ingestion",
+    ):
+        contains(foundation, required)
+    for forbidden in (":role/terraformers-dev-refs-backend-aoss",):
+        assert forbidden not in foundation, forbidden
     for forbidden in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
         assert forbidden not in apply, forbidden
     upload = apply.split("Upload sanitized apply evidence", 1)[1]
@@ -101,6 +113,12 @@ def main() -> int:
     wrong = json.loads(json.dumps(positive)); wrong["resource_changes"][0]["address"] = "aws_iam_role.wrong"
     verify_contract(wrong, "foundation-apply-role-bootstrap", "foundation", False)
 
+
+    foundation_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": "aws_iam_role_policy.terraform_apply_rag_runtime_create", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "terraformers-live-apply-rag-runtime-create"}}}]}
+    verify_contract(foundation_permission, "foundation-rag-apply-permission-create", "foundation", True)
+    wrong_permission = json.loads(json.dumps(foundation_permission)); wrong_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
+    verify_contract(wrong_permission, "foundation-rag-apply-permission-create", "foundation", False)
+
     eks = fixture("aws_iam_policy.backend_runtime_access", "aws_iam_policy", ["update"])
     eks["resource_changes"][0]["change"]["after"] = {"policy": "after"}
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", True, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "policy"])
@@ -134,7 +152,7 @@ def main() -> int:
         "approved_terraform_apply_contract_verification=passed",
         "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
         "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
-        "foundation_negative_wrong_address=passed", "eks_runtime_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed",
+        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed",
         "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
     ]
     (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")

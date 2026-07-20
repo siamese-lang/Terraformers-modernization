@@ -140,11 +140,12 @@ variable "rag_runtime_corpus_bucket_name" {
 }
 
 variable "rag_runtime_vpc_id" {
-  description = "Exact VPC ID in which the approved rag-runtime security groups may be created."
+  description = "Approved VPC ID for the rag-runtime security groups."
   type        = string
+  default     = "vpc-02bb053a410ec298d"
 
   validation {
-    condition     = can(regex("^vpc-[0-9a-f]+$", var.rag_runtime_vpc_id))
-    error_message = "rag_runtime_vpc_id must be a VPC ID."
+    condition     = var.rag_runtime_vpc_id == "vpc-02bb053a410ec298d"
+    error_message = "rag_runtime_vpc_id must be the approved VPC vpc-02bb053a410ec298d."
   }
 }

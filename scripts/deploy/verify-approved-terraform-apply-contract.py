@@ -54,6 +54,7 @@ RAG_RUNTIME_RESOURCES = {
     )},
 }
 CONTRACTS = {
+    "foundation-rag-apply-permission-create": "foundation",
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
     "rag-runtime-reviewed-create": "rag-runtime",
@@ -108,7 +109,12 @@ def main() -> int:
     if args.stage != CONTRACTS[args.contract]: fail(f"contract {args.contract!r} requires stage {CONTRACTS[args.contract]!r}.")
     txt, summary = read_properties(args.summary_txt), json.loads(args.summary_json.read_text(encoding="utf-8"))
     actions = summary.get("resource_actions") or []
-    if args.contract == "foundation-apply-role-bootstrap":
+    if args.contract == "foundation-rag-apply-permission-create":
+        check_risk_gates(summary, txt, "foundation", 1, 0)
+        expected = {"aws_iam_role_policy.terraform_apply_rag_runtime_create": ("aws_iam_role_policy", ["create"], [])}
+        if actual_actions(actions) != expected: fail("foundation RAG permission resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "foundation-apply-role-bootstrap":
         check_risk_gates(summary, txt, "foundation", 4, 0)
         expected = {address: (kind, ["create"], []) for address, kind in FOUNDATION_RESOURCES.items()}
         if actual_actions(actions) != expected: fail("foundation resource_actions must exactly match the approved contract.")

@@ -379,3 +379,11 @@ local or remote tfstate
 - frontend/backend rollback evidence
 
 Workflow 성공만으로 실제 운영 완료를 주장하지 않는다.
+
+## Foundation RAG apply permission extension
+
+기존 foundation state에 `aws_iam_role_policy.terraform_apply_rag_runtime_create`만 없는 경우, protected `aws-live-plan` foundation apply를 직접 dispatch하고 `APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE`를 입력한다. 이 계약은 해당 inline policy의 create 한 건만 허용한다. foundation bootstrap create 계약과 별개이며 update, delete, replacement 및 다른 resource는 거부한다.
+
+이 apply role 권한 자체를 설치하려면 기존 apply role에 대한 일시적인 외부 bootstrap 권한이 필요하다. 이 임시 권한은 RAG apply evidence에 `foundation_permission_extension=external-temporary-bootstrap-required`로 기록되며, policy 설치 후 제거하거나 만료시켜야 한다.
+
+AOSS apply 전에는 `AWSServiceRoleForAmazonOpenSearchServerless` 존재 여부를 read-only IAM 조회로 확인한다. 존재하지 않는 경우에만 `observability.aoss.amazonaws.com` 서비스에 한정된 `iam:CreateServiceLinkedRole`을 사용한다.

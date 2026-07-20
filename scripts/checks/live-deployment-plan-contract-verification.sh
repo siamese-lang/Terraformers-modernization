@@ -57,7 +57,7 @@ from pathlib import Path
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 stages = manifest["stages"]
 by_id = {stage["id"]: stage for stage in stages}
-assert len(stages) == 12, len(stages)
+assert len(stages) == 13, len(stages)
 assert len(by_id) == len(stages)
 assert manifest["public_entrypoint"] == "cloudfront-only"
 assert manifest["terraform_plan_stages"] == [
@@ -65,6 +65,7 @@ assert manifest["terraform_plan_stages"] == [
     "runtime-dependencies",
     "stateful-dependencies",
     "eks-runtime",
+    "rag-runtime",
     "frontend-delivery",
 ]
 for stage in stages:
@@ -80,8 +81,8 @@ assert "100-frontend-publish" in by_id["110-e2e-and-incident-evidence"]["depends
 PY
 
 assert_contains '^live_deployment_execution_plan=generated$' "${PLAN_DIR}/plan-summary.txt" "Execution plan generation failed."
-assert_contains '^stage_count=12$' "${PLAN_DIR}/plan-summary.txt" "Unexpected deployment stage count."
-assert_contains '^terraform_plan_stage_count=5$' "${PLAN_DIR}/plan-summary.txt" "Unexpected Terraform plan stage count."
+assert_contains '^stage_count=13$' "${PLAN_DIR}/plan-summary.txt" "Unexpected deployment stage count."
+assert_contains '^terraform_plan_stage_count=6$' "${PLAN_DIR}/plan-summary.txt" "Unexpected Terraform plan stage count."
 assert_contains '^approval_required_stage_count=5$' "${PLAN_DIR}/plan-summary.txt" "Unexpected approval stage count."
 assert_contains '^public_entrypoint=cloudfront-only$' "${PLAN_DIR}/plan-summary.txt" "CloudFront-only entry point contract changed."
 assert_contains '^terraform_apply_automated=false$' "${PLAN_DIR}/plan-summary.txt" "Terraform apply must not be automated."
@@ -215,8 +216,8 @@ assert_not_contains 'AWS_TERRAFORM_LOCK_TABLE' "${DOC}" "Deprecated lock table v
 
 printf '%s\n' \
   'live_deployment_plan_contract=passed' \
-  'stage_count=12' \
-  'terraform_plan_stage_count=5' \
+  'stage_count=13' \
+  'terraform_plan_stage_count=6' \
   'foundation_bootstrap_plan_supported=true' \
   'foundation_state_component=bootstrap' \
   'plan_workflow=guarded-oidc' \
