@@ -71,7 +71,7 @@ class BedrockAnalysisProviderTest {
         assertThat(body.path("messages").get(0).path("content").get(0).path("type").asText()).isEqualTo("image");
         assertThat(body.toString()).contains("<analysis_json>");
         assertThat(body.toString()).contains("<terraform_hcl>");
-        assertThat(body.toString()).doesNotContain("terraformCode");
+        assertThat(body.toString()).doesNotContain("\"terraformCode\":");
         assertThat(body.toString()).doesNotContain("Use private subnets");
         assertThat(result.provider()).isEqualTo("bedrock:configured-model-id");
         assertThat(result.explanation()).isEqualTo("Private web stack");

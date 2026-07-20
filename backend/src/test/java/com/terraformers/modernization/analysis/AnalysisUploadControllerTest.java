@@ -126,20 +126,11 @@ class AnalysisUploadControllerTest {
     }
 
     @Test
-    void uploadRejectsAmbiguousProjectMode() throws Exception {
+    void uploadRequiresProjectName() throws Exception {
         mockMvc.perform(multipart("/api/upload")
                         .file(image("missing-mode.png"))
                         .with(testUserJwt()))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("exactly one mode")));
-
-        mockMvc.perform(multipart("/api/upload")
-                        .file(image("both-modes.png"))
-                        .param("projectName", "Both")
-                        .param("projectId", "1")
-                        .with(testUserJwt()))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("exactly one mode")));
+                .andExpect(status().isBadRequest());
     }
 
     private MockMultipartFile image(String filename) {

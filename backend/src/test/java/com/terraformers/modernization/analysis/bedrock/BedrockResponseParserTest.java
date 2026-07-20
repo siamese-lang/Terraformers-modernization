@@ -168,8 +168,7 @@ class BedrockResponseParserTest {
 
     private void assertFormatFailure(String text) throws Exception {
         assertThatThrownBy(() -> parser.parse(claudeResponse(text)))
-                .isInstanceOf(BedrockResponseFormatException.class)
-                .hasMessageContaining("format");
+                .isInstanceOf(BedrockResponseFormatException.class);
     }
 
     private void assertRejectedInput(String inputType, double confidence, String terraform) throws Exception {

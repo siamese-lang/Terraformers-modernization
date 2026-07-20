@@ -17,22 +17,31 @@ class RetrievalModeReferenceRetrieverTest {
     private final ReferenceQuery query = new ReferenceQuery("VPC private subnet to RDS", 3);
 
     @Test
-    void requiredPropagatesFailuresAndRejectsEmptyResults() {
+    void requiredPropagatesVectorFailure() {
         OpenSearchReferenceRetriever vector = mock(OpenSearchReferenceRetriever.class);
         AnalysisRuntimeProperties properties = properties(RetrievalMode.REQUIRED);
         when(vector.retrieve(any())).thenThrow(new IllegalStateException("request failed"));
         assertThatThrownBy(() -> retriever(vector, properties).retrieve(query)).isInstanceOf(IllegalStateException.class);
+    }
 
+    @Test
+    void requiredRejectsEmptyResults() {
+        OpenSearchReferenceRetriever vector = mock(OpenSearchReferenceRetriever.class);
         when(vector.retrieve(any())).thenReturn(List.of());
+        AnalysisRuntimeProperties properties = properties(RetrievalMode.REQUIRED);
         assertThatThrownBy(() -> retriever(vector, properties).retrieve(query)).hasMessageContaining("no documents");
     }
 
     @Test
-    void optionalConvertsFailuresAndEmptyResultsToEmptyReferences() {
+    void optionalConvertsVectorFailureToEmptyReferences() {
         OpenSearchReferenceRetriever vector = mock(OpenSearchReferenceRetriever.class);
         when(vector.retrieve(any())).thenThrow(new IllegalStateException("request failed"));
         assertThat(retriever(vector, properties(RetrievalMode.OPTIONAL)).retrieve(query)).isEmpty();
+    }
 
+    @Test
+    void optionalAllowsEmptyResults() {
+        OpenSearchReferenceRetriever vector = mock(OpenSearchReferenceRetriever.class);
         when(vector.retrieve(any())).thenReturn(List.of());
         assertThat(retriever(vector, properties(RetrievalMode.OPTIONAL)).retrieve(query)).isEmpty();
     }
