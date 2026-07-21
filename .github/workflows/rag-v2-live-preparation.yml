@@ -140,15 +140,17 @@ jobs:
           ref: agent/rag-corpus-version-scope
           fetch-depth: 0
 
-      - name: Download ingestion evidence
-        if: ${{ needs.ingest-v2.result == 'success' }}
+      - name: Download ingestion evidence when available
+        if: ${{ always() }}
+        continue-on-error: true
         uses: actions/download-artifact@v6
         with:
           name: rag-corpus-ingestion-live-evidence
           path: preparation-evidence/ingestion
 
-      - name: Download image evidence
-        if: ${{ needs.publish-backend.result == 'success' }}
+      - name: Download image evidence when available
+        if: ${{ always() }}
+        continue-on-error: true
         uses: actions/download-artifact@v6
         with:
           name: rag-v2-backend-image-evidence
@@ -162,6 +164,7 @@ jobs:
           set -euo pipefail
           RESULT_FILE=.github/rag-v2-live-preparation-result.txt
           {
+            echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "workflow_commit_sha=${GITHUB_SHA}"
             echo "backend_source_commit_sha=a672a322fcaa784baf19fa7bb0687fc403f0aff7"
             echo "ingestion_result=${INGEST_RESULT}"
@@ -176,5 +179,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$RESULT_FILE"
+          if git diff --cached --quiet; then
+            exit 0
+          fi
           git commit -m "Record RAG v2 live preparation result"
           git push origin HEAD:agent/rag-corpus-version-scope
