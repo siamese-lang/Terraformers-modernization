@@ -26,7 +26,13 @@ management:
     export:
       prometheus:
         enabled: true
-      cloudwatch:
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  cloudwatch:
+    metrics:
+      export:
         enabled: false
 
 info:

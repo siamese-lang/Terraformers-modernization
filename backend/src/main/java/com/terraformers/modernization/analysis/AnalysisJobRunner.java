@@ -43,7 +43,7 @@ public class AnalysisJobRunner {
                 observability.jobSucceeded();
             } catch (RuntimeException exception) {
                 observability.jobFailed(exception);
-                log.error("Analysis job failed", exception);
+                log.error("Analysis job failed outcome=failed exceptionCategory={}", observability.category(exception));
                 stateService.markFailed(jobId, safeFailureReason(exception));
             } finally {
                 if (sample != null) sample.stop(io.micrometer.core.instrument.Timer.builder("terraformers.analysis.duration").register(observability.meterRegistry()));

@@ -324,8 +324,8 @@ resource "aws_cloudwatch_dashboard" "operations_visibility" {
     { type = "text", x = 0, y = 0, width = 24, height = 2, properties = { markdown = "# Terraformers Backend operations\\nEnvironment: ${var.environment} | Service: terraformers-backend" } },
     { type = "metric", x = 0, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "EKS node and pod CPU / memory", view = "timeSeries", metrics = [["ContainerInsights", "node_cpu_utilization", "ClusterName", aws_eks_cluster.backend.name], [".", "pod_cpu_utilization", ".", "."]] } },
     { type = "metric", x = 12, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "Backend HTTP and restarts", view = "timeSeries", metrics = [["AWS/ApplicationSignals", "Latency", "Service", "terraformers-backend"], [".", "Fault", ".", "."], ["ContainerInsights", "number_of_container_restarts", "ClusterName", aws_eks_cluster.backend.name]] } },
-    { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Analysis jobs and duration", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.analysis.jobs", "outcome", "started"], [".", ".", ".", "succeeded"], [".", ".", ".", "failed"], [".", "terraformers.analysis.duration"]] } },
-    { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Bedrock and AOSS", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.bedrock.invocation"], [".", "terraformers.aoss.retrieval"], [".", "terraformers.aoss.retrieved_hits"]] } }
+    { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Analysis jobs and duration", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.analysis.jobs", "service", "terraformers-backend", "environment", var.environment, "outcome", "started"], [".", ".", ".", ".", ".", ".", ".", "succeeded"], [".", ".", ".", ".", ".", ".", ".", "failed"], [".", "terraformers.analysis.duration", ".", ".", ".", "."]] } },
+    { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Bedrock and AOSS", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.bedrock.invocation", "service", "terraformers-backend", "environment", var.environment], [".", "terraformers.aoss.retrieval", ".", ".", ".", "."], [".", "terraformers.aoss.retrieved_hits", ".", ".", ".", "."]] } }
   ] })
 }
 
@@ -353,7 +353,11 @@ resource "aws_cloudwatch_metric_alarm" "analysis_failure" {
   threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
-  dimensions = { outcome = "failed" }
+  dimensions = {
+    service     = "terraformers-backend"
+    environment = var.environment
+    outcome     = "failed"
+  }
 }
 resource "aws_cloudwatch_metric_alarm" "backend_restarts" {
   alarm_name          = "${local.name_prefix}-backend-restarts"

@@ -72,7 +72,7 @@ public class AnalysisObservability {
         }
     }
 
-    private String category(Throwable exception) {
+    public String category(Throwable exception) {
         String simple = exception == null ? "unknown" : exception.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         if (simple.contains("timeout")) return "timeout";
         if (simple.contains("validation")) return "validation";

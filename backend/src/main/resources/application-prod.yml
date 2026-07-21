@@ -32,11 +32,13 @@ management:
     web:
       exposure:
         include: health,info,prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
-      cloudwatch:
+  cloudwatch:
+    metrics:
+      export:
         enabled: true
         namespace: Terraformers/Backend
         step: 1m
