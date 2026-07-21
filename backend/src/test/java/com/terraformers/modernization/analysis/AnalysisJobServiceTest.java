@@ -23,7 +23,10 @@ class AnalysisJobServiceTest {
         AnalysisJobRepository repository = mock(AnalysisJobRepository.class);
         AnalysisRuntimeProperties properties = new AnalysisRuntimeProperties();
         AnalysisJobRunner runner = mock(AnalysisJobRunner.class);
-        Executor rejectingExecutor = task -> { throw new RejectedExecutionException("queue full"); };
+        AnalysisObservability observability = mock(AnalysisObservability.class);
+        Executor rejectingExecutor = task -> {
+            throw new RejectedExecutionException("queue full");
+        };
         ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
         ProjectFileRepository projectFileRepository = mock(ProjectFileRepository.class);
         UserEntity requester = mock(UserEntity.class);
@@ -47,12 +50,14 @@ class AnalysisJobServiceTest {
                 runner,
                 rejectingExecutor,
                 projectDomainService,
-                projectFileRepository
+                projectFileRepository,
+                observability
         );
 
         AnalysisJobResponse response = service.create(new AnalysisJobRequest(42L, 101L, "reject-test"), requester);
 
         assertThat(response.status()).isEqualTo(AnalysisJobStatus.PENDING);
+        verify(observability).jobRejected();
         verify(runner).markFailed(
                 response.id(),
                 "analysis job could not be scheduled because the executor rejected the task"
