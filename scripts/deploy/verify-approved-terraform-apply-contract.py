@@ -22,6 +22,17 @@ FOUNDATION_RESOURCES = {
     "aws_iam_role_policy.terraform_apply_state_access": "aws_iam_role_policy",
     "aws_iam_role_policy_attachment.terraform_apply_read_only": "aws_iam_role_policy_attachment",
 }
+OPERATIONS_VISIBILITY_RESOURCES = {
+    "aws_cloudwatch_dashboard.operations_visibility": "aws_cloudwatch_dashboard",
+    "aws_cloudwatch_metric_alarm.analysis_failure": "aws_cloudwatch_metric_alarm",
+    "aws_cloudwatch_metric_alarm.backend_fault": "aws_cloudwatch_metric_alarm",
+    "aws_cloudwatch_metric_alarm.backend_unavailable": "aws_cloudwatch_metric_alarm",
+    "aws_eks_addon.cloudwatch_observability": "aws_eks_addon",
+    "aws_iam_role.cloudwatch_observability_irsa": "aws_iam_role",
+    "aws_iam_role_policy.backend_cloudwatch_metrics": "aws_iam_role_policy",
+    "aws_iam_role_policy_attachment.cloudwatch_observability_agent": "aws_iam_role_policy_attachment",
+    "aws_iam_role_policy_attachment.cloudwatch_observability_xray": "aws_iam_role_policy_attachment",
+}
 RAG_RUNTIME_RESOURCES = {
     **{address: (resource_type, ["create"], []) for address, resource_type in {
         "aws_codebuild_project.corpus_ingestion": "aws_codebuild_project",
@@ -59,6 +70,7 @@ CONTRACTS = {
     "foundation-rag-apply-permission-update": "foundation",
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
+    "eks-runtime-operations-visibility-create": "eks-runtime",
     "rag-runtime-reviewed-create": "rag-runtime",
     "rag-runtime-reviewed-recovery": "rag-runtime",
 }
@@ -176,6 +188,11 @@ def main() -> int:
         if not args.approved_resource or not args.approved_changed_path: fail("--approved-resource and --approved-changed-path are required for eks-runtime contract.")
         check_risk_gates(summary, txt, "eks-runtime", 1, 1)
         if actual_actions(actions) != {args.approved_resource: ("aws_iam_policy", ["update"], [args.approved_changed_path])}: fail("resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "eks-runtime-operations-visibility-create":
+        check_risk_gates(summary, txt, "eks-runtime", 9, 0)
+        expected = {address: (kind, ["create"], []) for address, kind in OPERATIONS_VISIBILITY_RESOURCES.items()}
+        if actual_actions(actions) != expected: fail("operations visibility resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "rag-runtime-reviewed-create":
         check_risk_gates(summary, txt, "rag-runtime", 26, 0, RAG_REQUIRED_TXT_VALUES)

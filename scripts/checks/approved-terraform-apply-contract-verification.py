@@ -23,6 +23,17 @@ FOUNDATION = {
     "aws_iam_role_policy.terraform_apply_state_access": "aws_iam_role_policy",
     "aws_iam_role_policy_attachment.terraform_apply_read_only": "aws_iam_role_policy_attachment",
 }
+OPERATIONS_VISIBILITY = {
+    "aws_cloudwatch_dashboard.operations_visibility": "aws_cloudwatch_dashboard",
+    "aws_cloudwatch_metric_alarm.analysis_failure": "aws_cloudwatch_metric_alarm",
+    "aws_cloudwatch_metric_alarm.backend_fault": "aws_cloudwatch_metric_alarm",
+    "aws_cloudwatch_metric_alarm.backend_unavailable": "aws_cloudwatch_metric_alarm",
+    "aws_eks_addon.cloudwatch_observability": "aws_eks_addon",
+    "aws_iam_role.cloudwatch_observability_irsa": "aws_iam_role",
+    "aws_iam_role_policy.backend_cloudwatch_metrics": "aws_iam_role_policy",
+    "aws_iam_role_policy_attachment.cloudwatch_observability_agent": "aws_iam_role_policy_attachment",
+    "aws_iam_role_policy_attachment.cloudwatch_observability_xray": "aws_iam_role_policy_attachment",
+}
 
 
 def run(args: list[str], success: bool = True) -> None:
@@ -47,7 +58,7 @@ def verify_workflow() -> None:
         "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
-        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE", "eks-runtime-operations-visibility-create", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
         "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
         "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
         "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}", "RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}", "AWS_LIVE_RAG_TFVARS_B64 secret is required.",
@@ -75,6 +86,7 @@ def verify_workflow() -> None:
         "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=26", "environment_gate=aws-live-apply"),
         "rag-runtime-reviewed-recovery": ("approved_action=create-and-read", "approved_resource_count=${approved_resource_count}", "environment_gate=aws-live-apply"),
         "eks-runtime-backend-policy-update": ("approved_resource=aws_iam_policy.backend_runtime_access", "approved_action=update", "approved_changed_path=policy", "environment_gate=aws-live-apply"),
+        "eks-runtime-operations-visibility-create": ("approved_action=create", "approved_resource_count=9", "environment_gate=aws-live-apply"),
     }
     for contract, expected_values in expected_summary_branches.items():
         branch = summary_case.split(f"{contract})", 1)[1].split(";;", 1)[0]
@@ -239,6 +251,17 @@ def main() -> int:
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", True, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "policy"])
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", False, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "tags.Owner"])
 
+    operations_visibility_changes = [
+        {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
+        for address, kind in OPERATIONS_VISIBILITY.items()
+    ]
+    operations_visibility = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": operations_visibility_changes}
+    verify_contract(operations_visibility, "eks-runtime-operations-visibility-create", "eks-runtime", True)
+    operations_visibility_extra = json.loads(json.dumps(operations_visibility)); operations_visibility_extra["resource_changes"].append({"address": "aws_iam_role_policy.extra", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
+    verify_contract(operations_visibility_extra, "eks-runtime-operations-visibility-create", "eks-runtime", False)
+    operations_visibility_node_group = json.loads(json.dumps(operations_visibility)); operations_visibility_node_group["resource_changes"][0] = {"address": "aws_eks_node_group.backend", "type": "aws_eks_node_group", "change": {"actions": ["create"], "before": None, "after": {"name": "backend"}}}
+    verify_contract(operations_visibility_node_group, "eks-runtime-operations-visibility-create", "eks-runtime", False)
+
     rag_changes = [
         {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
         for address, kind in RAG_CREATES.items()
@@ -310,7 +333,7 @@ def main() -> int:
         "approved_terraform_apply_contract_verification=passed",
         "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
         "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
-        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
+        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "operations_visibility_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
         "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
     ]
     (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
