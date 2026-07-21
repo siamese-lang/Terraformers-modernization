@@ -30,18 +30,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: aws-backend-image-publish
+    permissions:
+      contents: read
+      id-token: write
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.EXPECTED_AWS_ACCOUNT_ID }}
       BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'terraformers-backend' }}
-      SOURCE_COMMIT_SHA: ${{ github.sha }}
+      SOURCE_COMMIT_SHA: a672a322fcaa784baf19fa7bb0687fc403f0aff7
 
     steps:
-      - name: Checkout exact source
+      - name: Checkout instrumented backend source
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.SOURCE_COMMIT_SHA }}
 
       - name: Validate immutable publish inputs
         run: |
@@ -121,3 +124,57 @@ jobs:
           name: rag-v2-backend-image-evidence
           path: backend-live-preparation-summary.txt
           if-no-files-found: error
+
+  record-result:
+    if: ${{ always() }}
+    needs:
+      - ingest-v2
+      - publish-backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout preparation branch
+        uses: actions/checkout@v5
+        with:
+          ref: agent/rag-corpus-version-scope
+          fetch-depth: 0
+
+      - name: Download ingestion evidence
+        if: ${{ needs.ingest-v2.result == 'success' }}
+        uses: actions/download-artifact@v6
+        with:
+          name: rag-corpus-ingestion-live-evidence
+          path: preparation-evidence/ingestion
+
+      - name: Download image evidence
+        if: ${{ needs.publish-backend.result == 'success' }}
+        uses: actions/download-artifact@v6
+        with:
+          name: rag-v2-backend-image-evidence
+          path: preparation-evidence/image
+
+      - name: Record sanitized preparation result
+        env:
+          INGEST_RESULT: ${{ needs.ingest-v2.result }}
+          PUBLISH_RESULT: ${{ needs.publish-backend.result }}
+        run: |
+          set -euo pipefail
+          RESULT_FILE=.github/rag-v2-live-preparation-result.txt
+          {
+            echo "workflow_commit_sha=${GITHUB_SHA}"
+            echo "backend_source_commit_sha=a672a322fcaa784baf19fa7bb0687fc403f0aff7"
+            echo "ingestion_result=${INGEST_RESULT}"
+            echo "image_publish_result=${PUBLISH_RESULT}"
+            if [[ -f preparation-evidence/ingestion/package-summary.txt ]]; then
+              cat preparation-evidence/ingestion/package-summary.txt
+            fi
+            if [[ -f preparation-evidence/image/backend-live-preparation-summary.txt ]]; then
+              cat preparation-evidence/image/backend-live-preparation-summary.txt
+            fi
+          } > "$RESULT_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$RESULT_FILE"
+          git commit -m "Record RAG v2 live preparation result"
+          git push origin HEAD:agent/rag-corpus-version-scope
