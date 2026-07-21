@@ -54,6 +54,8 @@ jobs:
           OUTPUT_ROOT="artifacts/rag-corpus-v2-generated"
           OUTPUT_DIR="${OUTPUT_ROOT}/corpus/terraformers-reference/v2"
           PROVIDER_COMMIT="f7a3b98da589ab1d52756b0dcee0dbf2de83d635"
+          PROJECT_SOURCE_COMMIT="${{ github.event.pull_request.head.sha || github.sha }}"
+          [[ "$PROJECT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
 
           rm -rf "$PROVIDER_DIR" "$SCHEMA_DIR" "$OUTPUT_ROOT"
           git clone \
@@ -84,14 +86,14 @@ jobs:
             --provider-source-dir "$PROVIDER_DIR" \
             --provider-schema-json "$SCHEMA_DIR/aws-provider-schema.json" \
             --provider-source-commit "$PROVIDER_COMMIT" \
-            --project-source-commit "$GITHUB_SHA" \
+            --project-source-commit "$PROJECT_SOURCE_COMMIT" \
             --output-dir "$OUTPUT_DIR"
           python3 scripts/rag/curate-corpus-v2.py --corpus-dir "$OUTPUT_DIR"
           python3 scripts/checks/rag-corpus-contract-verification.py \
             --corpus-dir "$OUTPUT_DIR" \
             --summary-json "$OUTPUT_ROOT/contract-summary.json"
 
-          python3 - "$OUTPUT_DIR" "$OUTPUT_ROOT/generation-summary.json" "$GITHUB_SHA" <<'PY'
+          python3 - "$OUTPUT_DIR" "$OUTPUT_ROOT/generation-summary.json" "$PROJECT_SOURCE_COMMIT" <<'PY'
           import collections
           import json
           import pathlib
