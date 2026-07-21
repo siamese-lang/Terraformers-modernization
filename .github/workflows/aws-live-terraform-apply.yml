@@ -142,6 +142,8 @@ jobs:
                 echo 'apply_contract=eks-runtime-operations-visibility-addon-recovery' >> "${GITHUB_OUTPUT}"
               elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_REPAIR ]]; then
                 echo 'apply_contract=eks-runtime-operations-visibility-repair' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_APPLICATION_SIGNALS_BACKEND_SELECTION ]]; then
+                echo 'apply_contract=eks-runtime-application-signals-backend-selection' >> "${GITHUB_OUTPUT}"
               else
                 echo 'approval_confirmation does not match a required eks-runtime confirmation string.' >&2; exit 1
               fi
@@ -362,6 +364,13 @@ jobs:
                 echo 'approved_resource=aws_cloudwatch_dashboard.operations_visibility'
                 echo 'approved_resource=aws_cloudwatch_metric_alarm.analysis_failure'
                 echo 'approved_resource_count=3'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-application-signals-backend-selection)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
+                echo 'approved_changed_path=configuration_values'
+                echo 'approved_resource_count=1'
                 echo 'environment_gate=aws-live-apply'
                 ;;
               *)

@@ -315,6 +315,11 @@ resource "aws_eks_addon" "cloudwatch_observability" {
       applicationSignals = {
         autoMonitor = {
           monitorAllServices = false
+          customSelector = {
+            java = {
+              deployments = ["${var.backend_namespace}/terraformers-backend"]
+            }
+          }
         }
       }
     }
