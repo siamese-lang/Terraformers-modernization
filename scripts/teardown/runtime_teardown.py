@@ -8,7 +8,7 @@ import json
 import pathlib
 import re
 import sys
-from typing import Any, Iterable
+from typing import Any
 
 
 def load_json(path: str | pathlib.Path) -> dict[str, Any]:
@@ -66,135 +66,39 @@ def cmd_resolve(args: argparse.Namespace) -> None:
             f"expected {expected_confirmation}"
         )
 
-    outputs = {
-        "stage": args.stage,
-        "kind": stage["kind"],
-        "order": stage["order"],
-        "reviewed_delete_count": reviewed_count,
-        "confirmation_expected": expected_confirmation,
-        "required_empty_states": stage.get("required_empty_states", []),
-        "state_component": stage.get("state_component", ""),
-        "terraform_dir": stage.get("terraform_dir", ""),
-        "tfvars_secret": stage.get("tfvars_secret", ""),
-        "runner_override": stage.get("runner_override", "none"),
-    }
-    write_github_output(pathlib.Path(args.github_output), outputs)
-
-
-def iter_state_resources(module: dict[str, Any]) -> Iterable[dict[str, Any]]:
-    for resource in module.get("resources", []) or []:
-        if isinstance(resource, dict):
-            yield resource
-    for child in module.get("child_modules", []) or []:
-        if isinstance(child, dict):
-            yield from iter_state_resources(child)
-
-
-def state_resource_map(state_json: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    values = state_json.get("values") or {}
-    root = values.get("root_module") or {}
-    result: dict[str, dict[str, Any]] = {}
-    for resource in iter_state_resources(root):
-        address = resource.get("address")
-        if isinstance(address, str):
-            result[address] = resource
-    return result
-
-
-def resource_value(
-    resources: dict[str, dict[str, Any]], address: str, *attributes: str
-) -> Any:
-    resource = resources.get(address)
-    if resource is None:
-        return None
-    values = resource.get("values") or {}
-    for attribute in attributes:
-        value = values.get(attribute)
-        if value not in (None, ""):
-            return value
-    return None
-
-
-def cmd_extract_state(args: argparse.Namespace) -> None:
-    state = load_json(args.state_json)
-    resources = state_resource_map(state)
-    stage = args.stage
-    extracted: dict[str, Any] = {"stage": stage}
-
-    if stage == "frontend-delivery":
-        extracted["frontend_bucket"] = resource_value(
-            resources, "aws_s3_bucket.frontend", "bucket", "id"
-        )
-        extracted["cloudfront_distribution_id"] = resource_value(
-            resources, "aws_cloudfront_distribution.frontend", "id"
-        )
-    elif stage == "rag-runtime":
-        extracted["corpus_bucket"] = resource_value(
-            resources, "aws_s3_bucket.corpus", "bucket", "id"
-        )
-        extracted["codebuild_project"] = resource_value(
-            resources, "aws_codebuild_project.corpus_ingestion", "name", "id"
-        )
-        extracted["aoss_collection_name"] = resource_value(
-            resources,
-            "aws_opensearchserverless_collection.references",
-            "name",
-        )
-    elif stage == "eks-runtime":
-        extracted["eks_cluster_name"] = resource_value(
-            resources, "aws_eks_cluster.backend", "name", "id"
-        )
-    elif stage == "stateful-dependencies":
-        extracted["db_identifier"] = resource_value(
-            resources, "aws_db_instance.backend", "identifier", "id"
-        )
-        extracted["cognito_pool_id"] = resource_value(
-            resources, "aws_cognito_user_pool.backend", "id"
-        )
-    elif stage == "runtime-dependencies":
-        extracted["ecr_repository"] = resource_value(
-            resources, "aws_ecr_repository.backend", "name", "id"
-        )
-        extracted["upload_bucket"] = resource_value(
-            resources, "aws_s3_bucket.uploads", "bucket", "id"
-        )
-        extracted["result_bucket"] = resource_value(
-            resources, "aws_s3_bucket.results", "bucket", "id"
-        )
-        extracted["runtime_secret_id"] = resource_value(
-            resources, "aws_secretsmanager_secret.backend_runtime", "id", "name", "arn"
-        )
-        extracted["ai_queue_url"] = resource_value(
-            resources, "aws_sqs_queue.ai_log", "url", "id"
-        )
-        extracted["terraform_queue_url"] = resource_value(
-            resources, "aws_sqs_queue.terraform_log", "url", "id"
-        )
-    elif stage == "network":
-        extracted["vpc_id"] = resource_value(
-            resources, "aws_vpc.runtime", "id"
-        )
-    else:
-        raise ValueError(f"State extraction is not supported for stage: {stage}")
-
-    missing = [key for key, value in extracted.items() if key != "stage" and value in (None, "")]
-    if missing:
-        raise ValueError(
-            f"Required state values are missing for {stage}: {', '.join(sorted(missing))}"
-        )
-    pathlib.Path(args.output).write_text(
-        json.dumps(extracted, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    write_github_output(
+        pathlib.Path(args.github_output),
+        {
+            "stage": args.stage,
+            "kind": stage["kind"],
+            "order": stage["order"],
+            "reviewed_delete_count": reviewed_count,
+            "confirmation_expected": expected_confirmation,
+            "required_empty_states": stage.get("required_empty_states", []),
+            "state_component": stage.get("state_component", ""),
+            "terraform_dir": stage.get("terraform_dir", ""),
+            "tfvars_secret": stage.get("tfvars_secret", ""),
+            "runner_override": stage.get("runner_override", "none"),
+        },
     )
 
 
-def managed_instance_count(raw_state: dict[str, Any]) -> int:
+def raw_managed_instance_count(raw_state: dict[str, Any]) -> int:
     count = 0
     for resource in raw_state.get("resources", []) or []:
+        if not isinstance(resource, dict):
+            continue
         if resource.get("mode", "managed") != "managed":
             continue
         count += len(resource.get("instances", []) or [])
     return count
+
+
+def cmd_managed_count(args: argparse.Namespace) -> None:
+    count = raw_managed_instance_count(load_json(args.state_json))
+    if args.output:
+        pathlib.Path(args.output).write_text(f"{count}\n", encoding="utf-8")
+    print(count)
 
 
 def cmd_verify_empty_states(args: argparse.Namespace) -> None:
@@ -208,7 +112,7 @@ def cmd_verify_empty_states(args: argparse.Namespace) -> None:
         if not path.exists():
             failures.append(f"missing-state:{component}")
             continue
-        count = managed_instance_count(load_json(path))
+        count = raw_managed_instance_count(load_json(path))
         result[component] = count
         if count != 0:
             failures.append(f"nonempty-state:{component}:{count}")
@@ -254,22 +158,25 @@ def cmd_verify_plan(args: argparse.Namespace) -> None:
         raise ValueError("Destroy plan contains unreviewed addresses: " + ", ".join(unexpected))
     reviewed_count = int(stage["reviewed_delete_count"])
     if len(actual) > reviewed_count:
-        raise ValueError(
-            f"Destroy plan exceeds reviewed count: {len(actual)} > {reviewed_count}"
-        )
+        raise ValueError(f"Destroy plan exceeds reviewed count: {len(actual)} > {reviewed_count}")
     if int(summary.get("delete_resource_count", -1)) != len(actual):
         raise ValueError("Summary delete count does not match managed delete addresses")
 
-    result = {
-        "stage": args.stage,
-        "reviewed_delete_count": reviewed_count,
-        "actual_delete_count": len(actual),
-        "state_aware_subset": sorted(actual) != sorted(allowed),
-        "unexpected_addresses": unexpected,
-        "contract": "passed",
-    }
     pathlib.Path(args.output).write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        json.dumps(
+            {
+                "stage": args.stage,
+                "reviewed_delete_count": reviewed_count,
+                "actual_delete_count": len(actual),
+                "state_aware_subset": actual != allowed,
+                "unexpected_addresses": unexpected,
+                "contract": "passed",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
 
@@ -298,8 +205,7 @@ def cmd_static_check(args: argparse.Namespace) -> None:
                 raise ValueError(
                     f"Reviewed count/address mismatch for {name}: {reviewed} vs {len(allowed)}"
                 )
-            required = ["state_component", "terraform_dir", "tfvars_secret", "runner_override"]
-            for key in required:
+            for key in ("state_component", "terraform_dir", "tfvars_secret", "runner_override"):
                 if not stage.get(key):
                     raise ValueError(f"Missing {key} for {name}")
         elif reviewed != 0 or allowed:
@@ -311,21 +217,23 @@ def cmd_static_check(args: argparse.Namespace) -> None:
     required_fragments = [
         "environment: aws-live-teardown",
         "group: aws-runtime-teardown",
-        "terraform -chdir=\"${TF_DIR}\" apply",
-        "${RUNNER_TEMP}/destroy.tfplan",
+        'terraform -chdir="${TF_DIR}" apply',
+        '"${RUNNER_TEMP}/destroy.tfplan"',
         "runtime_teardown.py verify-plan",
         "DESTROY_REVIEWED_",
+        "foundation_deleted=false",
+        "kubernetes-owners.json",
     ]
     for fragment in required_fragments:
         if fragment not in workflow:
             raise ValueError(f"Workflow is missing required safety fragment: {fragment}")
-    forbidden_fragments = [
+    for fragment in (
         "terraform destroy",
         "destroy_stage=foundation",
         "aws-live-apply",
         "aws-live-plan",
-    ]
-    for fragment in forbidden_fragments:
+        "AdministratorAccess",
+    ):
         if fragment in workflow:
             raise ValueError(f"Workflow contains forbidden fragment: {fragment}")
 
@@ -346,11 +254,10 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--github-output", required=True)
     resolve.set_defaults(func=cmd_resolve)
 
-    extract = subparsers.add_parser("extract-state")
-    extract.add_argument("--stage", required=True)
-    extract.add_argument("--state-json", required=True)
-    extract.add_argument("--output", required=True)
-    extract.set_defaults(func=cmd_extract_state)
+    count = subparsers.add_parser("managed-count")
+    count.add_argument("--state-json", required=True)
+    count.add_argument("--output")
+    count.set_defaults(func=cmd_managed_count)
 
     empty = subparsers.add_parser("verify-empty-states")
     empty.add_argument("--config", required=True)
@@ -375,8 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
+    args = build_parser().parse_args()
     try:
         args.func(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
