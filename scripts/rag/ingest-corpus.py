@@ -55,27 +55,66 @@ def ensure_version_checksum(receipt: dict[str, object] | None, corpus_version: s
         fail("corpus version checksum changed; bump corpus version")
 
 
-def wait_for_document_count(client: object, index_name: str, expected: int, timeout_seconds: int = 180) -> int:
+def corpus_version_filter(corpus_version: str) -> dict[str, object]:
+    if not corpus_version:
+        fail("corpus version must be set")
+    return {"term": {"corpusVersion": corpus_version}}
+
+
+def document_exists(client: object, index_name: str, document_id: str, corpus_version: str) -> bool:
+    hits = client.search(
+        index=index_name,
+        body={
+            "size": 1,
+            "_source": False,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"documentId": document_id}},
+                        corpus_version_filter(corpus_version),
+                    ]
+                }
+            },
+        },
+    )["hits"]["hits"]
+    return bool(hits)
+
+
+def wait_for_document_count(client: object, index_name: str, expected: int, corpus_version: str, timeout_seconds: int = 180) -> int:
     deadline = time.monotonic() + timeout_seconds
     while True:
-        count = int(client.count(index=index_name)["count"])
+        count = int(client.count(index=index_name, body={"query": corpus_version_filter(corpus_version)})["count"])
         if count == expected:
             return count
         if count > expected:
-            fail("target index document count exceeds expected document count")
+            fail("target corpus version document count exceeds expected document count")
         if time.monotonic() >= deadline:
-            fail("target index document count did not converge before timeout")
+            fail("target corpus version document count did not converge before timeout")
         time.sleep(10)
 
 
-def wait_for_knn_hits(client: object, index_name: str, vector_field: str, vector: list[float], timeout_seconds: int = 120) -> list[dict[str, object]]:
+def wait_for_knn_hits(client: object, index_name: str, vector_field: str, vector: list[float], corpus_version: str, timeout_seconds: int = 120) -> list[dict[str, object]]:
     deadline = time.monotonic() + timeout_seconds
     while True:
-        hits = client.search(index=index_name, body={"size": 3, "query": {"knn": {vector_field: {"vector": vector, "k": 3}}}})["hits"]["hits"]
+        hits = client.search(
+            index=index_name,
+            body={
+                "size": 3,
+                "query": {
+                    "knn": {
+                        vector_field: {
+                            "vector": vector,
+                            "k": 3,
+                            "filter": corpus_version_filter(corpus_version),
+                        }
+                    }
+                },
+            },
+        )["hits"]["hits"]
         if hits:
             return hits
         if time.monotonic() >= deadline:
-            fail("representative k-NN query returned no hits before timeout")
+            fail("representative corpus-version k-NN query returned no hits before timeout")
         time.sleep(10)
 
 
@@ -102,13 +141,14 @@ def main() -> None:
     corpus = corpus_dir(args.package)
     contract = validate_contract(corpus)
     manifest = json.loads((corpus / "corpus-manifest.json").read_text(encoding="utf-8"))
+    corpus_version = str(manifest["corpusVersion"])
     checksum = str(contract["sha256"])
     document_count = int(contract["documentCount"])
     if args.expected_checksum and checksum != args.expected_checksum:
         fail("package checksum does not match expected full corpus contract checksum")
     if args.expected_document_count and document_count != args.expected_document_count:
         fail("package document count does not match expected document count")
-    summary = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": document_count, "index_name": args.index_name or manifest["indexName"], "embedding_model_id": args.embedding_model_id or manifest["embeddingModelId"], "vector_dimension": args.vector_dimension, "outcome": "validated", "elapsed_seconds": round(time.monotonic() - started, 3)}
+    summary = {"corpus_version": corpus_version, "checksum": checksum, "document_count": document_count, "index_name": args.index_name or manifest["indexName"], "embedding_model_id": args.embedding_model_id or manifest["embeddingModelId"], "vector_dimension": args.vector_dimension, "outcome": "validated", "elapsed_seconds": round(time.monotonic() - started, 3)}
     if args.validate_only:
         log(**summary)
         return
@@ -124,9 +164,9 @@ def main() -> None:
         receipt = json.loads(s3.get_object(Bucket=args.receipt_bucket, Key=args.receipt_key)["Body"].read())
     except s3.exceptions.NoSuchKey:
         pass
-    ensure_version_checksum(receipt, manifest["corpusVersion"], checksum)
-    if receipt and receipt.get("corpus_version") != manifest["corpusVersion"]:
-        fail("receipt corpus version does not match target index version")
+    ensure_version_checksum(receipt, corpus_version, checksum)
+    if receipt and receipt.get("corpus_version") != corpus_version:
+        fail("receipt corpus version does not match requested corpus version")
     host = args.collection_endpoint.removeprefix("https://").split("/")[0]
     region = os.environ.get("AWS_REGION") or boto3.session.Session().region_name
     credentials = boto3.Session().get_credentials()
@@ -145,18 +185,14 @@ def main() -> None:
     bedrock = boto3.client("bedrock-runtime")
     if not receipt:
         for document in documents:
-            existing = client.search(
-                index=args.index_name,
-                body={"size": 1, "_source": False, "query": {"term": {"documentId": document["documentId"]}}},
-            )["hits"]["hits"]
-            if existing:
+            if document_exists(client, args.index_name, str(document["documentId"]), corpus_version):
                 continue
             embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": document[args.content_field]}))["body"].read())["embedding"]
             client.index(index=args.index_name, body={**document, args.vector_field: embedding})
-    count = wait_for_document_count(client, args.index_name, document_count)
+    count = wait_for_document_count(client, args.index_name, document_count, corpus_version)
     query_embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": documents[0][args.content_field]}))["body"].read())["embedding"]
-    hits = wait_for_knn_hits(client, args.index_name, args.vector_field, query_embedding)
-    receipt = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [str(hit.get("_source", {}).get("documentId", hit.get("_id", ""))) for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
+    hits = wait_for_knn_hits(client, args.index_name, args.vector_field, query_embedding, corpus_version)
+    receipt = {"corpus_version": corpus_version, "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [str(hit.get("_source", {}).get("documentId", hit.get("_id", ""))) for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
     s3.put_object(Bucket=args.receipt_bucket, Key=args.receipt_key, Body=json.dumps(receipt, sort_keys=True).encode(), ContentType="application/json")
     log(**receipt)
 
