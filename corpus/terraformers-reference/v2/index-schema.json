@@ -1,0 +1,72 @@
+{
+  "mappings": {
+    "properties": {
+      "architecturePattern": {
+        "type": "keyword"
+      },
+      "authority": {
+        "type": "keyword"
+      },
+      "content": {
+        "type": "text"
+      },
+      "corpusVersion": {
+        "type": "keyword"
+      },
+      "documentId": {
+        "type": "keyword"
+      },
+      "documentType": {
+        "type": "keyword"
+      },
+      "embedding": {
+        "dimension": 1024,
+        "method": {
+          "engine": "faiss",
+          "name": "hnsw",
+          "parameters": {},
+          "space_type": "cosinesimil"
+        },
+        "type": "knn_vector"
+      },
+      "priority": {
+        "type": "integer"
+      },
+      "providerVersion": {
+        "type": "keyword"
+      },
+      "resourceTypes": {
+        "type": "keyword"
+      },
+      "riskTags": {
+        "type": "keyword"
+      },
+      "sectionType": {
+        "type": "keyword"
+      },
+      "securityConsiderations": {
+        "type": "keyword"
+      },
+      "services": {
+        "type": "keyword"
+      },
+      "sourceCommit": {
+        "type": "keyword"
+      },
+      "sourcePath": {
+        "type": "keyword"
+      },
+      "sourceVersion": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text"
+      }
+    }
+  },
+  "settings": {
+    "index": {
+      "knn": true
+    }
+  }
+}

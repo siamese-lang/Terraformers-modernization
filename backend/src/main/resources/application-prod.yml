@@ -73,6 +73,8 @@ terraformers:
     index-name: ${INDEX_NAME:}
     vector-field-name: ${VECTOR_FIELD_NAME:}
     content-field-name: ${CONTENT_FIELD_NAME:}
+    corpus-version: ${CORPUS_VERSION:terraformers-reference-v1}
+    provider-version: ${PROVIDER_VERSION:5.100.0}
     expected-vector-dimension: ${EXPECTED_VECTOR_DIMENSION:}
     result-bucket-name: ${ANALYSIS_RESULT_BUCKET_NAME:${S3_BUCKET_NAME}}
     result-key-prefix: ${ANALYSIS_RESULT_KEY_PREFIX:analysis-results}

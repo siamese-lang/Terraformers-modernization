@@ -8,6 +8,10 @@ on:
       - agent/rdb-domain-realignment
     paths:
       - "infra/terraform/**"
+      - "corpus/terraformers-reference/**"
+      - "scripts/rag/**"
+      - "tests/rag/**"
+      - "scripts/checks/rag-corpus-contract-verification.py"
       - "scripts/checks/terraform-static-verification.sh"
       - "scripts/checks/approved-terraform-apply-contract-verification.py"
       - "scripts/deploy/verify-approved-terraform-apply-contract.py"
@@ -26,6 +30,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Verify RAG corpus tooling
+        run: |
+          set -euo pipefail
+          python3 scripts/checks/rag-corpus-contract-verification.py
+          python3 scripts/checks/rag-corpus-contract-verification.py \
+            --corpus-dir corpus/terraformers-reference/v2
+          python3 -m unittest \
+            tests/rag/test_build_corpus_v2.py \
+            tests/rag/test_curate_corpus_v2.py \
+            tests/rag/test_ingest_corpus.py
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4

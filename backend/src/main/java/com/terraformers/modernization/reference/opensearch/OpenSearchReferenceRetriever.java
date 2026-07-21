@@ -35,12 +35,15 @@ public class OpenSearchReferenceRetriever {
         requireRuntimeConfig();
 
         List<Float> vector = embeddingProvider.embed(query.text());
-        int topK = properties.getOpensearchTopK();
+        int topK = Math.min(query.limit(), properties.getOpensearchTopK());
         String body = queryBuilder.build(
                 properties.getVectorFieldName(),
                 properties.getContentFieldName(),
                 vector,
-                topK
+                topK,
+                properties.getCorpusVersion(),
+                properties.getProviderVersion(),
+                query.resourceTypes()
         );
         URI uri = OpenSearchEndpoint.searchUri(properties.getOpensearchEndpoint(), properties.getIndexName());
         String response = httpClient.post(uri, body, properties.getOpensearchServiceName());
@@ -59,6 +62,12 @@ public class OpenSearchReferenceRetriever {
         }
         if (isBlank(properties.getContentFieldName())) {
             throw new IllegalStateException("terraformers.analysis.content-field-name must be set when OpenSearch retriever is enabled");
+        }
+        if (isBlank(properties.getCorpusVersion())) {
+            throw new IllegalStateException("terraformers.analysis.corpus-version must be set when OpenSearch retriever is enabled");
+        }
+        if (isBlank(properties.getProviderVersion())) {
+            throw new IllegalStateException("terraformers.analysis.provider-version must be set when OpenSearch retriever is enabled");
         }
         if (isBlank(properties.getBedrockEmbeddingModelId())) {
             throw new IllegalStateException("terraformers.analysis.bedrock-embedding-model-id must be set for active retrieval");

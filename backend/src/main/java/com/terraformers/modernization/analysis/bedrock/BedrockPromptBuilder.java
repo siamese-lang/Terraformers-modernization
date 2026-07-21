@@ -82,7 +82,7 @@ public class BedrockPromptBuilder {
 
     private String buildPrompt(ObjectContent source, List<ReferenceDocument> references, BedrockPromptMode promptMode) {
         String referenceText = references.stream()
-                .map(reference -> "- " + reference.title() + ": " + reference.content())
+                .map(this::formatReference)
                 .collect(Collectors.joining("\n"));
 
         return """
@@ -101,6 +101,9 @@ public class BedrockPromptBuilder {
                 - Keep Terraform concise and limited to what is needed to describe the analyzed architecture; do not duplicate resources or add verbose comments.
                 - Do not include secrets, account IDs, access keys, static credentials, public S3 URLs, or real ARNs.
                 - Use placeholders or variables for account-specific values.
+                - Treat `PROJECT_DECISION` references as mandatory project constraints when they apply.
+                - Use `PROVIDER_SCHEMA` references to determine valid arguments and nested blocks for AWS Provider 5.100.0.
+                - Provider examples demonstrate syntax only. Do not copy settings marked by `riskTags` without adapting them to the project constraints.
 
                 %s
 
@@ -116,6 +119,24 @@ public class BedrockPromptBuilder {
                 source.metadata().contentType(),
                 source.metadata().contentLength(),
                 referenceText.isBlank() ? "- none" : referenceText
+        );
+    }
+
+    private String formatReference(ReferenceDocument reference) {
+        String authority = reference.authority() == null || reference.authority().isBlank()
+                ? "REFERENCE"
+                : reference.authority();
+        String source = reference.sourcePath() == null || reference.sourcePath().isBlank()
+                ? reference.id()
+                : reference.sourcePath();
+        String risks = reference.riskTags().isEmpty() ? "none" : String.join(",", reference.riskTags());
+        return "- authority=%s; type=%s; source=%s; riskTags=%s; title=%s:\n%s".formatted(
+                authority,
+                reference.documentType() == null ? "" : reference.documentType(),
+                source,
+                risks,
+                reference.title(),
+                reference.content()
         );
     }
 

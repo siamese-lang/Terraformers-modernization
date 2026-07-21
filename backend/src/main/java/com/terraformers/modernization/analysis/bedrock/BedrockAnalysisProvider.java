@@ -62,6 +62,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
 
     @Override
     public AnalysisResult analyze(AnalysisRequestContext context) {
+        long analysisStartedAt = System.nanoTime();
         String modelId = requireModelId();
 
         ObjectContent source = objectReader.readContent(new ObjectReference(
@@ -78,7 +79,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             parsed = invokeAndParse(context, source, references, modelId, 2, BedrockPromptMode.COMPACT);
         }
 
-        return new AnalysisResult(
+        AnalysisResult result = new AnalysisResult(
                 "bedrock:" + modelId,
                 parsed.terraformCode(),
                 parsed.summary(),
@@ -87,6 +88,17 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 parsed.warnings(),
                 references.stream().map(ReferenceDocument::id).toList()
         );
+        log.info(
+                "analysis pipeline outcome=success analysisJobId={} projectId={} corpusVersion={} providerVersion={} referenceCount={} referenceIds={} elapsedMs={}",
+                context.jobId(),
+                context.projectId(),
+                properties.getCorpusVersion(),
+                properties.getProviderVersion(),
+                references.size(),
+                references.stream().map(ReferenceDocument::id).toList(),
+                (System.nanoTime() - analysisStartedAt) / 1_000_000
+        );
+        return result;
     }
 
     private List<ReferenceDocument> retrieveReferences(AnalysisRequestContext context, ObjectContent source) {
@@ -98,12 +110,37 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             if (factsExtractor == null || queryTextBuilder == null) {
                 throw new IllegalStateException("architecture retrieval facts stage is not configured");
             }
+            long factsStartedAt = System.nanoTime();
             ArchitectureRetrievalFacts facts = factsExtractor.extract(source);
-            return referenceRetriever.retrieve(new ReferenceQuery(queryTextBuilder.build(facts), properties.getOpensearchTopK()));
+            long factsElapsedMs = (System.nanoTime() - factsStartedAt) / 1_000_000;
+            long searchStartedAt = System.nanoTime();
+            List<ReferenceDocument> references = referenceRetriever.retrieve(
+                    new ReferenceQuery(queryTextBuilder.build(facts), properties.getOpensearchTopK())
+            );
+            long searchElapsedMs = (System.nanoTime() - searchStartedAt) / 1_000_000;
+            log.info(
+                    "reference retrieval outcome=success analysisJobId={} projectId={} mode={} corpusVersion={} providerVersion={} index={} topK={} factResourceTypes={} referenceCount={} referenceIds={} authorities={} factsElapsedMs={} searchElapsedMs={} elapsedMs={}",
+                    context.jobId(),
+                    context.projectId(),
+                    mode,
+                    properties.getCorpusVersion(),
+                    properties.getProviderVersion(),
+                    properties.getIndexName(),
+                    properties.getOpensearchTopK(),
+                    facts.resourceTypes(),
+                    references.size(),
+                    references.stream().map(ReferenceDocument::id).toList(),
+                    references.stream().map(ReferenceDocument::authority).filter(value -> value != null && !value.isBlank()).distinct().toList(),
+                    factsElapsedMs,
+                    searchElapsedMs,
+                    (System.nanoTime() - started) / 1_000_000
+            );
+            return references;
         } catch (RuntimeException exception) {
-            log.warn("reference retrieval outcome=failure analysisJobId={} projectId={} mode={} stage=facts modelId={} index={} topK={} errorClass={} elapsedMs={}",
-                    context.jobId(), context.projectId(), mode, properties.getBedrockEmbeddingModelId(), properties.getIndexName(),
-                    properties.getOpensearchTopK(), exception.getClass().getName(), (System.nanoTime() - started) / 1_000_000);
+            log.warn("reference retrieval outcome=failure analysisJobId={} projectId={} mode={} corpusVersion={} providerVersion={} stage=facts-and-search modelId={} index={} topK={} errorClass={} elapsedMs={}",
+                    context.jobId(), context.projectId(), mode, properties.getCorpusVersion(), properties.getProviderVersion(),
+                    properties.getBedrockEmbeddingModelId(), properties.getIndexName(), properties.getOpensearchTopK(),
+                    exception.getClass().getName(), (System.nanoTime() - started) / 1_000_000);
             if (mode == RetrievalMode.REQUIRED) throw exception;
             return List.of();
         }

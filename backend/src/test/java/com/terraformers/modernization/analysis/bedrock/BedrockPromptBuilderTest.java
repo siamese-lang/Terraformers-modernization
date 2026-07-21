@@ -19,10 +19,7 @@ class BedrockPromptBuilderTest {
 
     @Test
     void buildsClaudeVisionRequestWithoutSecretValues() throws Exception {
-        ObjectContent content = new ObjectContent(
-                new ObjectMetadata("example-bucket", "uploads/diagram.png", "image/png", 128L, "etag"),
-                "fake-image".getBytes(StandardCharsets.UTF_8)
-        );
+        ObjectContent content = imageContent();
 
         String request = builder.buildClaudeVisionRequest(content, List.of(
                 new ReferenceDocument("ref-1", "VPC pattern", "Use private subnets for database workloads.", 0.9)
@@ -58,6 +55,35 @@ class BedrockPromptBuilderTest {
     }
 
     @Test
+    void labelsProjectAuthorityProviderSchemaAndRiskTags() {
+        ReferenceDocument reference = new ReferenceDocument(
+                "tfref-v2-private-entry",
+                "CloudFront private origin",
+                "Keep the load balancer private.",
+                1.0,
+                "TERRAFORMERS_PATTERN",
+                List.of("aws_cloudfront_distribution", "aws_lb"),
+                "docs/source-rag-gitops-reuse-plan.md",
+                "5.100.0",
+                "terraformers-reference-v2",
+                "PROJECT_DECISION",
+                100,
+                List.of("private-origin")
+        );
+
+        String request = builder.buildClaudeVisionRequest(imageContent(), List.of(reference), 2048);
+
+        assertThat(request).contains(
+                "authority=PROJECT_DECISION",
+                "type=TERRAFORMERS_PATTERN",
+                "source=docs/source-rag-gitops-reuse-plan.md",
+                "riskTags=private-origin",
+                "Treat `PROJECT_DECISION` references as mandatory project constraints",
+                "Use `PROVIDER_SCHEMA` references to determine valid arguments"
+        );
+    }
+
+    @Test
     void rejectsUnsupportedContentType() {
         ObjectContent content = new ObjectContent(
                 new ObjectMetadata("example-bucket", "uploads/file.txt", "text/plain", 10L, "etag"),
@@ -71,10 +97,7 @@ class BedrockPromptBuilderTest {
 
     @Test
     void compactPromptRetainsTaggedSchemaAndIncludesCompressionAndSecretRules() throws Exception {
-        ObjectContent content = new ObjectContent(
-                new ObjectMetadata("example-bucket", "uploads/diagram.png", "image/png", 128L, "etag"),
-                "fake-image".getBytes(StandardCharsets.UTF_8)
-        );
+        ObjectContent content = imageContent();
 
         String request = builder.buildClaudeVisionRequest(content, List.of(), 8192, BedrockPromptMode.COMPACT);
 
@@ -84,5 +107,12 @@ class BedrockPromptBuilderTest {
         assertThat(request).contains("Use count, for_each, or other concise expressions for repeated resource types");
         assertThat(request).contains("Do not include secrets, account IDs, access keys, static credentials");
         assertThat(objectMapper.readTree(request).path("max_tokens").asInt()).isEqualTo(8192);
+    }
+
+    private ObjectContent imageContent() {
+        return new ObjectContent(
+                new ObjectMetadata("example-bucket", "uploads/diagram.png", "image/png", 128L, "etag"),
+                "fake-image".getBytes(StandardCharsets.UTF_8)
+        );
     }
 }

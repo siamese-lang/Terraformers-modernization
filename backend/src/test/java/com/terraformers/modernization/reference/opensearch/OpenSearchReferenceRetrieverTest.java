@@ -19,7 +19,7 @@ import org.mockito.InOrder;
 
 class OpenSearchReferenceRetrieverTest {
     @Test
-    void runsEmbeddingKnnSignedSearchAndResponseParsingInOrder() {
+    void runsFilteredEmbeddingKnnSignedSearchAndResponseParsingInOrder() {
         EmbeddingProvider embedding = mock(EmbeddingProvider.class);
         OpenSearchKnnQueryBuilder queryBuilder = mock(OpenSearchKnnQueryBuilder.class);
         OpenSearchResponseParser parser = mock(OpenSearchResponseParser.class);
@@ -27,7 +27,15 @@ class OpenSearchReferenceRetrieverTest {
         AnalysisRuntimeProperties properties = activeProperties();
         List<Float> vector = List.of(0.1f, 0.2f);
         when(embedding.embed(any())).thenReturn(vector);
-        when(queryBuilder.build(eq("embedding"), eq("content"), eq(vector), eq(2))).thenReturn("knn-body");
+        when(queryBuilder.build(
+                eq("embedding"),
+                eq("content"),
+                eq(vector),
+                eq(2),
+                eq("terraformers-reference-v2"),
+                eq("5.100.0"),
+                eq(List.of("aws_vpc"))
+        )).thenReturn("knn-body");
         when(client.post(any(URI.class), eq("knn-body"), eq("aoss"))).thenReturn("response");
         List<ReferenceDocument> expected = List.of(new ReferenceDocument("ref-1", "title", "content", 1.0));
         when(parser.parse("response", "content")).thenReturn(expected);
@@ -37,7 +45,15 @@ class OpenSearchReferenceRetrieverTest {
 
         InOrder order = inOrder(embedding, queryBuilder, client, parser);
         order.verify(embedding).embed(any());
-        order.verify(queryBuilder).build("embedding", "content", vector, 2);
+        order.verify(queryBuilder).build(
+                "embedding",
+                "content",
+                vector,
+                2,
+                "terraformers-reference-v2",
+                "5.100.0",
+                List.of("aws_vpc")
+        );
         order.verify(client).post(URI.create("https://search.example/references/_search"), "knn-body", "aoss");
         order.verify(parser).parse("response", "content");
     }
@@ -59,12 +75,14 @@ class OpenSearchReferenceRetrieverTest {
         properties.setIndexName("references");
         properties.setVectorFieldName("embedding");
         properties.setContentFieldName("content");
+        properties.setCorpusVersion("terraformers-reference-v2");
+        properties.setProviderVersion("5.100.0");
         properties.setOpensearchServiceName("aoss");
         properties.setOpensearchTopK(2);
         return properties;
     }
 
     private ReferenceQuery query() {
-        return new ReferenceQuery("VPC private subnet to RDS", 2);
+        return new ReferenceQuery("VPC private subnet using aws_vpc to RDS", 2);
     }
 }
