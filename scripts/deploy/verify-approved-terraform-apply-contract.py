@@ -68,6 +68,7 @@ RAG_RUNTIME_RESOURCES = {
 CONTRACTS = {
     "foundation-rag-apply-permission-create": "foundation",
     "foundation-rag-apply-permission-update": "foundation",
+    "foundation-operations-visibility-apply-permission-create": "foundation",
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
     "eks-runtime-operations-visibility-create": "eks-runtime",
@@ -183,6 +184,11 @@ def main() -> int:
         check_risk_gates(summary, txt, "foundation", 4, 0)
         expected = {address: (kind, ["create"], []) for address, kind in FOUNDATION_RESOURCES.items()}
         if actual_actions(actions) != expected: fail("foundation resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "foundation-operations-visibility-apply-permission-create":
+        check_risk_gates(summary, txt, "foundation", 1, 0)
+        expected = {"aws_iam_role_policy.terraform_apply_operations_visibility_create": ("aws_iam_role_policy", ["create"], [])}
+        if actual_actions(actions) != expected: fail("foundation operations visibility permission resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "eks-runtime-backend-policy-update":
         if not args.approved_resource or not args.approved_changed_path: fail("--approved-resource and --approved-changed-path are required for eks-runtime contract.")

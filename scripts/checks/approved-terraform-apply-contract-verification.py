@@ -58,7 +58,7 @@ def verify_workflow() -> None:
         "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
-        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE", "eks-runtime-operations-visibility-create", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "foundation-operations-visibility-apply-permission-create", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE", "eks-runtime-operations-visibility-create", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
         "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
         "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
         "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}", "RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}", "AWS_LIVE_RAG_TFVARS_B64 secret is required.",
@@ -172,6 +172,12 @@ def verify_workflow() -> None:
     contains(index_access_policy_statement, 'values   = ["terraformers-dev-refs/terraformers-reference-v1"]')
     assert 'aoss:collection' not in index_access_policy_statement
     assert 'sid       = "CreateExactAossAccessPolicy"' not in foundation
+    cloudwatch_attach_statement = foundation.split('sid       = "AttachApprovedCloudWatchManagedPolicies"', 1)[1].split('  statement {', 1)[0]
+    contains(cloudwatch_attach_statement, 'test     = "ArnEquals"')
+    contains(cloudwatch_attach_statement, 'variable = "iam:PolicyARN"')
+    contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy')
+    contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess')
+    assert 'ForAnyValue:StringEquals' not in cloudwatch_attach_statement
     vpc_statement = foundation.split('sid       = "CreateSecurityGroupsInApprovedVpc"', 1)[1].split('  statement {', 1)[0]
     tagged_sg_statement = foundation.split('sid       = "CreateTaggedRagSecurityGroups"', 1)[1].split('  statement {', 1)[0]
     assert "aws:RequestTag" not in vpc_statement
@@ -237,6 +243,11 @@ def main() -> int:
     verify_contract(foundation_permission, "foundation-rag-apply-permission-create", "foundation", True)
     wrong_permission = json.loads(json.dumps(foundation_permission)); wrong_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
     verify_contract(wrong_permission, "foundation-rag-apply-permission-create", "foundation", False)
+
+    operations_visibility_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": "aws_iam_role_policy.terraform_apply_operations_visibility_create", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "terraformers-live-apply-operations-visibility-create"}}}]}
+    verify_contract(operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", True)
+    wrong_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); wrong_operations_visibility_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
+    verify_contract(wrong_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
 
     foundation_permission_update = json.loads(json.dumps(foundation_permission))
     foundation_permission_update["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"policy": "before"}, "after": {"policy": "after"}}
@@ -333,7 +344,7 @@ def main() -> int:
         "approved_terraform_apply_contract_verification=passed",
         "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
         "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
-        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "operations_visibility_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
+        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_operations_visibility_permission_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "operations_visibility_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
         "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
     ]
     (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
