@@ -1,0 +1,4 @@
+workflow_commit_sha=a9dbed8031c5502d781c4b3f012e0c790f17686a
+backend_source_commit_sha=a672a322fcaa784baf19fa7bb0687fc403f0aff7
+ingestion_result=failure
+image_publish_result=skipped
