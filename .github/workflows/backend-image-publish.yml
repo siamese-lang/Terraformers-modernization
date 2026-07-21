@@ -45,9 +45,15 @@ jobs:
         if: ${{ inputs.push_image || inputs.create_gitops_update_pr }}
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.create_gitops_update_pr }}" == "true" && "${{ inputs.push_image }}" != "true" ]]; then
-            echo "create_gitops_update_pr=true requires push_image=true." >&2
-            exit 1
+          if [[ "${{ inputs.create_gitops_update_pr }}" == "true" ]]; then
+            if [[ "${{ inputs.push_image }}" != "true" ]]; then
+              echo "create_gitops_update_pr=true requires push_image=true." >&2
+              exit 1
+            fi
+            if [[ "${GITHUB_REF_TYPE}" != "branch" || "${GITHUB_REF_NAME}" != "agent/rdb-domain-realignment" ]]; then
+              echo "GitOps update PRs must run from agent/rdb-domain-realignment." >&2
+              exit 1
+            fi
           fi
           for variable_name in AWS_ROLE_TO_ASSUME AWS_REGION EXPECTED_AWS_ACCOUNT_ID; do
             if [[ -z "${!variable_name}" ]]; then
@@ -183,8 +189,11 @@ jobs:
           manifest=infra/kubernetes/gitops/backend-runtime/kustomization.yaml
           python3 -c 'import re, sys; path, repository, digest = sys.argv[1:]; text = open(path).read(); text, names = re.subn(r"(?m)^(    newName: ).*$", r"\g<1>" + repository, text); text, digests = re.subn(r"(?m)^(    digest: )sha256:[0-9a-f]{64}$", r"\g<1>" + digest, text); (names == 1 and digests == 1 and "newTag:" not in text) or sys.exit("GitOps image replacement must change exactly newName and digest, with no tag."); open(path, "w").write(text)' "${manifest}" "${REPOSITORY_URI}" "${IMAGE_DIGEST}"
           rendered="$(kubectl kustomize infra/kubernetes/gitops/backend-runtime)"
-          expected="image: ${REPOSITORY_URI}@${IMAGE_DIGEST}"
-          grep -Fqx "${expected}" <<<"${rendered}" || { echo "Rendered Deployment image is not repository@sha256 digest." >&2; exit 1; }
+          expected_image="${REPOSITORY_URI}@${IMAGE_DIGEST}"
+          awk -v expected_image="${expected_image}" '
+            $1 == "image:" && $2 == expected_image && NF == 2 { found = 1 }
+            END { exit(found ? 0 : 1) }
+          ' <<<"${rendered}" || { echo "Rendered Deployment image is not repository@sha256 digest." >&2; exit 1; }
           git diff --check
           git add "${manifest}"
           git diff --cached --quiet && { echo "No GitOps manifest change was produced." >&2; exit 1; }
@@ -195,11 +204,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.update.outputs.branch }}
-          BRANCH_EXISTS: ${{ steps.update.outputs.branch_exists }}
         run: |
           set -euo pipefail
-          pr_url="$(gh pr list --base "${BASE_BRANCH}" --head "${BRANCH}" --state open --json url --jq '.[0].url')"
-          if [[ -z "${pr_url}" ]]; then
+          existing_pr="$(gh pr list --base "${BASE_BRANCH}" --head "${BRANCH}" --state all --json url,state --jq '.[0] | if . == null then "" else "\(.url) \(.state)" end')"
+          if [[ -n "${existing_pr}" ]]; then
+            pr_url="${existing_pr% *}"
+            pr_state="${existing_pr##* }"
+            echo "Existing digest release PR (${pr_state}): ${pr_url}"
+          else
             pr_url="$(gh pr create --base "${BASE_BRANCH}" --head "${BRANCH}" --title "chore(gitops): deploy backend ${IMAGE_DIGEST:7:12}" --body "Automated immutable-digest Backend GitOps update.\n\nSource commit: ${SOURCE_COMMIT_SHA}\nImage tag: ${IMAGE_TAG}\nECR digest: ${REPOSITORY_URI}@${IMAGE_DIGEST}")"
+            pr_state="OPEN"
           fi
-          printf 'source_commit=%s\nimage_tag=%s\necr_digest=%s\ngitops_branch=%s\npr_url=%s\n' "${SOURCE_COMMIT_SHA}" "${IMAGE_TAG}" "${IMAGE_DIGEST}" "${BRANCH}" "${pr_url}" >> "${GITHUB_STEP_SUMMARY}"
+          printf 'source_commit=%s\nimage_tag=%s\necr_digest=%s\ngitops_branch=%s\npr_url=%s\npr_state=%s\n' "${SOURCE_COMMIT_SHA}" "${IMAGE_TAG}" "${IMAGE_DIGEST}" "${BRANCH}" "${pr_url}" "${pr_state}" >> "${GITHUB_STEP_SUMMARY}"
