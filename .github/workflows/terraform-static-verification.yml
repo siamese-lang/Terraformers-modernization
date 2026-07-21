@@ -25,7 +25,7 @@ permissions:
 jobs:
   terraform-static-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -41,6 +41,16 @@ jobs:
             tests/rag/test_build_corpus_v2.py \
             tests/rag/test_curate_corpus_v2.py \
             tests/rag/test_ingest_corpus.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Verify restored Bedrock provider
+        run: mvn -q -f backend/pom.xml -Dtest=BedrockAnalysisProviderTest test
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
