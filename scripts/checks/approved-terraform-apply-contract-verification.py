@@ -34,6 +34,10 @@ OPERATIONS_VISIBILITY = {
     "aws_iam_role_policy_attachment.cloudwatch_observability_agent": "aws_iam_role_policy_attachment",
     "aws_iam_role_policy_attachment.cloudwatch_observability_xray": "aws_iam_role_policy_attachment",
 }
+OPERATIONS_VISIBILITY_PERMISSION = {
+    "aws_iam_policy.terraform_apply_operations_visibility_create": "aws_iam_policy",
+    "aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create": "aws_iam_role_policy_attachment",
+}
 
 
 def run(args: list[str], success: bool = True) -> None:
@@ -83,6 +87,12 @@ def verify_workflow() -> None:
             "approved_action=update", "approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create", "approved_changed_path=policy", "approved_resource_count=1", "environment_gate=aws-live-plan",
         ),
         "foundation-apply-role-bootstrap": ("approved_action=create", "approved_resource_count=4", "environment_gate=aws-live-plan"),
+        "foundation-operations-visibility-apply-permission-create": (
+            "approved_action=create", "approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create",
+            "approved_resource=aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create",
+            "approved_resource_count=2", "environment_gate=aws-live-plan",
+            "temporary_bootstrap_permission_cleanup=external-required",
+        ),
         "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=26", "environment_gate=aws-live-apply"),
         "rag-runtime-reviewed-recovery": ("approved_action=create-and-read", "approved_resource_count=${approved_resource_count}", "environment_gate=aws-live-apply"),
         "eks-runtime-backend-policy-update": ("approved_resource=aws_iam_policy.backend_runtime_access", "approved_action=update", "approved_changed_path=policy", "environment_gate=aws-live-apply"),
@@ -185,6 +195,14 @@ def verify_workflow() -> None:
         contains(tagged_sg_statement, tag)
     for forbidden in (":role/terraformers-dev-refs-backend-aoss",):
         assert forbidden not in foundation, forbidden
+    operations_visibility_policy = foundation.split('resource "aws_iam_policy" "terraform_apply_operations_visibility_create" {', 1)[1].split("\n}\n", 1)[0]
+    contains(operations_visibility_policy, 'name   = "terraformers-live-apply-operations-visibility-create"')
+    contains(operations_visibility_policy, "policy = data.aws_iam_policy_document.terraform_apply_operations_visibility_create.json")
+    contains(operations_visibility_policy, "tags   = var.common_tags")
+    operations_visibility_attachment = foundation.split('resource "aws_iam_role_policy_attachment" "terraform_apply_operations_visibility_create" {', 1)[1].split("\n}\n", 1)[0]
+    contains(operations_visibility_attachment, "role       = aws_iam_role.terraform_apply.name")
+    contains(operations_visibility_attachment, "policy_arn = aws_iam_policy.terraform_apply_operations_visibility_create.arn")
+    assert 'resource "aws_iam_role_policy" "terraform_apply_operations_visibility_create" {' not in foundation
     for forbidden in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
         assert forbidden not in apply, forbidden
     upload = apply.split("Upload sanitized apply evidence", 1)[1]
@@ -244,10 +262,27 @@ def main() -> int:
     wrong_permission = json.loads(json.dumps(foundation_permission)); wrong_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
     verify_contract(wrong_permission, "foundation-rag-apply-permission-create", "foundation", False)
 
-    operations_visibility_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": "aws_iam_role_policy.terraform_apply_operations_visibility_create", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "terraformers-live-apply-operations-visibility-create"}}}]}
+    operations_visibility_permission_changes = [
+        {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
+        for address, kind in OPERATIONS_VISIBILITY_PERMISSION.items()
+    ]
+    operations_visibility_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": operations_visibility_permission_changes}
     verify_contract(operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", True)
-    wrong_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); wrong_operations_visibility_permission["resource_changes"][0]["address"] = "aws_iam_role_policy.unapproved"
+    old_inline_operations_visibility_permission = {"format_version": "1.2", "terraform_version": "1.15.8", "resource_changes": [{"address": "aws_iam_role_policy.terraform_apply_operations_visibility_create", "type": "aws_iam_role_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "terraformers-live-apply-operations-visibility-create"}}}]}
+    verify_contract(old_inline_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    policy_only_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); policy_only_operations_visibility_permission["resource_changes"] = policy_only_operations_visibility_permission["resource_changes"][:1]
+    verify_contract(policy_only_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    attachment_only_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); attachment_only_operations_visibility_permission["resource_changes"] = attachment_only_operations_visibility_permission["resource_changes"][1:]
+    verify_contract(attachment_only_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    extra_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); extra_operations_visibility_permission["resource_changes"].append({"address": "aws_iam_policy.extra", "type": "aws_iam_policy", "change": {"actions": ["create"], "before": None, "after": {"name": "extra"}}})
+    verify_contract(extra_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    wrong_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); wrong_operations_visibility_permission["resource_changes"][0]["address"] = "aws_iam_policy.unapproved"
     verify_contract(wrong_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    wrong_operations_visibility_permission_type = json.loads(json.dumps(operations_visibility_permission)); wrong_operations_visibility_permission_type["resource_changes"][0]["type"] = "aws_iam_role_policy"
+    verify_contract(wrong_operations_visibility_permission_type, "foundation-operations-visibility-apply-permission-create", "foundation", False)
+    for action in (["update"], ["delete"], ["delete", "create"]):
+        changed_operations_visibility_permission = json.loads(json.dumps(operations_visibility_permission)); changed_operations_visibility_permission["resource_changes"][0]["change"] = {"actions": action, "before": {"name": "before"}, "after": {"name": "after"}}
+        verify_contract(changed_operations_visibility_permission, "foundation-operations-visibility-apply-permission-create", "foundation", False, summary_success=action == ["update"])
 
     foundation_permission_update = json.loads(json.dumps(foundation_permission))
     foundation_permission_update["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"policy": "before"}, "after": {"policy": "after"}}

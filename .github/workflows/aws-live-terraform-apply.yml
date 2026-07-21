@@ -306,8 +306,9 @@ jobs:
                 ;;
               foundation-operations-visibility-apply-permission-create)
                 echo 'approved_action=create'
-                echo 'approved_resource=aws_iam_role_policy.terraform_apply_operations_visibility_create'
-                echo 'approved_resource_count=1'
+                echo 'approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create'
+                echo 'approved_resource=aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create'
+                echo 'approved_resource_count=2'
                 echo 'environment_gate=aws-live-plan'
                 echo 'temporary_bootstrap_permission_cleanup=external-required'
                 ;;
