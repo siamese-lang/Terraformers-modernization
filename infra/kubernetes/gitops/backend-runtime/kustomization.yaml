@@ -4,9 +4,7 @@ kind: Kustomization
 namespace: terraformers-runtime
 
 resources:
-  - ../../base/backend-configmap.yaml
-  - ../../base/backend-deployment.yaml
-  - ../../base/backend-service.yaml
+  - ../../base
 
 images:
   - name: public.ecr.aws/example/terraformers-backend
@@ -14,5 +12,6 @@ images:
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 patches:
+  - path: backend-serviceaccount-delete-patch.yaml
   - path: backend-configmap-patch.yaml
   - path: backend-deployment-patch.yaml
