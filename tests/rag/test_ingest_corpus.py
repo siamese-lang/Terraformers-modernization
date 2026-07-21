@@ -56,7 +56,7 @@ class IngestCorpusTests(unittest.TestCase):
         corpus = Path(__file__).parents[2] / "corpus/terraformers-reference/v1"
         original = ingest.validate_contract(corpus)["sha256"]
         with tempfile.TemporaryDirectory() as directory:
-            copied = Path(directory) / "corpus"
+            copied = Path(directory) / "v1"
             shutil.copytree(corpus, copied)
             schema_path = copied / "index-schema.json"
             schema = json.loads(schema_path.read_text())
