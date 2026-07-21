@@ -9,7 +9,7 @@ resources:
 images:
   - name: public.ecr.aws/example/terraformers-backend
     newName: 024863981627.dkr.ecr.ap-northeast-2.amazonaws.com/terraformers-backend
-    digest: sha256:9e8ebd25c3afcc18cd03cb62c97bfc4200ff63477329ad548c8c4a31a518a254
+    digest: sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73
 
 patches:
   - path: backend-serviceaccount-delete-patch.yaml
