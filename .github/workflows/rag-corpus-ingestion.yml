@@ -5,6 +5,10 @@ on:
       execute_ingestion:
         required: true
         type: boolean
+      corpus_directory:
+        required: false
+        type: string
+        default: corpus/terraformers-reference/v1
       expected_aws_account_id:
         required: false
         type: string
@@ -19,6 +23,8 @@ on:
         default: ''
 permissions:
   contents: read
+env:
+  CORPUS_DIRECTORY: ${{ inputs.corpus_directory }}
 jobs:
   dry-run:
     runs-on: ubuntu-latest
@@ -28,13 +34,16 @@ jobs:
       - name: Validate and package ingestion contract
         run: |
           set -euo pipefail
+          [[ "$CORPUS_DIRECTORY" =~ ^corpus/terraformers-reference/v[0-9]+$ ]]
+          test -f "$CORPUS_DIRECTORY/corpus-manifest.json"
           mkdir -p artifacts/rag-corpus-ingestion
-          python3 scripts/checks/rag-corpus-contract-verification.py --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
+          python3 scripts/checks/rag-corpus-contract-verification.py --corpus-dir "$CORPUS_DIRECTORY" --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
           python3 -m pip install --disable-pip-version-check --target artifacts/rag-corpus-ingestion/vendor -r scripts/rag/requirements.txt
           CHECKSUM="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["sha256"])')"
           COUNT="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["documentCount"])')"
-          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
-          printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
+          CORPUS_VERSION="$(python3 -c 'import json, os; print(json.load(open(os.path.join(os.environ["CORPUS_DIRECTORY"], "corpus-manifest.json")))["corpusVersion"])')"
+          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "$CORPUS_DIRECTORY" scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
+          printf 'checksum=%s\ncount=%s\ncorpus_version=%s\ncorpus_directory=%s\n' "$CHECKSUM" "$COUNT" "$CORPUS_VERSION" "$CORPUS_DIRECTORY" > artifacts/rag-corpus-ingestion/package-summary.txt
       - uses: actions/upload-artifact@v6
         with:
           name: rag-corpus-ingestion-evidence
@@ -59,16 +68,19 @@ jobs:
           test -n '${{ inputs.expected_head_sha }}'
           test '${{ inputs.expected_head_sha }}' = "$(git rev-parse HEAD)"
           test '${{ inputs.approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
+          [[ "$CORPUS_DIRECTORY" =~ ^corpus/terraformers-reference/v[0-9]+$ ]]
+          test -f "$CORPUS_DIRECTORY/corpus-manifest.json"
       - name: Build private deployment package
         run: |
           set -euo pipefail
           mkdir -p artifacts/rag-corpus-ingestion
-          python3 scripts/checks/rag-corpus-contract-verification.py --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
+          python3 scripts/checks/rag-corpus-contract-verification.py --corpus-dir "$CORPUS_DIRECTORY" --summary-json artifacts/rag-corpus-ingestion/contract-summary.json
           python3 -m pip install --disable-pip-version-check --target artifacts/rag-corpus-ingestion/vendor -r scripts/rag/requirements.txt
           CHECKSUM="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["sha256"])')"
           COUNT="$(python3 -c 'import json; print(json.load(open("artifacts/rag-corpus-ingestion/contract-summary.json"))["documentCount"])')"
-          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip corpus/terraformers-reference/v1 scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
-          printf 'checksum=%s\ncount=%s\n' "$CHECKSUM" "$COUNT" > artifacts/rag-corpus-ingestion/package-summary.txt
+          CORPUS_VERSION="$(python3 -c 'import json, os; print(json.load(open(os.path.join(os.environ["CORPUS_DIRECTORY"], "corpus-manifest.json")))["corpusVersion"])')"
+          zip -qr artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "$CORPUS_DIRECTORY" scripts/rag scripts/checks/rag-corpus-contract-verification.py infra/terraform/envs/eks-runtime/main.tf infra/terraform/envs/rag-runtime/main.tf infra/terraform/envs/rag-runtime/outputs.tf docs/source-rag-gitops-reuse-plan.md artifacts/rag-corpus-ingestion/vendor
+          printf 'checksum=%s\ncount=%s\ncorpus_version=%s\ncorpus_directory=%s\n' "$CHECKSUM" "$COUNT" "$CORPUS_VERSION" "$CORPUS_DIRECTORY" > artifacts/rag-corpus-ingestion/package-summary.txt
       - name: Configure dispatcher role through OIDC
         uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -84,10 +96,15 @@ jobs:
           set -euo pipefail
           test -n "$CORPUS_BUCKET"; test -n "$CODEBUILD_PROJECT"
           test "$(aws sts get-caller-identity --query Account --output text)" = '${{ inputs.expected_aws_account_id }}'
-          CHECKSUM="$(sed -n 's/^checksum=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"; COUNT="$(sed -n 's/^count=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
-          KEY="terraformers-reference/v1/packages/${{ inputs.expected_head_sha }}.zip"; RECEIPT="terraformers-reference/v1/receipts/terraformers-reference-v1.json"
+          CHECKSUM="$(sed -n 's/^checksum=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
+          COUNT="$(sed -n 's/^count=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
+          CORPUS_VERSION="$(sed -n 's/^corpus_version=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
+          CORPUS_DIRECTORY="$(sed -n 's/^corpus_directory=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
+          ROOT_PREFIX="terraformers-reference/v1"
+          KEY="${ROOT_PREFIX}/corpora/${CORPUS_VERSION}/packages/${{ inputs.expected_head_sha }}.zip"
+          RECEIPT="${ROOT_PREFIX}/corpora/${CORPUS_VERSION}/receipts/${CORPUS_VERSION}.json"
           aws s3 cp artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "s3://${CORPUS_BUCKET}/${KEY}" --only-show-errors
-          BUILD_ID="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --environment-variables-override name=PACKAGE_KEY,value="$KEY",type=PLAINTEXT name=EXPECTED_CHECKSUM,value="$CHECKSUM",type=PLAINTEXT name=EXPECTED_DOCUMENT_COUNT,value="$COUNT",type=PLAINTEXT name=RECEIPT_KEY,value="$RECEIPT",type=PLAINTEXT --query 'build.id' --output text)"
+          BUILD_ID="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --environment-variables-override name=PACKAGE_KEY,value="$KEY",type=PLAINTEXT name=CORPUS_DIRECTORY,value="$CORPUS_DIRECTORY",type=PLAINTEXT name=EXPECTED_CHECKSUM,value="$CHECKSUM",type=PLAINTEXT name=EXPECTED_DOCUMENT_COUNT,value="$COUNT",type=PLAINTEXT name=RECEIPT_KEY,value="$RECEIPT",type=PLAINTEXT --query 'build.id' --output text)"
           for _ in $(seq 1 90); do STATUS="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"; [[ "$STATUS" =~ ^(SUCCEEDED|FAILED|FAULT|STOPPED|TIMED_OUT)$ ]] && break; sleep 20; done
           printf 'build_id=%s\nbuild_status=%s\n' "$BUILD_ID" "$STATUS" >> artifacts/rag-corpus-ingestion/package-summary.txt
           test "$STATUS" = SUCCEEDED
