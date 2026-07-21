@@ -34,6 +34,9 @@ OPERATIONS_VISIBILITY_REPAIR_RESOURCES = {
     "aws_cloudwatch_dashboard.operations_visibility": ("aws_cloudwatch_dashboard", ["update"], ["dashboard_body"]),
     "aws_cloudwatch_metric_alarm.analysis_failure": ("aws_cloudwatch_metric_alarm", ["update"], ["metric_name"]),
 }
+APPLICATION_SIGNALS_BACKEND_SELECTION_RESOURCE = {
+    "aws_eks_addon.cloudwatch_observability": ("aws_eks_addon", ["update"], ["configuration_values"]),
+}
 OPERATIONS_VISIBILITY_RESOURCES = {
     "aws_cloudwatch_dashboard.operations_visibility": "aws_cloudwatch_dashboard",
     "aws_cloudwatch_metric_alarm.analysis_failure": "aws_cloudwatch_metric_alarm",
@@ -87,6 +90,7 @@ CONTRACTS = {
     "eks-runtime-operations-visibility-create": "eks-runtime",
     "eks-runtime-operations-visibility-addon-recovery": "eks-runtime",
     "eks-runtime-operations-visibility-repair": "eks-runtime",
+    "eks-runtime-application-signals-backend-selection": "eks-runtime",
     "rag-runtime-reviewed-create": "rag-runtime",
     "rag-runtime-reviewed-recovery": "rag-runtime",
 }
@@ -227,6 +231,10 @@ def main() -> int:
     elif args.contract == "eks-runtime-operations-visibility-repair":
         check_risk_gates(summary, txt, "eks-runtime", 3, 3)
         if actual_actions(actions) != OPERATIONS_VISIBILITY_REPAIR_RESOURCES: fail("operations visibility repair must update exactly the add-on configuration, dashboard body, and analysis alarm metric name.")
+        check_blocked_types(actions)
+    elif args.contract == "eks-runtime-application-signals-backend-selection":
+        check_risk_gates(summary, txt, "eks-runtime", 1, 1)
+        if actual_actions(actions) != APPLICATION_SIGNALS_BACKEND_SELECTION_RESOURCE: fail("Application Signals backend selection must update only the CloudWatch observability add-on configuration.")
         check_blocked_types(actions)
     elif args.contract == "rag-runtime-reviewed-create":
         check_risk_gates(summary, txt, "rag-runtime", 26, 0, RAG_REQUIRED_TXT_VALUES)
