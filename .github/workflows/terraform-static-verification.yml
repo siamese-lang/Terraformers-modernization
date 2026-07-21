@@ -20,7 +20,7 @@ on:
       - "docs/**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   terraform-static-verification:
@@ -54,7 +54,25 @@ jobs:
           OUTPUT_ROOT="artifacts/rag-corpus-v2-generated"
           OUTPUT_DIR="${OUTPUT_ROOT}/corpus/terraformers-reference/v2"
           PROVIDER_COMMIT="f7a3b98da589ab1d52756b0dcee0dbf2de83d635"
-          PROJECT_SOURCE_COMMIT="${{ github.event.pull_request.head.sha || github.sha }}"
+
+          mapfile -t PROJECT_SOURCE_PATHS < <(
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          paths = set()
+          for line in Path("corpus/terraformers-reference/v1/documents.jsonl").read_text().splitlines():
+              if not line.strip():
+                  continue
+              document = json.loads(line)
+              if document.get("documentType") == "TERRAFORMERS_PATTERN":
+                  paths.add(document["sourcePath"])
+          for path in sorted(paths):
+              print(path)
+          PY
+          )
+          test "${#PROJECT_SOURCE_PATHS[@]}" -gt 0
+          PROJECT_SOURCE_COMMIT="$(git log -1 --format=%H -- "${PROJECT_SOURCE_PATHS[@]}")"
           [[ "$PROJECT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
 
           rm -rf "$PROVIDER_DIR" "$SCHEMA_DIR" "$OUTPUT_ROOT"
@@ -117,6 +135,24 @@ jobs:
           output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
           print(json.dumps(summary, sort_keys=True))
           PY
+
+      - name: Publish generated corpus v2 to this PR branch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'agent/rag-corpus-version-scope' }}
+        run: |
+          set -euo pipefail
+          TARGET="corpus/terraformers-reference/v2"
+          rm -rf "$TARGET"
+          mkdir -p "$(dirname "$TARGET")"
+          cp -a artifacts/rag-corpus-v2-generated/corpus/terraformers-reference/v2 "$TARGET"
+          if git diff --quiet -- "$TARGET"; then
+            echo "corpus_v2_publish=no-change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$TARGET"
+          git commit -m "Add curated Terraform reference corpus v2"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
 
       - name: Upload generated corpus v2 candidate
         uses: actions/upload-artifact@v6
