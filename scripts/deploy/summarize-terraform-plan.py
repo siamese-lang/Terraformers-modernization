@@ -36,6 +36,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage", required=True)
     parser.add_argument("--allow-destructive", action="store_true")
     parser.add_argument("--allow-optional-adapters", action="store_true")
+    parser.add_argument(
+        "--require-destroy-only",
+        action="store_true",
+        help=(
+            "Require every changed managed resource to use exactly the delete action. "
+            "Read-only data-source refreshes remain allowed."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -183,10 +191,13 @@ def main() -> int:
     public_findings: list[str] = []
     optional_adapters: list[str] = []
     high_cost: list[str] = []
+    managed_non_delete_actions: list[str] = []
+    data_source_non_read_actions: list[str] = []
 
     for resource_change in plan.get("resource_changes", []):
         address = str(resource_change.get("address", "unknown"))
         resource_type = str(resource_change.get("type", "unknown"))
+        mode = str(resource_change.get("mode", "managed"))
         change = resource_change.get("change", {})
         actions = list(change.get("actions", []))
         if actions == ["no-op"]:
@@ -197,6 +208,7 @@ def main() -> int:
         resources.append(
             {
                 "address": address,
+                "mode": mode,
                 "type": resource_type,
                 "actions": actions,
                 "changed_attribute_paths": sanitized_changed_paths(change, actions),
@@ -209,8 +221,17 @@ def main() -> int:
             replacements.append(address)
         if resource_type in HIGH_COST_TYPES:
             high_cost.append(address)
-        if resource_type.startswith(OPTIONAL_ADAPTER_PREFIXES) and not (args.stage == "rag-runtime" and resource_type.startswith("aws_opensearchserverless_")):
+        if resource_type.startswith(OPTIONAL_ADAPTER_PREFIXES) and not (
+            args.stage == "rag-runtime" and resource_type.startswith("aws_opensearchserverless_")
+        ):
             optional_adapters.append(address)
+
+        if args.require_destroy_only:
+            rendered = f"{address}:{'+'.join(actions) or 'none'}"
+            if mode == "managed" and actions != ["delete"]:
+                managed_non_delete_actions.append(rendered)
+            if mode == "data" and actions != ["read"]:
+                data_source_non_read_actions.append(rendered)
 
         after = change.get("after")
         for finding in public_exposure_findings(resource_type, after):
@@ -218,12 +239,28 @@ def main() -> int:
 
     resources.sort(key=lambda item: item["address"])
     update_resources = [item for item in resources if item["actions"] == ["update"]]
+    delete_resources = [
+        item for item in resources if item["mode"] == "managed" and item["actions"] == ["delete"]
+    ]
+    read_data_sources = [
+        item for item in resources if item["mode"] == "data" and item["actions"] == ["read"]
+    ]
+    destroy_only_status = "not-requested"
+    if args.require_destroy_only:
+        destroy_only_status = (
+            "passed"
+            if not managed_non_delete_actions and not data_source_non_read_actions
+            else "failed"
+        )
+
     summary = {
         "stage": args.stage,
         "format_version": plan.get("format_version"),
         "terraform_version": plan.get("terraform_version"),
         "resource_change_count": len(resources),
         "update_resource_count": len(update_resources),
+        "delete_resource_count": len(delete_resources),
+        "read_data_source_count": len(read_data_sources),
         "action_counts": dict(sorted(action_counts.items())),
         "resource_type_counts": dict(sorted(type_counts.items())),
         "resource_actions": resources,
@@ -232,6 +269,9 @@ def main() -> int:
         "public_exposure_findings": sorted(public_findings),
         "optional_adapter_resources": sorted(optional_adapters),
         "high_cost_resources": sorted(high_cost),
+        "destroy_only_contract": destroy_only_status,
+        "managed_non_delete_actions": sorted(managed_non_delete_actions),
+        "data_source_non_read_actions": sorted(data_source_non_read_actions),
         "plan_json_sha256": sha256(args.plan_json),
         "raw_plan_uploaded": False,
         "changed_values_uploaded": False,
@@ -246,9 +286,12 @@ def main() -> int:
         f"- Stage: `{args.stage}`",
         f"- Terraform version: `{plan.get('terraform_version')}`",
         f"- Resource changes: `{len(resources)}`",
+        f"- Managed deletes: `{len(delete_resources)}`",
+        f"- Data-source reads: `{len(read_data_sources)}`",
         f"- Update resources: `{len(update_resources)}`",
         f"- Destructive resources: `{len(destructive)}`",
         f"- Replacement resources: `{len(replacements)}`",
+        f"- Destroy-only contract: `{destroy_only_status}`",
         f"- Public exposure findings: `{len(public_findings)}`",
         f"- Optional adapter resources: `{len(optional_adapters)}`",
         f"- High-cost resource references: `{len(high_cost)}`",
@@ -256,16 +299,19 @@ def main() -> int:
         "",
         "## Resource actions",
         "",
-        "| Address | Type | Actions | Changed attribute paths |",
-        "|---|---|---|---|",
+        "| Address | Mode | Type | Actions | Changed attribute paths |",
+        "|---|---|---|---|---|",
     ]
     for item in resources:
         changed_paths = "<br>".join(f"`{path}`" for path in item["changed_attribute_paths"]) or "-"
         markdown.append(
-            f"| `{item['address']}` | `{item['type']}` | `{','.join(item['actions']) or 'none'}` | {changed_paths} |"
+            f"| `{item['address']}` | `{item['mode']}` | `{item['type']}` | "
+            f"`{','.join(item['actions']) or 'none'}` | {changed_paths} |"
         )
     for title, values in (
         ("Destructive or replacement resources", sorted(destructive)),
+        ("Managed resources violating delete-only contract", sorted(managed_non_delete_actions)),
+        ("Data sources violating read-only contract", sorted(data_source_non_read_actions)),
         ("Public exposure findings", sorted(public_findings)),
         ("Optional adapter resources", sorted(optional_adapters)),
         ("High-cost resource references", sorted(high_cost)),
@@ -285,14 +331,25 @@ def main() -> int:
     if optional_adapters and not args.allow_optional_adapters:
         status = "failed"
         reasons.append("optional-adapter")
+    if managed_non_delete_actions:
+        status = "failed"
+        reasons.append("non-delete-managed-action")
+    if data_source_non_read_actions:
+        status = "failed"
+        reasons.append("non-read-data-source-action")
 
     lines = [
         f"terraform_plan_risk_gate={status}",
         f"plan_stage={args.stage}",
         f"resource_change_count={len(resources)}",
         f"update_resource_count={len(update_resources)}",
+        f"delete_resource_count={len(delete_resources)}",
+        f"read_data_source_count={len(read_data_sources)}",
         f"destructive_resource_count={len(destructive)}",
         f"replacement_resource_count={len(replacements)}",
+        f"destroy_only_contract={destroy_only_status}",
+        f"managed_non_delete_action_count={len(managed_non_delete_actions)}",
+        f"data_source_non_read_action_count={len(data_source_non_read_actions)}",
         f"public_exposure_finding_count={len(public_findings)}",
         f"optional_adapter_resource_count={len(optional_adapters)}",
         f"high_cost_resource_count={len(high_cost)}",
