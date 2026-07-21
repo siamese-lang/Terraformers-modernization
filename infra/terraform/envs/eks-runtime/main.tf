@@ -315,7 +315,6 @@ resource "aws_eks_addon" "cloudwatch_observability" {
   })
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
-  tags                        = local.common_tags
 
   depends_on = [
     aws_iam_role_policy_attachment.cloudwatch_observability_agent,
