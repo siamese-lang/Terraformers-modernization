@@ -10,14 +10,16 @@ The AWS/GitOps Backend pod template alone has the supported Java auto-instrument
 
 CloudWatch namespace: `Terraformers/Backend`. Application-wide dimensions are `service=terraformers-backend` and `environment=dev`; no metric adds user, project, job, trace, content, or exception-message dimensions.
 
-| Metric | Meaning | Metric-specific dimensions |
+The Java code records Micrometer base meter names. The CloudWatch2 registry emits measurement-specific metric names such as `.count`, `.avg`, `.sum`, and `.max`; dashboards and alarms must use the emitted CloudWatch names.
+
+| CloudWatch metric | Meaning | Metric-specific dimensions |
 | --- | --- | --- |
-| `terraformers.analysis.jobs` | started, succeeded, failed jobs | `outcome` |
-| `terraformers.analysis.failures` | bounded failed-job category | `category` |
-| `terraformers.analysis.duration` | end-to-end job latency | none |
-| `terraformers.bedrock.invocations` / `.duration` / `.failures` | Bedrock outcome, latency, and bounded failure category | `outcome` or `category` |
-| `terraformers.aoss.retrievals` / `.duration` / `.failures` / `.retrieved_hits` | AOSS outcome, latency, bounded failure category, and per-retrieval hit count | `outcome` or `category` |
-| `terraformers.analysis.executor.rejections` | rejected analysis submissions | none |
+| `terraformers.analysis.jobs.count` | started, succeeded, failed jobs | `outcome` |
+| `terraformers.analysis.failures.count` | bounded failed-job category | `category` |
+| `terraformers.analysis.duration.avg` / `.max` / `.count` / `.sum` | end-to-end job latency | none |
+| `terraformers.bedrock.invocations.count` / `terraformers.bedrock.duration.*` / `terraformers.bedrock.failures.count` | Bedrock outcome, latency, and bounded failure category | `outcome` or `category` |
+| `terraformers.aoss.retrievals.count` / `terraformers.aoss.duration.*` / `terraformers.aoss.failures.count` / `terraformers.aoss.retrieved_hits.*` | AOSS outcome, latency, bounded failure category, and per-retrieval hit count | `outcome` or `category` |
+| `terraformers.analysis.executor.rejections.count` | rejected analysis submissions | none |
 
 Direct CloudWatch2 publication filters to `terraformers.` only. Prometheus retains internal framework metrics; Application Signals provides HTTP, Hikari/runtime, and request fault/latency telemetry.
 

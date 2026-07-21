@@ -62,7 +62,7 @@ def verify_workflow() -> None:
         "foundation apply must be dispatched directly from aws-live-terraform-apply.yml.",
         "aws-live-plan' || 'aws-live-apply", "infra/terraform/bootstrap/aws-live-foundation",
         "state_component=bootstrap", "AWS_LIVE_FOUNDATION_TFVARS_B64",
-        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "foundation-operations-visibility-apply-permission-create", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE", "eks-runtime-operations-visibility-create", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_ADDON_RECOVERY", "eks-runtime-operations-visibility-addon-recovery", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
+        "APPLY_REVIEWED_FOUNDATION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_UPDATE", "foundation-rag-apply-permission-create", "foundation-rag-apply-permission-update", "foundation-operations-visibility-apply-permission-create", "foundation-operations-visibility-apply-permission-update", "APPLY_REVIEWED_IN_PLACE_UPDATE", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE", "eks-runtime-operations-visibility-create", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_ADDON_RECOVERY", "eks-runtime-operations-visibility-addon-recovery", "APPLY_REVIEWED_OPERATIONS_VISIBILITY_REPAIR", "eks-runtime-operations-visibility-repair", "APPLY_REVIEWED_RAG_RUNTIME_CREATE", "APPLY_REVIEWED_RAG_RUNTIME_RECOVERY", "rag-runtime-reviewed-create", "rag-runtime-reviewed-recovery",
         "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate", "use_lockfile = true",
         "FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}",
         "EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}", "RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}", "AWS_LIVE_RAG_TFVARS_B64 secret is required.",
@@ -93,11 +93,23 @@ def verify_workflow() -> None:
             "approved_resource_count=2", "environment_gate=aws-live-plan",
             "temporary_bootstrap_permission_cleanup=external-required",
         ),
+        "foundation-operations-visibility-apply-permission-update": (
+            "approved_action=update", "approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create",
+            "approved_changed_path=policy", "approved_resource_count=1", "environment_gate=aws-live-plan",
+            "temporary_bootstrap_permission_cleanup=external-required",
+            "foundation_permission_extension=external-temporary-bootstrap-required",
+        ),
         "rag-runtime-reviewed-create": ("approved_action=create-and-read", "approved_resource_count=26", "environment_gate=aws-live-apply"),
         "rag-runtime-reviewed-recovery": ("approved_action=create-and-read", "approved_resource_count=${approved_resource_count}", "environment_gate=aws-live-apply"),
         "eks-runtime-backend-policy-update": ("approved_resource=aws_iam_policy.backend_runtime_access", "approved_action=update", "approved_changed_path=policy", "environment_gate=aws-live-apply"),
         "eks-runtime-operations-visibility-create": ("approved_action=create", "approved_resource_count=9", "environment_gate=aws-live-apply"),
         "eks-runtime-operations-visibility-addon-recovery": ("approved_action=create", "approved_resource=aws_eks_addon.cloudwatch_observability", "approved_resource_count=1", "environment_gate=aws-live-apply"),
+        "eks-runtime-operations-visibility-repair": (
+            "approved_action=update", "approved_resource=aws_eks_addon.cloudwatch_observability",
+            "approved_resource=aws_cloudwatch_dashboard.operations_visibility",
+            "approved_resource=aws_cloudwatch_metric_alarm.analysis_failure",
+            "approved_resource_count=3", "environment_gate=aws-live-apply",
+        ),
     }
     for contract, expected_values in expected_summary_branches.items():
         branch = summary_case.split(f"{contract})", 1)[1].split(";;", 1)[0]
@@ -189,6 +201,9 @@ def verify_workflow() -> None:
     contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy')
     contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess')
     assert 'ForAnyValue:StringEquals' not in cloudwatch_attach_statement
+    update_addon_statement = foundation.split('sid       = "UpdateApprovedCloudWatchObservabilityAddon"', 1)[1].split('  statement {', 1)[0]
+    contains(update_addon_statement, 'actions   = ["eks:UpdateAddon"]')
+    contains(update_addon_statement, 'arn:aws:eks:ap-northeast-2:024863981627:addon/terraformers-dev-backend/amazon-cloudwatch-observability/*')
     vpc_statement = foundation.split('sid       = "CreateSecurityGroupsInApprovedVpc"', 1)[1].split('  statement {', 1)[0]
     tagged_sg_statement = foundation.split('sid       = "CreateTaggedRagSecurityGroups"', 1)[1].split('  statement {', 1)[0]
     assert "aws:RequestTag" not in vpc_statement
@@ -293,6 +308,12 @@ def main() -> int:
     wrong_permission_path = json.loads(json.dumps(foundation_permission_update)); wrong_permission_path["resource_changes"][0]["change"]["after"] = {"name": "different", "policy": "after"}
     verify_contract(wrong_permission_path, "foundation-rag-apply-permission-update", "foundation", False)
 
+    operations_visibility_permission_update = fixture("aws_iam_policy.terraform_apply_operations_visibility_create", "aws_iam_policy", ["update"])
+    operations_visibility_permission_update["resource_changes"][0]["change"]["after"] = {"policy": "after"}
+    verify_contract(operations_visibility_permission_update, "foundation-operations-visibility-apply-permission-update", "foundation", True)
+    wrong_operations_visibility_permission_update = json.loads(json.dumps(operations_visibility_permission_update)); wrong_operations_visibility_permission_update["resource_changes"][0]["address"] = "aws_iam_policy.unapproved"
+    verify_contract(wrong_operations_visibility_permission_update, "foundation-operations-visibility-apply-permission-update", "foundation", False)
+
     eks = fixture("aws_iam_policy.backend_runtime_access", "aws_iam_policy", ["update"])
     eks["resource_changes"][0]["change"]["after"] = {"policy": "after"}
     verify_contract(eks, "eks-runtime-backend-policy-update", "eks-runtime", True, ["--approved-resource", "aws_iam_policy.backend_runtime_access", "--approved-changed-path", "policy"])
@@ -324,6 +345,24 @@ def main() -> int:
     addon_recovery_count_mismatch = json.loads(json.dumps(operations_visibility_addon_recovery)); addon_recovery_count_mismatch["resource_changes"].append({"address": "aws_iam_role.extra", "type": "aws_iam_role", "change": {"actions": ["read"], "before": None, "after": {"name": "extra"}}})
     verify_contract(addon_recovery_count_mismatch, "eks-runtime-operations-visibility-addon-recovery", "eks-runtime", False)
     verify_contract(operations_visibility_addon_recovery, "eks-runtime-operations-visibility-addon-recovery", "foundation", False)
+
+    operations_visibility_repair = {
+        "format_version": "1.2",
+        "terraform_version": "1.15.8",
+        "resource_changes": [
+            {"address": "aws_eks_addon.cloudwatch_observability", "type": "aws_eks_addon", "change": {"actions": ["update"], "before": {"configuration_values": "before"}, "after": {"configuration_values": "after"}}},
+            {"address": "aws_cloudwatch_dashboard.operations_visibility", "type": "aws_cloudwatch_dashboard", "change": {"actions": ["update"], "before": {"dashboard_body": "before"}, "after": {"dashboard_body": "after"}}},
+            {"address": "aws_cloudwatch_metric_alarm.analysis_failure", "type": "aws_cloudwatch_metric_alarm", "change": {"actions": ["update"], "before": {"metric_name": "before"}, "after": {"metric_name": "after"}}},
+        ],
+    }
+    verify_contract(operations_visibility_repair, "eks-runtime-operations-visibility-repair", "eks-runtime", True)
+    repair_missing = json.loads(json.dumps(operations_visibility_repair)); repair_missing["resource_changes"] = repair_missing["resource_changes"][:-1]
+    verify_contract(repair_missing, "eks-runtime-operations-visibility-repair", "eks-runtime", False)
+    repair_extra = json.loads(json.dumps(operations_visibility_repair)); repair_extra["resource_changes"].append({"address": "aws_eks_node_group.backend", "type": "aws_eks_node_group", "change": {"actions": ["update"], "before": {"scaling_config": "before"}, "after": {"scaling_config": "after"}}})
+    verify_contract(repair_extra, "eks-runtime-operations-visibility-repair", "eks-runtime", False)
+    repair_wrong_path = json.loads(json.dumps(operations_visibility_repair))
+    repair_wrong_path["resource_changes"][0]["change"] = {"actions": ["update"], "before": {"addon_version": "before"}, "after": {"addon_version": "after"}}
+    verify_contract(repair_wrong_path, "eks-runtime-operations-visibility-repair", "eks-runtime", False)
 
     rag_changes = [
         {"address": address, "type": kind, "change": {"actions": ["create"], "before": None, "after": {"name": address}}}
@@ -396,7 +435,7 @@ def main() -> int:
         "approved_terraform_apply_contract_verification=passed",
         "foundation_positive_verification=passed", "foundation_negative_extra_resource=passed",
         "foundation_negative_missing_resource=passed", "foundation_negative_update=passed",
-        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_operations_visibility_permission_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "operations_visibility_positive_and_negative_verification=passed", "operations_visibility_addon_recovery_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
+        "foundation_negative_wrong_address=passed", "foundation_permission_extension_positive_and_negative_verification=passed", "foundation_operations_visibility_permission_positive_and_negative_verification=passed", "foundation_operations_visibility_permission_update_positive_and_negative_verification=passed", "foundation_permission_update_positive_and_negative_verification=passed", "eks_runtime_positive_and_negative_verification=passed", "operations_visibility_positive_and_negative_verification=passed", "operations_visibility_addon_recovery_positive_and_negative_verification=passed", "operations_visibility_repair_positive_and_negative_verification=passed", "rag_runtime_positive_and_negative_verification=passed", "rag_runtime_recovery_positive_and_negative_verification=passed",
         "raw_plan_uploaded=false", "aws_mutation=none", "kubernetes_mutation=none",
     ]
     (EVIDENCE_DIR / "verification-summary.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")

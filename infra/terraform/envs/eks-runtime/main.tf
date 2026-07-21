@@ -298,9 +298,15 @@ resource "aws_eks_addon" "cloudwatch_observability" {
       config = {
         logs = {
           metrics_collected = {
+            application_signals = {}
             kubernetes = {
               enhanced_container_insights = true
             }
+          }
+        }
+        traces = {
+          traces_collected = {
+            application_signals = {}
           }
         }
       }
@@ -348,8 +354,8 @@ resource "aws_cloudwatch_dashboard" "operations_visibility" {
       { type = "text", x = 0, y = 0, width = 24, height = 2, properties = { markdown = "# Terraformers Backend operations\nEnvironment: ${var.environment} | Service: terraformers-backend" } },
       { type = "metric", x = 0, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "EKS node CPU / memory", view = "timeSeries", metrics = [["ContainerInsights", "node_cpu_utilization", "ClusterName", aws_eks_cluster.backend.name], ["ContainerInsights", "node_memory_utilization", "ClusterName", aws_eks_cluster.backend.name]] } },
       { type = "metric", x = 12, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "Backend signals and availability", view = "timeSeries", metrics = [["ApplicationSignals", "Latency", "Environment", var.environment, "Service", "terraformers-backend"], ["ApplicationSignals", "Fault", "Environment", var.environment, "Service", "terraformers-backend"], ["ContainerInsights", "service_number_of_running_pods", "ClusterName", aws_eks_cluster.backend.name, "Namespace", var.backend_namespace, "Service", "terraformers-backend"]] } },
-      { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Analysis jobs and duration", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.analysis.jobs", "service", "terraformers-backend", "environment", var.environment, "outcome", "started"], ["Terraformers/Backend", "terraformers.analysis.jobs", "service", "terraformers-backend", "environment", var.environment, "outcome", "succeeded"], ["Terraformers/Backend", "terraformers.analysis.jobs", "service", "terraformers-backend", "environment", var.environment, "outcome", "failed"], ["Terraformers/Backend", "terraformers.analysis.duration", "service", "terraformers-backend", "environment", var.environment]] } },
-      { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Bedrock and AOSS", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.bedrock.duration", "service", "terraformers-backend", "environment", var.environment], ["Terraformers/Backend", "terraformers.aoss.duration", "service", "terraformers-backend", "environment", var.environment], ["Terraformers/Backend", "terraformers.aoss.retrieved_hits", "service", "terraformers-backend", "environment", var.environment]] } },
+      { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Analysis jobs and duration", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.analysis.jobs.count", "service", "terraformers-backend", "environment", var.environment, "outcome", "started"], ["Terraformers/Backend", "terraformers.analysis.jobs.count", "service", "terraformers-backend", "environment", var.environment, "outcome", "succeeded"], ["Terraformers/Backend", "terraformers.analysis.jobs.count", "service", "terraformers-backend", "environment", var.environment, "outcome", "failed"], ["Terraformers/Backend", "terraformers.analysis.duration.avg", "service", "terraformers-backend", "environment", var.environment]] } },
+      { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Bedrock and AOSS", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.bedrock.duration.avg", "service", "terraformers-backend", "environment", var.environment], ["Terraformers/Backend", "terraformers.aoss.duration.avg", "service", "terraformers-backend", "environment", var.environment], ["Terraformers/Backend", "terraformers.aoss.retrieved_hits.avg", "service", "terraformers-backend", "environment", var.environment]] } },
       { type = "metric", x = 0, y = 14, width = 24, height = 6, properties = { region = var.aws_region, title = "Backend container restarts", view = "timeSeries", metrics = [[{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_number_of_container_restarts\" ClusterName=\"${aws_eks_cluster.backend.name}\" Namespace=\"${var.backend_namespace}\"', 'Sum', 300)", id = "restarts", label = "pod restarts" }]] } }
     ]
   })
@@ -372,7 +378,7 @@ resource "aws_cloudwatch_metric_alarm" "analysis_failure" {
   alarm_name          = "${local.name_prefix}-analysis-failures"
   alarm_description   = "Analysis job failures require investigation."
   namespace           = "Terraformers/Backend"
-  metric_name         = "terraformers.analysis.jobs"
+  metric_name         = "terraformers.analysis.jobs.count"
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1

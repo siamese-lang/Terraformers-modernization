@@ -122,6 +122,8 @@ jobs:
                 echo 'apply_contract=foundation-rag-apply-permission-update' >> "${GITHUB_OUTPUT}"
               elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE ]]; then
                 echo 'apply_contract=foundation-operations-visibility-apply-permission-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_UPDATE ]]; then
+                echo 'apply_contract=foundation-operations-visibility-apply-permission-update' >> "${GITHUB_OUTPUT}"
               else
                 echo 'approval_confirmation does not match a required foundation confirmation string.' >&2; exit 1
               fi
@@ -138,6 +140,8 @@ jobs:
                 echo 'apply_contract=eks-runtime-operations-visibility-create' >> "${GITHUB_OUTPUT}"
               elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_ADDON_RECOVERY ]]; then
                 echo 'apply_contract=eks-runtime-operations-visibility-addon-recovery' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_REPAIR ]]; then
+                echo 'apply_contract=eks-runtime-operations-visibility-repair' >> "${GITHUB_OUTPUT}"
               else
                 echo 'approval_confirmation does not match a required eks-runtime confirmation string.' >&2; exit 1
               fi
@@ -300,6 +304,15 @@ jobs:
                 echo 'temporary_bootstrap_permission_cleanup=external-required'
                 echo 'foundation_permission_extension=external-temporary-bootstrap-required'
                 ;;
+              foundation-operations-visibility-apply-permission-update)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create'
+                echo 'approved_changed_path=policy'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                echo 'foundation_permission_extension=external-temporary-bootstrap-required'
+                ;;
               foundation-apply-role-bootstrap)
                 echo 'approved_action=create'
                 echo 'approved_resource_count=4'
@@ -341,6 +354,14 @@ jobs:
                 echo 'approved_action=create'
                 echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
                 echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-operations-visibility-repair)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
+                echo 'approved_resource=aws_cloudwatch_dashboard.operations_visibility'
+                echo 'approved_resource=aws_cloudwatch_metric_alarm.analysis_failure'
+                echo 'approved_resource_count=3'
                 echo 'environment_gate=aws-live-apply'
                 ;;
               *)
