@@ -10,6 +10,7 @@ GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-siamese-lang/Terraformers-modernization}
 GITHUB_ENVIRONMENT="${GITHUB_ENVIRONMENT:-aws-live-teardown}"
 ROLE_NAME="${ROLE_NAME:-terraformers-live-teardown}"
 POLICY_NAME="${POLICY_NAME:-terraformers-runtime-teardown}"
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-terraformers-dev-backend}"
 
 ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 test "${ACTUAL_ACCOUNT_ID}" = "${EXPECTED_ACCOUNT_ID}"
@@ -18,7 +19,12 @@ OIDC_PROVIDER_ARN="$(
   aws iam list-open-id-connect-providers --output json |
   jq -r '.OpenIDConnectProviderList[].Arn' |
   while IFS= read -r arn; do
-    url="$(aws iam get-open-id-connect-provider --open-id-connect-provider-arn "${arn}" --query Url --output text)"
+    url="$(
+      aws iam get-open-id-connect-provider \
+        --open-id-connect-provider-arn "${arn}" \
+        --query Url \
+        --output text
+    )"
     if [ "${url}" = 'token.actions.githubusercontent.com' ]; then
       printf '%s\n' "${arn}"
     fi
@@ -26,6 +32,22 @@ OIDC_PROVIDER_ARN="$(
   head -n 1
 )"
 test -n "${OIDC_PROVIDER_ARN}"
+
+EKS_OIDC_PROVIDER_ARN="$(
+  issuer="$(
+    aws eks describe-cluster \
+      --region "${AWS_REGION}" \
+      --name "${EKS_CLUSTER_NAME}" \
+      --query 'cluster.identity.oidc.issuer' \
+      --output text 2>/dev/null || true
+  )"
+  if [ -n "${issuer}" ] && [ "${issuer}" != "None" ]; then
+    printf 'arn:aws:iam::%s:oidc-provider/%s\n' \
+      "${EXPECTED_ACCOUNT_ID}" \
+      "${issuer#https://}"
+  fi
+)"
+test -n "${EKS_OIDC_PROVIDER_ARN}"
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
@@ -48,6 +70,8 @@ cat > "${WORK_DIR}/trust.json" <<EOF
   ]
 }
 EOF
+
+jq empty "${WORK_DIR}/trust.json"
 
 if aws iam get-role --role-name "${ROLE_NAME}" >/dev/null 2>&1; then
   aws iam update-assume-role-policy \
@@ -165,24 +189,30 @@ cat > "${WORK_DIR}/teardown-policy.json" <<EOF
       "Resource": "arn:aws:codebuild:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:project/terraformers-*"
     },
     {
-      "Sid": "ProjectEksDeletionAndTemporaryAccess",
+      "Sid": "ProjectEksDeletion",
       "Effect": "Allow",
       "Action": [
         "eks:DeleteAddon",
         "eks:DeleteNodegroup",
         "eks:DeleteCluster",
-        "eks:UntagResource",
+        "eks:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:cluster/terraformers-*",
+        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:nodegroup/terraformers-*/*/*",
+        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:addon/terraformers-*/*/*"
+      ]
+    },
+    {
+      "Sid": "TemporaryEksAccessEntryManagement",
+      "Effect": "Allow",
+      "Action": [
         "eks:CreateAccessEntry",
         "eks:DeleteAccessEntry",
         "eks:AssociateAccessPolicy",
         "eks:DisassociateAccessPolicy"
       ],
-      "Resource": [
-        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:cluster/terraformers-*",
-        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:nodegroup/terraformers-*/*/*",
-        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:addon/terraformers-*/*/*",
-        "arn:aws:eks:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:access-entry/terraformers-*/*/*/*/*"
-      ]
+      "Resource": "*"
     },
     {
       "Sid": "ProjectEc2Deletion",
@@ -231,13 +261,21 @@ cat > "${WORK_DIR}/teardown-policy.json" <<EOF
         "iam:DeleteRole",
         "iam:DeletePolicy",
         "iam:DeletePolicyVersion",
-        "iam:RemoveRoleFromInstanceProfile",
-        "iam:SimulatePrincipalPolicy"
+        "iam:RemoveRoleFromInstanceProfile"
       ],
       "Resource": [
         "arn:aws:iam::${EXPECTED_ACCOUNT_ID}:role/terraformers-*",
         "arn:aws:iam::${EXPECTED_ACCOUNT_ID}:policy/terraformers-*"
       ]
+    },
+    {
+      "Sid": "ExactEksOidcProviderDeletion",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:UntagOpenIDConnectProvider"
+      ],
+      "Resource": "${EKS_OIDC_PROVIDER_ARN}"
     },
     {
       "Sid": "ProjectCloudWatchDeletion",
@@ -265,6 +303,10 @@ cat > "${WORK_DIR}/teardown-policy.json" <<EOF
 }
 EOF
 
+jq empty "${WORK_DIR}/teardown-policy.json"
+POLICY_BYTES="$(wc -c < "${WORK_DIR}/teardown-policy.json" | tr -d ' ')"
+test "${POLICY_BYTES}" -le 10240
+
 aws iam put-role-policy \
   --role-name "${ROLE_NAME}" \
   --policy-name "${POLICY_NAME}" \
@@ -278,6 +320,8 @@ echo "github_environment=${GITHUB_ENVIRONMENT}"
 echo "trust_subject=repo:${GITHUB_REPOSITORY}:environment:${GITHUB_ENVIRONMENT}"
 echo "state_bucket=${STATE_BUCKET}"
 echo "state_prefix=${STATE_PREFIX}"
+echo "eks_oidc_provider_arn=${EKS_OIDC_PROVIDER_ARN}"
 echo "administrator_access_attached=false"
 echo "read_only_managed_policy_attached=true"
 echo "project_destructive_inline_policy=${POLICY_NAME}"
+echo "inline_policy_bytes=${POLICY_BYTES}"
