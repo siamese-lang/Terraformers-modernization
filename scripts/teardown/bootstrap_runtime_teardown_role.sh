@@ -149,7 +149,7 @@ cat > "${WORK_DIR}/teardown-policy.json" <<EOF
       "Sid": "ProjectSecretDeletion",
       "Effect": "Allow",
       "Action": ["secretsmanager:DeleteSecret", "secretsmanager:CancelRotateSecret"],
-      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:secret:terraformers-*"
+      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${EXPECTED_ACCOUNT_ID}:secret:terraformers*"
     },
     {
       "Sid": "ProjectRdsDeletion",
