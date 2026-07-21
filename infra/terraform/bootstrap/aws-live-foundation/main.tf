@@ -336,6 +336,13 @@ data "aws_iam_policy_document" "terraform_apply_operations_visibility_create" {
   }
 
   statement {
+    sid       = "UpdateApprovedCloudWatchObservabilityAddon"
+    effect    = "Allow"
+    actions   = ["eks:UpdateAddon"]
+    resources = ["arn:aws:eks:ap-northeast-2:024863981627:addon/terraformers-dev-backend/amazon-cloudwatch-observability/*"]
+  }
+
+  statement {
     sid       = "TagApprovedCloudWatchObservabilityAddon"
     effect    = "Allow"
     actions   = ["eks:TagResource"]
