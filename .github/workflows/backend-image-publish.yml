@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: false
+      create_gitops_update_pr:
+        description: Create a digest-only GitOps manifest update pull request after a successful image push.
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
   id-token: write
@@ -22,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: aws-backend-image-publish
+    outputs:
+      repository_uri: ${{ steps.push.outputs.repository_uri }}
+      image_tag: ${{ steps.push.outputs.image_tag }}
+      image_digest: ${{ steps.push.outputs.image_digest }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
@@ -33,9 +42,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate publish contract
-        if: ${{ inputs.push_image }}
+        if: ${{ inputs.push_image || inputs.create_gitops_update_pr }}
         run: |
           set -euo pipefail
+          if [[ "${{ inputs.create_gitops_update_pr }}" == "true" && "${{ inputs.push_image }}" != "true" ]]; then
+            echo "create_gitops_update_pr=true requires push_image=true." >&2
+            exit 1
+          fi
           for variable_name in AWS_ROLE_TO_ASSUME AWS_REGION EXPECTED_AWS_ACCOUNT_ID; do
             if [[ -z "${!variable_name}" ]]; then
               echo "${variable_name} Environment or repository variable is required when push_image=true." >&2
@@ -69,15 +82,10 @@ jobs:
           actual_account_id="$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")"
           test "${actual_account_id}" = "${EXPECTED_AWS_ACCOUNT_ID}"
           echo "aws_account_match=true"
-
           repository_uri="${IMAGE_URI%:*}"
           repository_name="${repository_uri##*/}"
           image_tag="${IMAGE_URI##*:}"
-          if aws ecr describe-images \
-            --region "${AWS_REGION}" \
-            --repository-name "${repository_name}" \
-            --image-ids imageTag="${image_tag}" \
-            >/dev/null 2>&1; then
+          if aws ecr describe-images --region "${AWS_REGION}" --repository-name "${repository_name}" --image-ids imageTag="${image_tag}" >/dev/null 2>&1; then
             echo "Immutable image tag already exists; refusing overwrite: ${image_tag}" >&2
             exit 1
           fi
@@ -90,12 +98,7 @@ jobs:
           IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
-          docker build \
-            --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" \
-            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            -f backend/Dockerfile \
-            -t "${IMAGE_URI}" \
-            backend
+          docker build --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -f backend/Dockerfile -t "${IMAGE_URI}" backend
           docker image inspect "${IMAGE_URI}" > backend-image-inspect.json
 
       - name: Login to ECR
@@ -104,41 +107,25 @@ jobs:
           IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
-          ecr_registry="${IMAGE_URI%%/*}"
-          aws ecr get-login-password --region "${AWS_REGION}" \
-            | docker login --username AWS --password-stdin "${ecr_registry}"
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${IMAGE_URI%%/*}"
 
       - name: Push backend image and resolve digest
+        id: push
         if: ${{ inputs.push_image }}
         env:
           IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
           docker push "${IMAGE_URI}"
-
           repository_uri="${IMAGE_URI%:*}"
           repository_name="${repository_uri##*/}"
           image_tag="${IMAGE_URI##*:}"
-          image_digest="$(aws ecr describe-images \
-            --region "${AWS_REGION}" \
-            --repository-name "${repository_name}" \
-            --image-ids imageTag="${image_tag}" \
-            --query 'imageDetails[0].imageDigest' \
-            --output text)"
-          if [[ "${image_digest}" != sha256:* ]]; then
-            echo "Unable to resolve pushed ECR image digest." >&2
-            exit 1
-          fi
-
-          {
-            echo "source_commit_sha=${SOURCE_COMMIT_SHA}"
-            echo "repository_uri=${repository_uri}"
-            echo "image_tag=${image_tag}"
-            echo "image_digest=${image_digest}"
-            echo "pushed=true"
-            echo "aws_region=${AWS_REGION}"
-            echo "credential_mode=github-oidc"
-          } | tee backend-image-publish-summary.txt >> "${GITHUB_STEP_SUMMARY}"
+          image_digest="$(aws ecr describe-images --region "${AWS_REGION}" --repository-name "${repository_name}" --image-ids imageTag="${image_tag}" --query 'imageDetails[0].imageDigest' --output text)"
+          [[ "${image_digest}" == sha256:* ]] || { echo "Unable to resolve pushed ECR image digest." >&2; exit 1; }
+          echo "repository_uri=${repository_uri}" >> "${GITHUB_OUTPUT}"
+          echo "image_tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+          echo "image_digest=${image_digest}" >> "${GITHUB_OUTPUT}"
+          printf 'source_commit=%s\nimage_tag=%s\necr_digest=%s\n' "${SOURCE_COMMIT_SHA}" "${image_tag}" "${image_digest}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Record build-only image summary
         if: ${{ !inputs.push_image }}
@@ -146,19 +133,68 @@ jobs:
           IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
-          {
-            echo "source_commit_sha=${SOURCE_COMMIT_SHA}"
-            echo "image_uri=${IMAGE_URI}"
-            echo "pushed=false"
-            echo "aws_region=${AWS_REGION}"
-            echo "credential_mode=not-configured"
-          } | tee backend-image-publish-summary.txt >> "${GITHUB_STEP_SUMMARY}"
+          printf 'source_commit=%s\nimage_uri=%s\npushed=false\ncredential_mode=not-configured\n' "${SOURCE_COMMIT_SHA}" "${IMAGE_URI}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload image build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-image-publish-evidence
-          path: |
-            backend-image-inspect.json
-            backend-image-publish-summary.txt
+          path: backend-image-inspect.json
+
+  create-gitops-update-pr:
+    name: Create GitOps digest update pull request
+    needs: backend-image-publish
+    if: ${{ inputs.push_image && inputs.create_gitops_update_pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      SOURCE_COMMIT_SHA: ${{ github.sha }}
+      REPOSITORY_URI: ${{ needs.backend-image-publish.outputs.repository_uri }}
+      IMAGE_TAG: ${{ needs.backend-image-publish.outputs.image_tag }}
+      IMAGE_DIGEST: ${{ needs.backend-image-publish.outputs.image_digest }}
+      BASE_BRANCH: agent/rdb-domain-realignment
+    steps:
+      - name: Checkout GitOps base revision
+        uses: actions/checkout@v4
+        with:
+          ref: agent/rdb-domain-realignment
+          token: ${{ github.token }}
+
+      - name: Update digest-only GitOps manifest and validate render
+        id: update
+        run: |
+          set -euo pipefail
+          [[ "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Resolved ECR digest is invalid." >&2; exit 1; }
+          branch="gitops/backend-${IMAGE_DIGEST#sha256:}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null; then
+            echo "branch_exists=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          git switch -c "${branch}"
+          manifest=infra/kubernetes/gitops/backend-runtime/kustomization.yaml
+          python3 -c 'import re, sys; path, repository, digest = sys.argv[1:]; text = open(path).read(); text, names = re.subn(r"(?m)^(    newName: ).*$", r"\g<1>" + repository, text); text, digests = re.subn(r"(?m)^(    digest: )sha256:[0-9a-f]{64}$", r"\g<1>" + digest, text); (names == 1 and digests == 1 and "newTag:" not in text) or sys.exit("GitOps image replacement must change exactly newName and digest, with no tag."); open(path, "w").write(text)' "${manifest}" "${REPOSITORY_URI}" "${IMAGE_DIGEST}"
+          rendered="$(kubectl kustomize infra/kubernetes/gitops/backend-runtime)"
+          expected="image: ${REPOSITORY_URI}@${IMAGE_DIGEST}"
+          grep -Fqx "${expected}" <<<"${rendered}" || { echo "Rendered Deployment image is not repository@sha256 digest." >&2; exit 1; }
+          git diff --check
+          git add "${manifest}"
+          git diff --cached --quiet && { echo "No GitOps manifest change was produced." >&2; exit 1; }
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "chore(gitops): deploy backend ${IMAGE_DIGEST:7:12}"
+          git push origin "${branch}"
+
+      - name: Create or report GitOps update pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.update.outputs.branch }}
+          BRANCH_EXISTS: ${{ steps.update.outputs.branch_exists }}
+        run: |
+          set -euo pipefail
+          pr_url="$(gh pr list --base "${BASE_BRANCH}" --head "${BRANCH}" --state open --json url --jq '.[0].url')"
+          if [[ -z "${pr_url}" ]]; then
+            pr_url="$(gh pr create --base "${BASE_BRANCH}" --head "${BRANCH}" --title "chore(gitops): deploy backend ${IMAGE_DIGEST:7:12}" --body "Automated immutable-digest Backend GitOps update.\n\nSource commit: ${SOURCE_COMMIT_SHA}\nImage tag: ${IMAGE_TAG}\nECR digest: ${REPOSITORY_URI}@${IMAGE_DIGEST}")"
+          fi
+          printf 'source_commit=%s\nimage_tag=%s\necr_digest=%s\ngitops_branch=%s\npr_url=%s\n' "${SOURCE_COMMIT_SHA}" "${IMAGE_TAG}" "${IMAGE_DIGEST}" "${BRANCH}" "${pr_url}" >> "${GITHUB_STEP_SUMMARY}"
