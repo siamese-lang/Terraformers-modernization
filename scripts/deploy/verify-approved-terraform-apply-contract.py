@@ -26,6 +26,9 @@ OPERATIONS_VISIBILITY_PERMISSION_RESOURCES = {
     "aws_iam_policy.terraform_apply_operations_visibility_create": "aws_iam_policy",
     "aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create": "aws_iam_role_policy_attachment",
 }
+OPERATIONS_VISIBILITY_ADDON_RECOVERY_RESOURCE = {
+    "aws_eks_addon.cloudwatch_observability": ("aws_eks_addon", ["create"], []),
+}
 OPERATIONS_VISIBILITY_RESOURCES = {
     "aws_cloudwatch_dashboard.operations_visibility": "aws_cloudwatch_dashboard",
     "aws_cloudwatch_metric_alarm.analysis_failure": "aws_cloudwatch_metric_alarm",
@@ -76,6 +79,7 @@ CONTRACTS = {
     "foundation-apply-role-bootstrap": "foundation",
     "eks-runtime-backend-policy-update": "eks-runtime",
     "eks-runtime-operations-visibility-create": "eks-runtime",
+    "eks-runtime-operations-visibility-addon-recovery": "eks-runtime",
     "rag-runtime-reviewed-create": "rag-runtime",
     "rag-runtime-reviewed-recovery": "rag-runtime",
 }
@@ -203,6 +207,10 @@ def main() -> int:
         check_risk_gates(summary, txt, "eks-runtime", 9, 0)
         expected = {address: (kind, ["create"], []) for address, kind in OPERATIONS_VISIBILITY_RESOURCES.items()}
         if actual_actions(actions) != expected: fail("operations visibility resource_actions must exactly match the approved contract.")
+        check_blocked_types(actions)
+    elif args.contract == "eks-runtime-operations-visibility-addon-recovery":
+        check_risk_gates(summary, txt, "eks-runtime", 1, 0)
+        if actual_actions(actions) != OPERATIONS_VISIBILITY_ADDON_RECOVERY_RESOURCE: fail("operations visibility add-on recovery resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "rag-runtime-reviewed-create":
         check_risk_gates(summary, txt, "rag-runtime", 26, 0, RAG_REQUIRED_TXT_VALUES)
