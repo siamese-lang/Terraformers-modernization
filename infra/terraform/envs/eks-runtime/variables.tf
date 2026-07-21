@@ -102,7 +102,7 @@ variable "node_labels" {
 variable "node_desired_size" {
   description = "Desired backend node count."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "node_min_size" {
