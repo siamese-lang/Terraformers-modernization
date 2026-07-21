@@ -120,6 +120,8 @@ jobs:
                 echo 'apply_contract=foundation-rag-apply-permission-create' >> "${GITHUB_OUTPUT}"
               elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE ]]; then
                 echo 'apply_contract=foundation-rag-apply-permission-update' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE ]]; then
+                echo 'apply_contract=foundation-operations-visibility-apply-permission-create' >> "${GITHUB_OUTPUT}"
               else
                 echo 'approval_confirmation does not match a required foundation confirmation string.' >&2; exit 1
               fi
@@ -299,6 +301,13 @@ jobs:
               foundation-apply-role-bootstrap)
                 echo 'approved_action=create'
                 echo 'approved_resource_count=4'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                ;;
+              foundation-operations-visibility-apply-permission-create)
+                echo 'approved_action=create'
+                echo 'approved_resource=aws_iam_role_policy.terraform_apply_operations_visibility_create'
+                echo 'approved_resource_count=1'
                 echo 'environment_gate=aws-live-plan'
                 echo 'temporary_bootstrap_permission_cleanup=external-required'
                 ;;

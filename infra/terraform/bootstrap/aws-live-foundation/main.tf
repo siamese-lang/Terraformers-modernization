@@ -264,6 +264,116 @@ resource "aws_iam_role_policy" "terraform_apply_iam_mutation" {
   policy = data.aws_iam_policy_document.terraform_apply_iam_mutation.json
 }
 
+data "aws_iam_policy_document" "terraform_apply_operations_visibility_create" {
+  statement {
+    sid       = "CreateTaggedCloudWatchObservabilityIrsaRole"
+    effect    = "Allow"
+    actions   = ["iam:CreateRole", "iam:TagRole"]
+    resources = ["arn:aws:iam::024863981627:role/terraformers-dev-cloudwatch-observability-irsa-role"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = ["terraformers"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Environment"
+      values   = ["dev"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/ManagedBy"
+      values   = ["terraform"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Component"
+      values   = ["terraformers-modernization"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values   = ["Project", "Environment", "ManagedBy", "Component"]
+    }
+  }
+
+  statement {
+    sid       = "AttachApprovedCloudWatchManagedPolicies"
+    effect    = "Allow"
+    actions   = ["iam:AttachRolePolicy"]
+    resources = ["arn:aws:iam::024863981627:role/terraformers-dev-cloudwatch-observability-irsa-role"]
+
+    condition {
+      test     = "ForAnyValue:StringEquals"
+      variable = "iam:PolicyARN"
+      values   = ["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy", "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"]
+    }
+  }
+
+  statement {
+    sid       = "PassCloudWatchObservabilityRoleToEks"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::024863981627:role/terraformers-dev-cloudwatch-observability-irsa-role"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["eks.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "CreateAndTagApprovedCloudWatchObservabilityAddon"
+    effect    = "Allow"
+    actions   = ["eks:CreateAddon"]
+    resources = ["arn:aws:eks:ap-northeast-2:024863981627:cluster/terraformers-dev-backend"]
+  }
+
+  statement {
+    sid       = "TagApprovedCloudWatchObservabilityAddon"
+    effect    = "Allow"
+    actions   = ["eks:TagResource"]
+    resources = ["arn:aws:eks:ap-northeast-2:024863981627:addon/terraformers-dev-backend/amazon-cloudwatch-observability/*"]
+  }
+
+  statement {
+    sid       = "CreateBackendCloudWatchMetricsInlinePolicy"
+    effect    = "Allow"
+    actions   = ["iam:PutRolePolicy"]
+    resources = ["arn:aws:iam::024863981627:role/terraformers-dev-backend-irsa-role"]
+  }
+
+  statement {
+    sid       = "CreateOperationsVisibilityDashboard"
+    effect    = "Allow"
+    actions   = ["cloudwatch:PutDashboard"]
+    resources = ["arn:aws:cloudwatch::024863981627:dashboard/terraformers-dev-operations-visibility"]
+  }
+
+  statement {
+    sid       = "CreateReviewedOperationsVisibilityAlarms"
+    effect    = "Allow"
+    actions   = ["cloudwatch:PutMetricAlarm"]
+    resources = [
+      "arn:aws:cloudwatch:ap-northeast-2:024863981627:alarm:terraformers-dev-backend-fault",
+      "arn:aws:cloudwatch:ap-northeast-2:024863981627:alarm:terraformers-dev-analysis-failures",
+      "arn:aws:cloudwatch:ap-northeast-2:024863981627:alarm:terraformers-dev-backend-unavailable",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "terraform_apply_operations_visibility_create" {
+  name   = "terraformers-live-apply-operations-visibility-create"
+  role   = aws_iam_role.terraform_apply.id
+  policy = data.aws_iam_policy_document.terraform_apply_operations_visibility_create.json
+}
+
 data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
   statement {
     sid       = "ConfigureExactCorpusBucket"
