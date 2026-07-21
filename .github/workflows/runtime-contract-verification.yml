@@ -42,6 +42,11 @@ on:
         type: boolean
         required: true
         default: false
+      rag_corpus_directory:
+        description: Versioned corpus directory packaged and ingested by the existing RAG workflow.
+        required: true
+        type: string
+        default: corpus/terraformers-reference/v1
       rag_expected_aws_account_id:
         required: false
         default: ''
@@ -78,6 +83,7 @@ jobs:
     uses: ./.github/workflows/rag-corpus-ingestion.yml
     with:
       execute_ingestion: ${{ inputs.execute_rag_ingestion }}
+      corpus_directory: ${{ inputs.rag_corpus_directory }}
       expected_aws_account_id: ${{ inputs.rag_expected_aws_account_id }}
       expected_head_sha: ${{ inputs.rag_expected_head_sha }}
       approval_confirmation: ${{ inputs.rag_approval_confirmation }}

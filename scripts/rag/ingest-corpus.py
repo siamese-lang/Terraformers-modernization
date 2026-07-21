@@ -42,7 +42,14 @@ def validate_contract(corpus: Path) -> dict[str, object]:
     summary = Path(tempfile.mkstemp(prefix="rag-contract-", suffix=".json")[1])
     try:
         subprocess.run(
-            [sys.executable, str(ROOT / "scripts/checks/rag-corpus-contract-verification.py"), "--corpus-dir", str(corpus), "--summary-json", str(summary)],
+            [
+                sys.executable,
+                str(ROOT / "scripts/checks/rag-corpus-contract-verification.py"),
+                "--corpus-dir",
+                str(corpus),
+                "--summary-json",
+                str(summary),
+            ],
             check=True,
         )
         return json.loads(summary.read_text(encoding="utf-8"))
@@ -50,47 +57,180 @@ def validate_contract(corpus: Path) -> dict[str, object]:
         summary.unlink(missing_ok=True)
 
 
-def ensure_version_checksum(receipt: dict[str, object] | None, corpus_version: str, checksum: str) -> None:
-    if receipt and receipt.get("corpus_version") == corpus_version and receipt.get("checksum") != checksum:
+def ensure_version_checksum(
+    receipt: dict[str, object] | None,
+    corpus_version: str,
+    checksum: str,
+) -> None:
+    if (
+        receipt
+        and receipt.get("corpus_version") == corpus_version
+        and receipt.get("checksum") != checksum
+    ):
         fail("corpus version checksum changed; bump corpus version")
 
 
-def wait_for_document_count(client: object, index_name: str, expected: int, timeout_seconds: int = 180) -> int:
+def corpus_version_filter(corpus_version: str) -> dict[str, object]:
+    if not corpus_version:
+        fail("corpus version must be set")
+    return {"term": {"corpusVersion": corpus_version}}
+
+
+def document_exists(
+    client: object,
+    index_name: str,
+    document_id: str,
+    corpus_version: str,
+) -> bool:
+    hits = client.search(
+        index=index_name,
+        body={
+            "size": 1,
+            "_source": False,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"documentId": document_id}},
+                        corpus_version_filter(corpus_version),
+                    ]
+                }
+            },
+        },
+    )["hits"]["hits"]
+    return bool(hits)
+
+
+def wait_for_document_count(
+    client: object,
+    index_name: str,
+    expected: int,
+    corpus_version: str,
+    timeout_seconds: int = 180,
+) -> int:
     deadline = time.monotonic() + timeout_seconds
     while True:
-        count = int(client.count(index=index_name)["count"])
+        count = int(
+            client.count(
+                index=index_name,
+                body={"query": corpus_version_filter(corpus_version)},
+            )["count"]
+        )
         if count == expected:
             return count
         if count > expected:
-            fail("target index document count exceeds expected document count")
+            fail("target corpus version document count exceeds expected document count")
         if time.monotonic() >= deadline:
-            fail("target index document count did not converge before timeout")
+            fail("target corpus version document count did not converge before timeout")
         time.sleep(10)
 
 
-def wait_for_knn_hits(client: object, index_name: str, vector_field: str, vector: list[float], timeout_seconds: int = 120) -> list[dict[str, object]]:
+def wait_for_knn_hits(
+    client: object,
+    index_name: str,
+    vector_field: str,
+    vector: list[float],
+    corpus_version: str,
+    timeout_seconds: int = 120,
+) -> list[dict[str, object]]:
     deadline = time.monotonic() + timeout_seconds
     while True:
-        hits = client.search(index=index_name, body={"size": 3, "query": {"knn": {vector_field: {"vector": vector, "k": 3}}}})["hits"]["hits"]
+        hits = client.search(
+            index=index_name,
+            body={
+                "size": 3,
+                "query": {
+                    "knn": {
+                        vector_field: {
+                            "vector": vector,
+                            "k": 3,
+                            "filter": corpus_version_filter(corpus_version),
+                        }
+                    }
+                },
+            },
+        )["hits"]["hits"]
         if hits:
             return hits
         if time.monotonic() >= deadline:
-            fail("representative k-NN query returned no hits before timeout")
+            fail("representative corpus-version k-NN query returned no hits before timeout")
         time.sleep(10)
+
+
+def ensure_index_mapping(
+    client: object,
+    index_name: str,
+    schema: dict[str, object],
+    vector_field: str,
+    content_field: str,
+    vector_dimension: int,
+) -> list[str]:
+    desired = schema.get("mappings", {}).get("properties", {})
+    if not isinstance(desired, dict):
+        fail("corpus index schema properties are missing")
+
+    mapping = client.indices.get_mapping(index=index_name)[index_name]["mappings"][
+        "properties"
+    ]
+    vector = mapping.get(vector_field, {})
+    if (
+        vector.get("type") != "knn_vector"
+        or vector.get("dimension") != vector_dimension
+        or mapping.get(content_field, {}).get("type") != "text"
+    ):
+        fail("existing index field contract differs")
+
+    additions: dict[str, object] = {}
+    for field_name, expected in desired.items():
+        if field_name == vector_field:
+            continue
+        current = mapping.get(field_name)
+        if current is None:
+            additions[field_name] = expected
+            continue
+        if not isinstance(expected, dict) or current.get("type") != expected.get("type"):
+            fail(f"existing index mapping differs for {field_name}")
+
+    if additions:
+        client.indices.put_mapping(
+            index=index_name,
+            body={"properties": additions},
+        )
+    return sorted(additions)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--package", type=Path, default=ROOT / "corpus/terraformers-reference/v1")
+    parser.add_argument(
+        "--package",
+        type=Path,
+        default=ROOT / "corpus/terraformers-reference/v1",
+    )
     parser.add_argument("--validate-only", action="store_true")
-    parser.add_argument("--collection-endpoint", default=os.getenv("COLLECTION_ENDPOINT", ""))
+    parser.add_argument(
+        "--collection-endpoint",
+        default=os.getenv("COLLECTION_ENDPOINT", ""),
+    )
     parser.add_argument("--index-name", default=os.getenv("INDEX_NAME", ""))
     parser.add_argument("--vector-field", default=os.getenv("VECTOR_FIELD", ""))
     parser.add_argument("--content-field", default=os.getenv("CONTENT_FIELD", ""))
-    parser.add_argument("--embedding-model-id", default=os.getenv("EMBEDDING_MODEL_ID", ""))
-    parser.add_argument("--vector-dimension", type=int, default=int(os.getenv("VECTOR_DIMENSION", "1024")))
-    parser.add_argument("--expected-checksum", default=os.getenv("EXPECTED_CHECKSUM", ""))
-    parser.add_argument("--expected-document-count", type=int, default=int(os.getenv("EXPECTED_DOCUMENT_COUNT", "0")))
+    parser.add_argument(
+        "--embedding-model-id",
+        default=os.getenv("EMBEDDING_MODEL_ID", ""),
+    )
+    parser.add_argument(
+        "--vector-dimension",
+        type=int,
+        default=int(os.getenv("VECTOR_DIMENSION", "1024")),
+    )
+    parser.add_argument(
+        "--expected-checksum",
+        default=os.getenv("EXPECTED_CHECKSUM", ""),
+    )
+    parser.add_argument(
+        "--expected-document-count",
+        type=int,
+        default=int(os.getenv("EXPECTED_DOCUMENT_COUNT", "0")),
+    )
     parser.add_argument("--receipt-bucket", default=os.getenv("CORPUS_BUCKET", ""))
     parser.add_argument("--receipt-key", default=os.getenv("RECEIPT_KEY", ""))
     return parser.parse_args()
@@ -101,19 +241,42 @@ def main() -> None:
     started = time.monotonic()
     corpus = corpus_dir(args.package)
     contract = validate_contract(corpus)
-    manifest = json.loads((corpus / "corpus-manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (corpus / "corpus-manifest.json").read_text(encoding="utf-8")
+    )
+    corpus_version = str(manifest["corpusVersion"])
     checksum = str(contract["sha256"])
     document_count = int(contract["documentCount"])
     if args.expected_checksum and checksum != args.expected_checksum:
         fail("package checksum does not match expected full corpus contract checksum")
     if args.expected_document_count and document_count != args.expected_document_count:
         fail("package document count does not match expected document count")
-    summary = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": document_count, "index_name": args.index_name or manifest["indexName"], "embedding_model_id": args.embedding_model_id or manifest["embeddingModelId"], "vector_dimension": args.vector_dimension, "outcome": "validated", "elapsed_seconds": round(time.monotonic() - started, 3)}
+    summary = {
+        "corpus_version": corpus_version,
+        "checksum": checksum,
+        "document_count": document_count,
+        "index_name": args.index_name or manifest["indexName"],
+        "embedding_model_id": args.embedding_model_id or manifest["embeddingModelId"],
+        "vector_dimension": args.vector_dimension,
+        "outcome": "validated",
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
     if args.validate_only:
         log(**summary)
         return
-    if not all([args.collection_endpoint, args.index_name, args.vector_field, args.content_field, args.embedding_model_id, args.receipt_bucket, args.receipt_key]):
+    if not all(
+        [
+            args.collection_endpoint,
+            args.index_name,
+            args.vector_field,
+            args.content_field,
+            args.embedding_model_id,
+            args.receipt_bucket,
+            args.receipt_key,
+        ]
+    ):
         fail("deployment inputs are required")
+
     import boto3
     from opensearchpy import OpenSearch, RequestsHttpConnection
     from requests_aws4auth import AWS4Auth
@@ -121,43 +284,116 @@ def main() -> None:
     s3 = boto3.client("s3")
     receipt = None
     try:
-        receipt = json.loads(s3.get_object(Bucket=args.receipt_bucket, Key=args.receipt_key)["Body"].read())
+        receipt = json.loads(
+            s3.get_object(Bucket=args.receipt_bucket, Key=args.receipt_key)[
+                "Body"
+            ].read()
+        )
     except s3.exceptions.NoSuchKey:
         pass
-    ensure_version_checksum(receipt, manifest["corpusVersion"], checksum)
-    if receipt and receipt.get("corpus_version") != manifest["corpusVersion"]:
-        fail("receipt corpus version does not match target index version")
+    ensure_version_checksum(receipt, corpus_version, checksum)
+    if receipt and receipt.get("corpus_version") != corpus_version:
+        fail("receipt corpus version does not match requested corpus version")
+
     host = args.collection_endpoint.removeprefix("https://").split("/")[0]
     region = os.environ.get("AWS_REGION") or boto3.session.Session().region_name
     credentials = boto3.Session().get_credentials()
-    auth = AWS4Auth(credentials.access_key, credentials.secret_key, region, "aoss", session_token=credentials.token)
-    client = OpenSearch(hosts=[{"host": host, "port": 443}], http_auth=auth, use_ssl=True, verify_certs=True, connection_class=RequestsHttpConnection)
+    auth = AWS4Auth(
+        credentials.access_key,
+        credentials.secret_key,
+        region,
+        "aoss",
+        session_token=credentials.token,
+    )
+    client = OpenSearch(
+        hosts=[{"host": host, "port": 443}],
+        http_auth=auth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection,
+    )
     schema = json.loads((corpus / "index-schema.json").read_text(encoding="utf-8"))
     if not client.indices.exists(args.index_name):
         if receipt:
             fail("receipt exists but target index is missing")
         client.indices.create(args.index_name, body=schema)
-    mapping = client.indices.get_mapping(index=args.index_name)[args.index_name]["mappings"]["properties"]
-    vector = mapping.get(args.vector_field, {})
-    if vector.get("type") != "knn_vector" or vector.get("dimension") != args.vector_dimension or mapping.get(args.content_field, {}).get("type") != "text":
-        fail("existing index field contract differs")
-    documents = [json.loads(line) for line in (corpus / "documents.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    mapping_fields_added = ensure_index_mapping(
+        client,
+        args.index_name,
+        schema,
+        args.vector_field,
+        args.content_field,
+        args.vector_dimension,
+    )
+
+    documents = [
+        json.loads(line)
+        for line in (corpus / "documents.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line
+    ]
     bedrock = boto3.client("bedrock-runtime")
     if not receipt:
         for document in documents:
-            existing = client.search(
-                index=args.index_name,
-                body={"size": 1, "_source": False, "query": {"term": {"documentId": document["documentId"]}}},
-            )["hits"]["hits"]
-            if existing:
+            if document_exists(
+                client,
+                args.index_name,
+                str(document["documentId"]),
+                corpus_version,
+            ):
                 continue
-            embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": document[args.content_field]}))["body"].read())["embedding"]
-            client.index(index=args.index_name, body={**document, args.vector_field: embedding})
-    count = wait_for_document_count(client, args.index_name, document_count)
-    query_embedding = json.loads(bedrock.invoke_model(modelId=args.embedding_model_id, body=json.dumps({"inputText": documents[0][args.content_field]}))["body"].read())["embedding"]
-    hits = wait_for_knn_hits(client, args.index_name, args.vector_field, query_embedding)
-    receipt = {"corpus_version": manifest["corpusVersion"], "checksum": checksum, "document_count": count, "index_name": args.index_name, "embedding_model_id": args.embedding_model_id, "vector_dimension": args.vector_dimension, "hit_count": len(hits), "document_ids": [str(hit.get("_source", {}).get("documentId", hit.get("_id", ""))) for hit in hits], "outcome": "already-ingested" if receipt else "ingested", "elapsed_seconds": round(time.monotonic() - started, 3)}
-    s3.put_object(Bucket=args.receipt_bucket, Key=args.receipt_key, Body=json.dumps(receipt, sort_keys=True).encode(), ContentType="application/json")
+            embedding = json.loads(
+                bedrock.invoke_model(
+                    modelId=args.embedding_model_id,
+                    body=json.dumps({"inputText": document[args.content_field]}),
+                )["body"].read()
+            )["embedding"]
+            client.index(
+                index=args.index_name,
+                body={**document, args.vector_field: embedding},
+            )
+    count = wait_for_document_count(
+        client,
+        args.index_name,
+        document_count,
+        corpus_version,
+    )
+    query_embedding = json.loads(
+        bedrock.invoke_model(
+            modelId=args.embedding_model_id,
+            body=json.dumps({"inputText": documents[0][args.content_field]}),
+        )["body"].read()
+    )["embedding"]
+    hits = wait_for_knn_hits(
+        client,
+        args.index_name,
+        args.vector_field,
+        query_embedding,
+        corpus_version,
+    )
+    receipt = {
+        "corpus_version": corpus_version,
+        "checksum": checksum,
+        "document_count": count,
+        "index_name": args.index_name,
+        "embedding_model_id": args.embedding_model_id,
+        "vector_dimension": args.vector_dimension,
+        "mapping_field_count_added": len(mapping_fields_added),
+        "hit_count": len(hits),
+        "document_ids": [
+            str(hit.get("_source", {}).get("documentId", hit.get("_id", "")))
+            for hit in hits
+        ],
+        "outcome": "already-ingested" if receipt else "ingested",
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
+    s3.put_object(
+        Bucket=args.receipt_bucket,
+        Key=args.receipt_key,
+        Body=json.dumps(receipt, sort_keys=True).encode(),
+        ContentType="application/json",
+    )
     log(**receipt)
 
 
