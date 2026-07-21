@@ -1,5 +1,5 @@
 name: RAG v2 Live Preparation
-# One-time retry after aligning versioned packages with the existing approved S3 prefix.
+# One-time preparation for corpus ingestion and immutable backend image publication.
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - agent/rag-corpus-version-scope
     paths:
       - .github/workflows/rag-v2-live-preparation.yml
+      - .github/workflows/rag-corpus-ingestion.yml
 
 permissions:
   contents: read
