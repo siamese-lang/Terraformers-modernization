@@ -293,6 +293,24 @@ resource "aws_eks_addon" "cloudwatch_observability" {
   addon_name               = "amazon-cloudwatch-observability"
   addon_version            = data.aws_eks_addon_version.cloudwatch_observability.version
   service_account_role_arn = aws_iam_role.cloudwatch_observability_irsa.arn
+  configuration_values = jsonencode({
+    agent = {
+      config = {
+        logs = {
+          metrics_collected = {
+            kubernetes = {
+              enhanced_container_insights = true
+            }
+          }
+        }
+        traces = {
+          traces_collected = {
+            application_signals = {}
+          }
+        }
+      }
+    }
+  })
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
   tags = local.common_tags

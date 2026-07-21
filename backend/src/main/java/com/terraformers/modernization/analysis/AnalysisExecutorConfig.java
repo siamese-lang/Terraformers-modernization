@@ -1,6 +1,9 @@
 package com.terraformers.modernization.analysis;
 
-import java.util.concurrent.Executor;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -12,7 +15,7 @@ public class AnalysisExecutorConfig {
 
     @Bean(name = "analysisJobExecutor")
     @ConditionalOnMissingBean(name = "analysisJobExecutor")
-    public Executor analysisJobExecutor() {
+    public ThreadPoolTaskExecutor analysisJobExecutor(MeterRegistry meterRegistry) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setThreadNamePrefix("analysis-job-");
         executor.setCorePoolSize(2);
@@ -20,8 +23,16 @@ public class AnalysisExecutorConfig {
         executor.setQueueCapacity(50);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+
+        Counter rejected = Counter.builder("terraformers.analysis.executor.rejections").register(meterRegistry);
+        executor.setRejectedExecutionHandler((task, threadPool) -> {
+            rejected.increment();
+            throw new RejectedExecutionException("analysis executor rejected a task");
+        });
         executor.initialize();
+        Gauge.builder("terraformers.analysis.executor.queue.depth", executor,
+                        taskExecutor -> taskExecutor.getThreadPoolExecutor().getQueue().size())
+                .register(meterRegistry);
         return executor;
     }
 }

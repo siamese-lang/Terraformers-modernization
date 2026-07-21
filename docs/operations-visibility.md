@@ -17,8 +17,9 @@ CloudWatch namespace: `Terraformers/Backend`.
 | `terraformers.bedrock.invocation` | Bedrock call latency and failure state | `outcome`, bounded `exception_category` |
 | `terraformers.aoss.retrieval` | AOSS retrieval latency and failure state | `outcome`, bounded `exception_category` |
 | `terraformers.aoss.retrieved_hits` | retrieved document count | service/environment defaults only |
+| `terraformers.analysis.executor.queue.depth` / `.rejections` | actual analysis executor queue pressure and rejected tasks | service/environment defaults only |
 
-Spring/Micrometer supplies Hikari pool and HTTP metrics; Application Signals supplies request latency and fault state. Metric labels never include user/project/job IDs, prompts, files, documents, Terraform output, trace IDs, exception messages, or credentials.
+Spring/Micrometer supplies Hikari pool and HTTP metrics; Application Signals supplies request latency and fault state. The CloudWatch2 registry filters direct publication to the `terraformers.` metrics listed here, while Prometheus retains the internal framework metrics. Metric labels never include user/project/job IDs, prompts, files, documents, Terraform output, trace IDs, exception messages, or credentials.
 
 ## Logs and tracing
 

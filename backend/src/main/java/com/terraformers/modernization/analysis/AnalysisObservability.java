@@ -35,6 +35,10 @@ public class AnalysisObservability {
         jobCounter("failed", category(exception)).increment();
     }
 
+    public void jobRejected() {
+        jobCounter("failed", "executor_rejected").increment();
+    }
+
     public Timer.Sample startAnalysis() {
         return Timer.start(meterRegistry);
     }
@@ -79,6 +83,7 @@ public class AnalysisObservability {
         if (simple.contains("rejected")) return "rejected_input";
         if (simple.contains("format")) return "response_format";
         if (simple.contains("truncated")) return "truncated_output";
+        if (simple.contains("rejected")) return "executor_rejected";
         return "other";
     }
 }
