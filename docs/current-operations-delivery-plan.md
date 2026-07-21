@@ -1,223 +1,218 @@
-# Terraformers Current Operations and Delivery Plan
+# Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: controlling execution plan after PR A delivery evidence on 2026-07-21
+Status: controlling execution plan after the source changes through PR #86 on 2026-07-21
 
 ## 1. Authority and conflict resolution
 
 This document is the current execution source of truth for the remaining Terraformers modernization work.
 
-It does not replace the fixed architecture and non-regression decisions in `docs/source-rag-gitops-reuse-plan.md`. It replaces only stale progress statements, old "immediate next work" sections, and phase ordering that still describe RAG as unfinished.
+It preserves the project identity and fixed architecture decisions in `docs/source-rag-gitops-reuse-plan.md`, but it replaces the former Gate 0 / PR A-D progress sequence and every stale statement that says Operations Visibility, autoscaling, or RAG expansion is the immediate next task.
 
 When repository documents conflict:
 
-1. Preserve the project identity and fixed architecture decisions from `docs/source-rag-gitops-reuse-plan.md`.
-2. Use this document for current completion state, execution order, implementation scope, and stop conditions.
-3. Use live AWS, Kubernetes, workflow, browser, and runtime evidence over old plans or historical descriptions.
-4. Do not reopen completed RAG work unless a later main-service workflow exposes one specific correctness defect.
-5. Change this plan only when the user explicitly approves a scope or sequence change.
+1. Preserve the project identity and reuse decisions from `docs/source-rag-gitops-reuse-plan.md`.
+2. Use this document for the current completion state, execution order, stop conditions, teardown boundary, and redeployment boundary.
+3. Use live AWS, Kubernetes, workflow, browser, and runtime evidence over historical plans.
+4. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new service work without one concrete defect that blocks closure.
+5. Do not change this plan unless the user explicitly changes the closure scope.
 
-A new conversation must read this file before proposing work. It must inspect the current repository and live state once, then continue from the first incomplete gate instead of recreating a new roadmap.
+A new conversation must read this file first, inspect the current repository and live state once, and resume from the first incomplete closure gate. It must not create a new roadmap.
 
-## 2. Project identity and portfolio objective
+## 2. Project identity and interview objective
 
 Terraformers-modernization remains the operational modernization of the 2024 five-person Terraformers team project. It is not a new personal project and must not be presented as a solo 2024 implementation.
 
-The remaining portfolio objective is to prove one coherent operating lifecycle:
+The portfolio title remains:
 
-> code change -> verification -> immutable image publication -> Git desired-state update -> ArgoCD reconciliation -> runtime and browser verification -> monitoring -> load and scaling -> bounded failure -> recovery or rollback -> restored state
+> Terraformers: Backend and Cloud Infrastructure Modernization
 
-The portfolio must demonstrate container-based AWS web-service delivery, cloud architecture, observability, autoscaling, failure diagnosis, recovery, and evidence-based operations. Adding more AI sophistication or frontend features is not a completion goal.
+The project must support a concrete interview explanation of:
 
-## 3. Completed baseline
+- how the original team project and the first RDB refactor were reused instead of rebuilt;
+- how Backend, RDB, S3, Cognito, SQS, Bedrock, AOSS, EKS, CloudFront, IAM, and Secrets boundaries were aligned;
+- how immutable image delivery, Git desired state, Argo CD reconciliation, and browser verification were connected;
+- how live AWS failures were diagnosed from the first failing boundary instead of hidden behind repeated validation scripts;
+- how telemetry, logs, traces, and deployment revision were designed for bounded correlation;
+- how the environment can be inventoried, removed, and later rebuilt without depending on the local Windows machine for Terraform execution.
 
-The following are complete and must not be redesigned without a concrete defect:
+The final portfolio must distinguish facts that were implemented, facts that were proven live, facts that are only documented, and areas deliberately left out.
+
+## 3. Completed baseline that must not be redesigned
+
+The following are complete source or live baselines and must not be redesigned without a closure-blocking defect:
 
 - Spring Boot owns the analysis lifecycle.
-- Cognito identity, RDB ownership and metadata, Flyway validation, and S3 object storage boundaries are established.
-- EKS, ECR, RDS, S3, CloudFront, IAM/IRSA, managed Secrets, and the private Backend origin are the current AWS architecture.
+- Cognito identity, RDB ownership and metadata, Flyway validation, and S3 object storage responsibilities are separated.
+- EKS, ECR, RDS, S3, SQS, Cognito, IAM/IRSA, Secrets Manager, CloudFront, Bedrock, and AOSS are the current AWS architecture.
 - CloudFront remains the only public product entry.
-- Backend images use immutable tags and digests.
+- Backend images use immutable tags and ECR digests.
+- Git contains the Backend desired image digest and Argo CD reconciles the Backend application.
 - Private Bedrock embedding -> AOSS vector retrieval -> Bedrock Terraform draft generation has been proven live.
-- Corpus v2 contains AWS Provider 5.100.0 schema and examples and passed one bounded v1/v2 comparison.
-- RAG work is closed. Generated Terraform remains a reviewable draft rather than an automatically deployable artifact.
-- Existing Backend image publication and Frontend S3/CloudFront delivery workflows are reusable foundations.
+- Corpus v2 contains curated AWS Provider 5.100.0 schema and examples and completed one bounded v1/v2 comparison.
+- RAG is subordinate and closed. Generated Terraform remains a reviewable draft, not an automatically deployable result.
+- AWS-native Operations Visibility source changes were merged through PR #86, including the CloudWatch add-on configuration, Application Signals workload selection, Micrometer metrics, safe log correlation, and the Pod-level non-root UID required by Java auto-instrumentation.
 
-## 4. Fixed execution constraints
+The final live observability result must be recorded from evidence. Source merge alone is not proof that Application Signals, X-Ray, or the final injected Pod state succeeded.
 
-The following constraints remain binding:
+## 4. Binding execution constraints
 
-- Reuse current repository workflows, Terraform roots, Kubernetes manifests, scripts, and older repositories before creating replacements.
+- Reuse current workflows, Terraform roots, Kubernetes manifests, scripts, and prior repositories before creating replacements.
 - Do not restore the former Python analysis service.
-- Do not add a direct public ALB, public AOSS, or public ArgoCD administration endpoint.
-- Do not store static AWS credentials, GitHub PATs, kubeconfig, tfvars, tfstate, prompts, source images, embeddings, retrieved text, generated Terraform, or Secrets in repository evidence.
-- GitHub Actions image publication must not run `kubectl apply`, `kubectl set image`, or equivalent direct deployment commands.
-- Terraform apply remains separately approved and must not become an automatic merge-side action.
-- Do not copy the 2024 Prometheus, Grafana, or X-Ray implementation verbatim. Reuse the operational intent only.
-- Do not add a monitoring platform merely to show more tools. Every metric, trace, dashboard, and alarm must support a selected operating scenario.
-- Do not generate a new verifier or recovery script for each failure. Diagnose the first actual failing boundary and reuse existing mechanisms.
-- Do not split one meaningful implementation into many documentation, verifier, or micro-fix PRs unless an independently reviewable safety boundary requires it.
-- Do not run high-volume Bedrock analysis load tests. Use a non-AI product/API path for autoscaling load and a small bounded set for AI latency and failure behavior.
-- Do not claim high availability beyond the actual replica, node, AZ, database, and ingress design.
+- Do not add a public ALB, public AOSS endpoint, public Argo CD endpoint, or second monitoring stack.
+- Do not store static AWS credentials, GitHub PATs, kubeconfig, tfvars, tfstate, source images, prompts, embeddings, retrieved text, generated Terraform, account-specific values, or Secrets in repository evidence.
+- GitHub Actions image publication must not deploy directly with `kubectl`.
+- Terraform apply and destroy remain separately approved operations.
+- Do not create one verifier, recovery contract, or shell script for every individual failure.
+- Do not repeat a completed browser, GitOps, RAG, or telemetry verification unless the final evidence is missing or the current runtime contradicts it.
+- Do not implement autoscaling or high availability merely because it appeared in an older plan. Do not claim it was completed.
+- The local Windows machine is not the canonical Terraform execution environment. Use GitHub-hosted runners for normal plan/apply/destroy and AWS CloudShell only for the minimal bootstrap that cannot depend on the project OIDC role.
+- No AWS or Kubernetes mutation is allowed during documentation and inventory-source preparation.
 
-## 5. Current execution sequence
+## 5. Closure execution sequence
 
-Work proceeds in the following order. Later phases must not pull work forward unless it is a prerequisite for the current phase.
+Work proceeds in this order. Later gates must not be pulled forward.
 
-### Gate 0 - Read-only operating baseline inventory
+### Closure Gate 1 - Read-only live inventory
 
-Purpose: determine the actual current state and exact implementation gaps before changing AWS, Kubernetes, workflows, or application code.
+Purpose: identify every current AWS, Terraform, Kubernetes, GitOps, generated, and manually initialized resource before planning deletion.
 
-Inspect once:
+Required outputs:
 
-- current integration branch and merged PR state
-- Backend, Frontend, Terraform, Kubernetes, and existing deployment workflows
-- canonical Backend AWS overlay and current image-digest handling
-- ArgoCD installation, Application, repository, revision, sync, and health state
-- EKS nodes, node groups, allocatable capacity, Pod requests/limits, and namespace workloads
-- Backend Deployment, Service, endpoints, probes, rollout strategy, replicas, image, and image ID
-- Metrics Server and CloudWatch Observability add-on state
-- current logs, log groups, dashboards, alarms, and tracing configuration
-- ALB/CloudFront health and public product path
-- RDS backup/retention, S3 versioning, Terraform state, and corpus re-ingestion boundaries
-- expected cost of the remaining implementation and whether a temporary second node is required
+- sanitized Terraform state address inventory for all seven state components;
+- Kubernetes and Argo CD resource inventory;
+- generated AWS resource inventory, including the internal ALB and target groups created by the AWS Load Balancer Controller;
+- non-Terraform data inventory for ECR images, versioned S3 objects, AOSS indexes/documents, Cognito users, Secrets values, and CloudWatch logs;
+- a classification of each item as Terraform-managed, GitOps/Kubernetes-managed, controller-generated, data-only, bootstrap, or external configuration;
+- a delete owner, prerequisite, recreation source, retention decision, and residual check for each item.
 
-Deliverable: one concise inventory table with `current state`, `gap`, `required action`, `cost/risk`, and `evidence source`.
+The repository workflow `.github/workflows/aws-terraform-state-inventory.yml` supplies only sanitized Terraform state addresses and counts. It must never upload raw state or outputs. Live Kubernetes and AWS-generated resources are added from one bounded read-only operator pass.
 
-Stop condition: the exact scope of PR A is known. Gate 0 performs no cluster mutation, AWS apply, release, or new verification framework.
+Stop condition: `docs/lifecycle/aws-resource-inventory.md` contains no unexplained resource group and every deletion prerequisite has an owner.
 
-### PR A - Immutable-digest Backend GitOps delivery
+### Closure Gate 2 - Evidence freeze and interview record
 
-Goal: make Git the Backend desired-state source and ArgoCD the release reconciler.
+Purpose: preserve the project outcome and the engineering reasoning before AWS resources disappear.
 
-Required chain:
+Required outputs:
 
-1. Backend change passes scoped CI.
-2. Existing GitHub OIDC workflow builds and pushes an immutable ECR image.
-3. The workflow resolves the digest.
-4. A bounded branch or pull request updates the canonical environment overlay to the digest.
-5. ArgoCD tracks the real repository, revision, and path.
-6. ArgoCD becomes `Synced` and `Healthy`.
-7. Git digest, Deployment image, and Pod runtime image ID match.
-8. CloudFront browser smoke passes.
-9. Git revert restores the previous digest and browser smoke passes again.
-10. One safe non-secret drift is corrected by ArgoCD self-heal.
+- final integration commit and immutable Backend image digest;
+- Argo CD revision, sync, health, and runtime image parity;
+- one final browser analysis outcome or the last valid bounded result;
+- final observability state, explicitly distinguishing successful live signals from source-only preparation;
+- architecture and delivery evidence that contains no secrets;
+- a structured incident record using `symptom -> initial assumption -> evidence -> root cause -> bounded fix -> validation -> prevention -> interview follow-up`;
+- explicit non-claims for autoscaling, multi-AZ application availability, automatic Terraform apply, and generated-code deployability.
 
-Frontend delivery stays separate: test/build on pull requests, then the existing GitHub OIDC S3 sync and CloudFront invalidation workflow for approved delivery.
+The controlling interview artifact is `docs/portfolio/final-evidence-and-interview-guide.md`.
 
-Terraform stays separate: automatic static checks and plan preparation are allowed; apply remains manual and approved.
+Stop condition: the project can be explained for 90 seconds, five minutes, and a technical deep dive without relying on memory or console access.
 
-### PR B - Operations visibility
+### Closure Gate 3 - Teardown design and destroy plans
 
-Default direction:
+Purpose: prove that the environment can be removed in dependency order before any resource is deleted.
 
-- CloudWatch Observability / OpenTelemetry for EKS infrastructure metrics and logs
-- Micrometer Prometheus registry for internal Backend application metrics
-- OpenTelemetry tracing exported to X-Ray-compatible AWS tracing
-- CloudWatch dashboards and a small number of actionable alarms
-- Grafana only if a concrete visualization gap remains after the AWS-native baseline
+Required outputs:
 
-Minimum application signals:
+- approved retention decisions for RDS snapshots, S3 object versions, AOSS corpus data, Secrets deletion mode, CloudWatch log retention, and ECR images;
+- a reverse-dependency teardown order covering GitOps, Kubernetes controllers, CloudFront, controller-generated load balancers, RAG, EKS, stateful dependencies, runtime dependencies, network, and bootstrap;
+- one destroy plan per Terraform state component;
+- explicit cleanup steps for resources and data not represented in Terraform state;
+- a two-phase boundary: runtime teardown first, bootstrap/state/OIDC teardown last.
 
-- HTTP request count, latency, and 5xx
-- AnalysisJob started, succeeded, failed, and elapsed time
-- Bedrock invocation latency and failures
-- AOSS retrieval latency, failures, and hit count
-- executor queue and rejection state where useful
-- database connection-pool pressure
-- safe correlation by analysis job ID, trace ID, deployment revision, and image digest
+No destroy applies occur in this gate.
 
-No user ID, project ID, prompt, document text, generated Terraform, or other high-cardinality or sensitive values may be metric labels or trace attributes.
+Stop condition: each destroy plan is reviewed, no unexplained replacement/create action exists, and the bootstrap role remains able to finish the teardown.
 
-Completion evidence: one real analysis can be followed from browser request through safe log correlation, metrics, trace, and deployment revision.
+### Closure Gate 4 - Approved runtime teardown
 
-### PR C - Availability and autoscaling
+Purpose: remove all project runtime resources while preserving the minimum bootstrap plane required to complete and verify deletion.
 
-Goal: verify controlled scale-out, traffic continuity, and scale-in with the minimum meaningful Kubernetes changes.
+Execution order is controlled by `docs/lifecycle/aws-teardown-runbook.md`.
 
-Review and implement only as capacity permits:
+The operator must:
 
-- Backend replicas
-- RollingUpdate `maxUnavailable` and `maxSurge`
-- HPA using available resource metrics
-- Metrics Server if absent
-- PodDisruptionBudget where meaningful
-- topology spread or anti-affinity where the actual node/AZ design can support it
-- requests and limits based on observed baseline rather than arbitrary values
+1. stop delivery and Argo CD reconciliation;
+2. remove application and controller-owned resources before the EKS cluster;
+3. destroy frontend, RAG, EKS, stateful, runtime, and network states in reviewed dependency order;
+4. clean versioned buckets, ECR images, scheduled Secrets, logs, and other non-state data according to the approved retention decisions;
+5. run a residual scan before touching bootstrap resources.
 
-Load-test rules:
+Stop condition: no project runtime resource remains and only the documented bootstrap plane is present.
 
-- use JMeter against a non-Bedrock product/API path through the actual public path
-- record baseline, sustained load, scale-out, new Pod readiness, target health, success rate, latency, load removal, and scale-in
-- use only a small bounded AI analysis sample for Bedrock/AOSS stage latency
-- temporary node-group scale-up is allowed only when separately approved and must be followed by a retention or scale-down decision
+### Closure Gate 5 - Bootstrap teardown and zero-resource proof
 
-Completion evidence: the workload scales, serves traffic within the recorded acceptance boundary, and scales down without claiming more availability than was actually tested.
+Purpose: remove the Terraform state bucket, project OIDC/foundation roles, and the final teardown identity only after every other project resource is gone.
 
-### PR D - Failure, recovery, and closure
+Required proof:
 
-Primary operating scenarios:
+- all runtime state components are empty or removed;
+- the versioned state bucket is exported only if explicitly retained, then all object versions and delete markers are removed;
+- project OIDC and foundation roles are removed in an order that does not strand the teardown;
+- the final AWS residual scan reports no project resource;
+- GitHub repository variables and secrets are either retained for future redeployment or deliberately removed as a separate non-AWS decision.
 
-1. Backend Pod failure under low sustained traffic
-   - observe first failing boundary, readiness and target health, user-visible effect, replacement Pod, and restored service
-2. GitOps release rollback
-   - release a safe identifiable change, verify the new digest, revert the manifest commit, verify the old digest and browser path return
+Stop condition: the AWS account contains no resource attributable to Terraformers-modernization under the approved project inventory.
 
-Recovery boundaries to document and test where practical:
+### Closure Gate 6 - Redeployment proof document and repository closure
 
-- RDS backup, schema, and restore assumptions
-- S3 source/result version or restore behavior
-- AOSS corpus source, version, checksum, and repeatable re-ingestion
-- Terraform remote-state and lock recovery assumptions
-- Git desired state and rollback history
+Purpose: ensure a future redeployment does not depend on forgotten console actions or the current local disk.
 
-Final closure includes sanitized evidence, operations runbook, architecture update, portfolio summary, interview explanation, PR #32 update, integration merge, release tag, and explicit AWS retention/scale-down/deletion decisions.
+`docs/lifecycle/aws-redeploy-runbook.md` must cover:
 
-## 6. CI/CD responsibility split
+- minimal AWS CloudShell bootstrap for the state bucket, GitHub OIDC provider, and foundation roles;
+- GitHub Environment, variable, and secret names without recording values;
+- the canonical Terraform stage order;
+- External Secrets, AWS Load Balancer Controller, Argo CD, and Backend GitOps bootstrap;
+- immutable image publication, frontend delivery, RAG corpus ingestion, Cognito test-user setup, and final browser/observability verification;
+- rollback and restart points after a failed stage.
 
-| Area | Pull request verification | Approved delivery |
+Repository closure then includes the final evidence document, lifecycle runbooks, an integration merge, and a release tag. Actual redeployment is not required after the final full teardown unless the user explicitly chooses to prove it with a new AWS deployment window.
+
+## 6. Lifecycle management boundaries
+
+| Boundary | Canonical owner | Examples |
 |---|---|---|
-| Backend | Maven tests/package, container build, runtime contract checks | ECR immutable image -> digest update PR -> ArgoCD reconcile |
-| Frontend | npm test and production build | existing OIDC S3 sync -> CloudFront invalidation |
-| Terraform/infrastructure | fmt, validate, static checks, reviewed plan | separate manual approved apply |
-| Kubernetes/GitOps | Kustomize render, schema and digest contract | Git merge followed by ArgoCD |
-| Documentation | minimum link/path consistency | no runtime mutation |
+| Terraform-managed AWS | Remote state component | VPC, EKS, RDS, IAM, S3 buckets, SQS, Cognito, CloudFront, AOSS collection |
+| GitOps/Kubernetes | Git manifest and Argo CD or operator | Backend Deployment/Service/ConfigMap, Ingress, ExternalSecret |
+| Controller-generated AWS | Kubernetes owner object | Internal ALB, target groups, generated security-group rules |
+| Data and mutable contents | Service API or bounded cleanup step | ECR images, S3 versions, AOSS documents/index, Cognito users, Secret values, logs |
+| Bootstrap | CloudShell first, GitHub Actions afterward | state bucket, OIDC provider, plan/apply roles |
+| External configuration | GitHub repository/environment | variables, encrypted secrets, environment approvals |
 
-Path filters should prevent unrelated areas from running expensive or irrelevant workflows. Separate responsibility does not mean separate repositories or rebuilding current workflows.
+Terraform state is necessary but not sufficient for complete teardown or redeployment.
 
-## 7. Evidence and acceptance discipline
+## 7. Evidence discipline
 
-For each live scenario, record only:
+Every retained live result must state:
 
-- source commit and workflow run
-- ECR digest
-- manifest-update or revert commit
-- ArgoCD revision, sync, and health
-- Deployment generation, Pod name, node, and image ID
-- browser/API outcome
-- metric, alarm, trace, and sanitized log identifiers
-- elapsed time and recovery outcome
-- cost and retention decision
+1. source commit and workflow run;
+2. immutable image digest where applicable;
+3. desired-state revision and runtime image parity;
+4. healthy baseline;
+5. change or failure;
+6. first failing boundary;
+7. user-visible effect;
+8. evidence used to isolate the cause;
+9. bounded recovery action;
+10. restored state and remaining limitation.
 
-Every scenario must state:
-
-1. healthy baseline
-2. introduced change or bounded failure
-3. first failing boundary
-4. user-visible effect
-5. detection evidence
-6. recovery action
-7. restored runtime, data, digest, and browser state
-
-A successful command or source merge alone is not completion evidence.
+A command that returned success, a merged pull request, or an AWS resource that exists is not sufficient evidence by itself.
 
 ## 8. New-conversation handoff contract
 
 Use the following instruction when work moves to another conversation:
 
-> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`. Treat that file as the current execution source of truth and preserve the fixed architecture decisions in `docs/source-rag-gitops-reuse-plan.md`. RAG v2 and PR #73 are complete; do not add more RAG work without one concrete main-service defect. Inspect the current repository and live state once, resume from the first incomplete gate, and do not redesign the roadmap. Reuse existing workflows, manifests, Terraform roots, and scripts. Avoid micro-PRs, verifier expansion, repeated preflights, and new scripts unless an actual repeated operating need justifies them. Do not mutate AWS, Kubernetes, Terraform, ArgoCD, deployments, or merge a PR without explicit approval. The current sequence is Gate 0 inventory -> PR A GitOps delivery -> PR B operations visibility -> PR C autoscaling/availability -> PR D failure/recovery/closure.
+> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`. This file is the controlling closure plan after PR #86. Preserve the project as the modernization of the 2024 five-person Terraformers team project and preserve the reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features unless one concrete defect blocks closure. Inspect repository and live state once, then resume from the first incomplete Closure Gate. The sequence is read-only inventory -> evidence and interview record -> destroy-plan review -> explicitly approved runtime teardown -> residual scan -> explicitly approved bootstrap teardown -> zero-resource proof -> repository closure. Reuse existing workflows, Terraform roots, manifests, and scripts. Avoid micro-PRs, repeated preflights, one-script-per-failure behavior, and raw evidence dumps. Do not mutate AWS, Kubernetes, Terraform, Argo CD, deployments, or merge a PR without explicit approval.
 
 ## 9. Current next action
 
-PR A is complete. Sanitized delivery evidence: GitOps revision `da7cdc3ae98a36b305020daf635690f53305687a`; Argo CD core components were Running; the Backend Application was Synced and Healthy; Git desired digest, Deployment image, and Pod image ID matched `sha256:9e8ebd25c3afcc18cd03cb62c97bfc4200ff63477329ad548c8c4a31a518a254`; the CloudFront login-to-Terraform-view flow passed; and Argo CD self-heal restored a manual Backend replica drift from 2 to 1.
+Create and review one non-mutating closure PR containing:
 
-PR B, Operations visibility, is now active. Two worker nodes are deliberately retained because one worker exhausted Pod capacity during Argo CD installation. Do not repeat PR A render, release, browser, self-heal, or digest-parity tests; proceed with the source-controlled AWS-native observability package only.
+- this updated controlling plan;
+- `docs/lifecycle/aws-resource-inventory.md`;
+- `docs/lifecycle/aws-teardown-runbook.md`;
+- `docs/lifecycle/aws-redeploy-runbook.md`;
+- `docs/portfolio/final-evidence-and-interview-guide.md`;
+- `.github/workflows/aws-terraform-state-inventory.yml`.
+
+After that PR is merged, run the read-only Terraform state inventory once and complete Closure Gate 1. Do not design or run an approved destroy workflow until the inventory and retention decisions are complete.
