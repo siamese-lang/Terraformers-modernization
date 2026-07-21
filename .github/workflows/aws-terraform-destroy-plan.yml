@@ -1,0 +1,287 @@
+name: AWS Terraform Destroy Plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_destroy_plan:
+        description: Authenticate through the live-plan role and create one saved Terraform destroy plan. This never applies the plan.
+        required: true
+        type: boolean
+        default: false
+      destroy_stage:
+        description: Exact Terraform state component to plan for destruction.
+        required: true
+        type: choice
+        options:
+          - frontend-delivery
+          - rag-runtime
+          - eks-runtime
+          - stateful-dependencies
+          - runtime-dependencies
+          - network
+          - foundation
+        default: frontend-delivery
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller identity.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact integration commit to plan. The workflow rejects any mismatch.
+        required: true
+        type: string
+      approval_confirmation:
+        description: Enter PLAN_REVIEWED_DESTROY_STAGE to confirm read-only destructive planning.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+
+concurrency:
+  group: aws-terraform-destroy-plan-${{ inputs.destroy_stage }}
+  cancel-in-progress: false
+
+jobs:
+  terraform-destroy-plan:
+    name: Plan destroy for ${{ inputs.destroy_stage }}
+    if: ${{ inputs.execute_destroy_plan }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: aws-live-plan
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Validate destroy-plan inputs
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          APPROVAL_CONFIRMATION: ${{ inputs.approval_confirmation }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_SHA}" = "${EXPECTED_HEAD_SHA}" || {
+            echo "expected_head_sha does not match checked-out GITHUB_SHA (${GITHUB_SHA})." >&2
+            exit 1
+          }
+          test -n "${EXPECTED_AWS_ACCOUNT_ID}" || {
+            echo 'expected_aws_account_id is required.' >&2
+            exit 1
+          }
+          test "${APPROVAL_CONFIRMATION}" = 'PLAN_REVIEWED_DESTROY_STAGE' || {
+            echo 'approval_confirmation must be PLAN_REVIEWED_DESTROY_STAGE.' >&2
+            exit 1
+          }
+          test -n "${AWS_ROLE_TO_ASSUME}" || {
+            echo 'AWS_ROLE_TO_ASSUME environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_BUCKET}" || {
+            echo 'AWS_TERRAFORM_STATE_BUCKET environment variable is required.' >&2
+            exit 1
+          }
+          test -n "${STATE_PREFIX}" || {
+            echo 'AWS_TERRAFORM_STATE_PREFIX environment variable is required.' >&2
+            exit 1
+          }
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersDestroyPlan
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify AWS identity and state backend
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/aws-terraform-destroy-plan
+          ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          test "${ACTUAL_ACCOUNT_ID}" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          aws s3api head-bucket --bucket "${STATE_BUCKET}"
+          test "$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)" = 'Enabled'
+
+      - name: Resolve Terraform stage and private tfvars
+        id: stage
+        env:
+          FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
+          NETWORK_TFVARS_B64: ${{ secrets.AWS_LIVE_NETWORK_TFVARS_B64 }}
+          RUNTIME_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64 }}
+          STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
+          EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+          FRONTEND_TFVARS_B64: ${{ secrets.AWS_LIVE_FRONTEND_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
+        run: |
+          set -euo pipefail
+          case '${{ inputs.destroy_stage }}' in
+            foundation)
+              TF_DIR='infra/terraform/bootstrap/aws-live-foundation'
+              TFVARS_B64="${FOUNDATION_TFVARS_B64}"
+              STATE_COMPONENT='bootstrap'
+              ;;
+            network)
+              TF_DIR='infra/terraform/envs/aws-runtime-network'
+              TFVARS_B64="${NETWORK_TFVARS_B64}"
+              STATE_COMPONENT='network'
+              ;;
+            runtime-dependencies)
+              TF_DIR='infra/terraform/envs/backend-runtime-dependencies'
+              TFVARS_B64="${RUNTIME_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='runtime-dependencies'
+              ;;
+            stateful-dependencies)
+              TF_DIR='infra/terraform/envs/backend-stateful-dependencies'
+              TFVARS_B64="${STATEFUL_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='stateful-dependencies'
+              ;;
+            eks-runtime)
+              TF_DIR='infra/terraform/envs/eks-runtime'
+              TFVARS_B64="${EKS_TFVARS_B64}"
+              STATE_COMPONENT='eks-runtime'
+              ;;
+            frontend-delivery)
+              TF_DIR='infra/terraform/envs/frontend-delivery'
+              TFVARS_B64="${FRONTEND_TFVARS_B64}"
+              STATE_COMPONENT='frontend-delivery'
+              ;;
+            rag-runtime)
+              TF_DIR='infra/terraform/envs/rag-runtime'
+              TFVARS_B64="${RAG_TFVARS_B64}"
+              STATE_COMPONENT='rag-runtime'
+              ;;
+            *)
+              echo 'Unsupported destroy stage.' >&2
+              exit 1
+              ;;
+          esac
+
+          test -n "${TFVARS_B64}" || {
+            echo "Private base64 tfvars secret is missing for stage ${{ inputs.destroy_stage }}." >&2
+            exit 1
+          }
+          printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
+          test -s "${RUNNER_TEMP}/live.auto.tfvars"
+          printf 'tf_dir=%s\n' "${TF_DIR}" >> "${GITHUB_OUTPUT}"
+          printf 'state_component=%s\n' "${STATE_COMPONENT}" >> "${GITHUB_OUTPUT}"
+          printf 'tfvars_path=%s\n' "${RUNNER_TEMP}/live.auto.tfvars" >> "${GITHUB_OUTPUT}"
+          sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
+            | awk '{print $1}' > artifacts/aws-terraform-destroy-plan/tfvars.sha256
+
+      - name: Initialize remote state and create saved destroy plan
+        env:
+          TF_DIR: ${{ steps.stage.outputs.tf_dir }}
+          TFVARS_PATH: ${{ steps.stage.outputs.tfvars_path }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+          fi
+
+          cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
+          bucket       = "${STATE_BUCKET}"
+          key          = "${STATE_PREFIX}/${{ steps.stage.outputs.state_component }}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+
+          terraform -chdir="${TF_DIR}" init \
+            -reconfigure \
+            -backend-config="${RUNNER_TEMP}/backend.hcl"
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan \
+            -destroy \
+            -lock-timeout=5m \
+            -var-file="${TFVARS_PATH}" \
+            -out="${RUNNER_TEMP}/destroy.tfplan" \
+            -no-color
+          terraform -chdir="${TF_DIR}" show -json "${RUNNER_TEMP}/destroy.tfplan" \
+            > "${RUNNER_TEMP}/destroy-plan.json"
+          sha256sum "${RUNNER_TEMP}/destroy.tfplan" \
+            | awk '{print $1}' > artifacts/aws-terraform-destroy-plan/binary-plan.sha256
+
+      - name: Enforce sanitized delete-only plan contract
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/destroy-plan.json" \
+            --output-dir artifacts/aws-terraform-destroy-plan \
+            --stage '${{ inputs.destroy_stage }}' \
+            --allow-destructive \
+            --require-destroy-only
+
+      - name: Record plan-only evidence
+        run: |
+          set -euo pipefail
+          {
+            echo 'aws_terraform_destroy_plan=completed'
+            echo 'credential_mode=github-oidc'
+            echo 'environment_gate=aws-live-plan'
+            echo 'expected_account_id_verified=true'
+            echo 'expected_head_sha_verified=true'
+            echo 'destroy_stage=${{ inputs.destroy_stage }}'
+            echo 'state_component=${{ steps.stage.outputs.state_component }}'
+            echo 'terraform_plan_mode=destroy'
+            echo 'terraform_apply_executed=false'
+            echo 'terraform_destroy_executed=false'
+            echo 'raw_plan_uploaded=false'
+            echo 'binary_plan_uploaded=false'
+            echo 'tfvars_uploaded=false'
+            echo 'aws_mutation=read-only-plan'
+            echo "source_commit=${GITHUB_SHA}"
+            echo "aws_region=${AWS_REGION}"
+          } > artifacts/aws-terraform-destroy-plan/destroy-plan-summary.txt
+
+      - name: Remove sensitive plan material
+        if: always()
+        run: |
+          rm -f \
+            "${RUNNER_TEMP}/destroy-plan.json" \
+            "${RUNNER_TEMP}/destroy.tfplan" \
+            "${RUNNER_TEMP}/live.auto.tfvars" \
+            "${RUNNER_TEMP}/backend.hcl"
+
+      - name: Reject sensitive artifact file types
+        if: always()
+        run: |
+          set -euo pipefail
+          if find artifacts/aws-terraform-destroy-plan -type f \
+            \( -name '*.tfstate' -o -name '*.tfvars' -o -name '*.tfplan' \) \
+            | grep -q .; then
+            echo 'Sensitive Terraform material found in destroy-plan evidence.' >&2
+            exit 1
+          fi
+
+      - name: Upload sanitized destroy-plan evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-terraform-destroy-plan-${{ inputs.destroy_stage }}-evidence
+          path: artifacts/aws-terraform-destroy-plan
+          if-no-files-found: warn
+          retention-days: 30
