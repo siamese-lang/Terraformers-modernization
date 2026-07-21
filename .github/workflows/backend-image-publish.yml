@@ -163,6 +163,11 @@ jobs:
           ref: agent/rdb-domain-realignment
           token: ${{ github.token }}
 
+      - name: Set up pinned kubectl for offline Kustomize rendering
+        uses: azure/setup-kubectl@v5
+        with:
+          version: v1.30.5
+
       - name: Update digest-only GitOps manifest and validate render
         id: update
         run: |

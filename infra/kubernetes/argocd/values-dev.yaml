@@ -15,6 +15,10 @@ controller:
     limits:
       cpu: 300m
       memory: 256Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
 
 repoServer:
   replicas: 1
@@ -25,6 +29,10 @@ repoServer:
     limits:
       cpu: 200m
       memory: 192Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
 
 server:
   replicas: 1
@@ -39,11 +47,19 @@ server:
     limits:
       cpu: 200m
       memory: 192Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
 
 redis:
   enabled: true
-  replicaCount: 1
-  haEnabled: false
+  exporter:
+    enabled: false
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
   resources:
     requests:
       cpu: 25m
@@ -51,6 +67,9 @@ redis:
     limits:
       cpu: 100m
       memory: 96Mi
+
+redis-ha:
+  enabled: false
 
 dex:
   enabled: false
@@ -60,11 +79,6 @@ notifications:
 
 applicationSet:
   enabled: false
-
-metrics:
-  enabled: false
-  serviceMonitor:
-    enabled: false
 
 configs:
   params:
