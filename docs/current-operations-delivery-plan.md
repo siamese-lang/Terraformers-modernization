@@ -1,6 +1,6 @@
 # Terraformers Current Operations and Delivery Plan
 
-Status: controlling execution plan after the merge of PR #73 on 2026-07-21
+Status: controlling execution plan after PR A delivery evidence on 2026-07-21
 
 ## 1. Authority and conflict resolution
 
@@ -218,4 +218,6 @@ Use the following instruction when work moves to another conversation:
 
 ## 9. Current next action
 
-Run Gate 0 as a read-only inventory. Do not begin implementation until its table identifies the exact PR A gap, cluster-capacity constraints, current ArgoCD state, and expected cost.
+PR A is complete. Sanitized delivery evidence: GitOps revision `da7cdc3ae98a36b305020daf635690f53305687a`; Argo CD core components were Running; the Backend Application was Synced and Healthy; Git desired digest, Deployment image, and Pod image ID matched `sha256:9e8ebd25c3afcc18cd03cb62c97bfc4200ff63477329ad548c8c4a31a518a254`; the CloudFront login-to-Terraform-view flow passed; and Argo CD self-heal restored a manual Backend replica drift from 2 to 1.
+
+PR B, Operations visibility, is now active. Two worker nodes are deliberately retained because one worker exhausted Pod capacity during Argo CD installation. Do not repeat PR A render, release, browser, self-heal, or digest-parity tests; proceed with the source-controlled AWS-native observability package only.

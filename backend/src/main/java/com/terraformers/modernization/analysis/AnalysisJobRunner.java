@@ -23,20 +23,31 @@ public class AnalysisJobRunner {
 
     private final AnalysisJobOrchestrator orchestrator;
     private final AnalysisJobStateService stateService;
+    private final AnalysisObservability observability;
 
-    public AnalysisJobRunner(AnalysisJobOrchestrator orchestrator, AnalysisJobStateService stateService) {
+    public AnalysisJobRunner(AnalysisJobOrchestrator orchestrator, AnalysisJobStateService stateService, AnalysisObservability observability) {
         this.orchestrator = orchestrator;
         this.stateService = stateService;
+        this.observability = observability;
     }
 
     public void run(String jobId) {
-        AnalysisJobEntity runningJob = stateService.markRunning(jobId);
-        try {
-            AnalysisJobExecution execution = orchestrator.executeProviderAndStoreDraft(runningJob);
-            stateService.markSucceeded(jobId, execution);
-        } catch (RuntimeException exception) {
-            log.error("Analysis job failed: analysisJobId={}", jobId, exception);
-            stateService.markFailed(jobId, safeFailureReason(exception));
+        try (AnalysisLogCorrelation ignored = AnalysisLogCorrelation.forJob(jobId)) {
+            io.micrometer.core.instrument.Timer.Sample sample = null;
+            try {
+                AnalysisJobEntity runningJob = stateService.markRunning(jobId);
+                observability.jobStarted();
+                sample = observability.startAnalysis();
+                AnalysisJobExecution execution = orchestrator.executeProviderAndStoreDraft(runningJob);
+                stateService.markSucceeded(jobId, execution);
+                observability.jobSucceeded();
+            } catch (RuntimeException exception) {
+                observability.jobFailed(exception);
+                log.error("Analysis job failed", exception);
+                stateService.markFailed(jobId, safeFailureReason(exception));
+            } finally {
+                if (sample != null) sample.stop(io.micrometer.core.instrument.Timer.builder("terraformers.analysis.duration").register(observability.meterRegistry()));
+            }
         }
     }
 

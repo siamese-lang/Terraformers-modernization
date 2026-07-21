@@ -4,6 +4,7 @@ import com.terraformers.modernization.analysis.AnalysisProvider;
 import com.terraformers.modernization.analysis.AnalysisRequestContext;
 import com.terraformers.modernization.analysis.AnalysisResult;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
+import com.terraformers.modernization.analysis.AnalysisObservability;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceQuery;
 import com.terraformers.modernization.reference.ReferenceRetriever;
@@ -39,6 +40,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
     private final BedrockResponseParser responseParser;
     private final BedrockArchitectureFactsExtractor factsExtractor;
     private final RetrievalQueryTextBuilder queryTextBuilder;
+    private final AnalysisObservability observability;
 
     @Autowired
     public BedrockAnalysisProvider(
@@ -48,7 +50,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             AnalysisRuntimeProperties properties,
             BedrockPromptBuilder promptBuilder,
             BedrockResponseParser responseParser, BedrockArchitectureFactsExtractor factsExtractor,
-            RetrievalQueryTextBuilder queryTextBuilder
+            RetrievalQueryTextBuilder queryTextBuilder, AnalysisObservability observability
     ) {
         this.bedrockRuntimeClient = bedrockRuntimeClient;
         this.objectReader = objectReader;
@@ -58,6 +60,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         this.responseParser = responseParser;
         this.factsExtractor = factsExtractor;
         this.queryTextBuilder = queryTextBuilder;
+        this.observability = observability;
     }
 
     @Override
@@ -89,13 +92,10 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
                 references.stream().map(ReferenceDocument::id).toList()
         );
         log.info(
-                "analysis pipeline outcome=success analysisJobId={} projectId={} corpusVersion={} providerVersion={} referenceCount={} referenceIds={} elapsedMs={}",
-                context.jobId(),
-                context.projectId(),
+                "analysis pipeline outcome=success corpusVersion={} providerVersion={} referenceCount={} elapsedMs={}",
                 properties.getCorpusVersion(),
                 properties.getProviderVersion(),
                 references.size(),
-                references.stream().map(ReferenceDocument::id).toList(),
                 (System.nanoTime() - analysisStartedAt) / 1_000_000
         );
         return result;
@@ -114,33 +114,21 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             ArchitectureRetrievalFacts facts = factsExtractor.extract(source);
             long factsElapsedMs = (System.nanoTime() - factsStartedAt) / 1_000_000;
             long searchStartedAt = System.nanoTime();
-            List<ReferenceDocument> references = referenceRetriever.retrieve(
+            List<ReferenceDocument> references = observability.recordAoss(() -> referenceRetriever.retrieve(
                     new ReferenceQuery(queryTextBuilder.build(facts), properties.getOpensearchTopK())
-            );
+            ));
+            observability.retrievedHits(references.size());
             long searchElapsedMs = (System.nanoTime() - searchStartedAt) / 1_000_000;
             log.info(
-                    "reference retrieval outcome=success analysisJobId={} projectId={} mode={} corpusVersion={} providerVersion={} index={} topK={} factResourceTypes={} referenceCount={} referenceIds={} authorities={} factsElapsedMs={} searchElapsedMs={} elapsedMs={}",
-                    context.jobId(),
-                    context.projectId(),
-                    mode,
-                    properties.getCorpusVersion(),
-                    properties.getProviderVersion(),
-                    properties.getIndexName(),
-                    properties.getOpensearchTopK(),
-                    facts.resourceTypes(),
-                    references.size(),
-                    references.stream().map(ReferenceDocument::id).toList(),
-                    references.stream().map(ReferenceDocument::authority).filter(value -> value != null && !value.isBlank()).distinct().toList(),
-                    factsElapsedMs,
-                    searchElapsedMs,
-                    (System.nanoTime() - started) / 1_000_000
+                    "reference retrieval outcome=success mode={} corpusVersion={} providerVersion={} topK={} referenceCount={} factsElapsedMs={} searchElapsedMs={} elapsedMs={}",
+                    mode, properties.getCorpusVersion(), properties.getProviderVersion(), properties.getOpensearchTopK(),
+                    references.size(), factsElapsedMs, searchElapsedMs, (System.nanoTime() - started) / 1_000_000
             );
             return references;
         } catch (RuntimeException exception) {
-            log.warn("reference retrieval outcome=failure analysisJobId={} projectId={} mode={} corpusVersion={} providerVersion={} stage=facts-and-search modelId={} index={} topK={} errorClass={} elapsedMs={}",
-                    context.jobId(), context.projectId(), mode, properties.getCorpusVersion(), properties.getProviderVersion(),
-                    properties.getBedrockEmbeddingModelId(), properties.getIndexName(), properties.getOpensearchTopK(),
-                    exception.getClass().getName(), (System.nanoTime() - started) / 1_000_000);
+            log.warn("reference retrieval outcome=failure mode={} corpusVersion={} providerVersion={} topK={} errorClass={} elapsedMs={}",
+                    mode, properties.getCorpusVersion(), properties.getProviderVersion(), properties.getOpensearchTopK(),
+                    exception.getClass().getSimpleName(), (System.nanoTime() - started) / 1_000_000);
             if (mode == RetrievalMode.REQUIRED) throw exception;
             return List.of();
         }
@@ -158,12 +146,12 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
         String requestBody = promptBuilder.buildClaudeVisionRequest(
                 source, references, properties.getBedrockMaxTokens(), promptMode);
         try {
-            InvokeModelResponse response = bedrockRuntimeClient.invokeModel(InvokeModelRequest.builder()
+            InvokeModelResponse response = observability.recordBedrock(() -> bedrockRuntimeClient.invokeModel(InvokeModelRequest.builder()
                     .modelId(modelId)
                     .contentType("application/json")
                     .accept("application/json")
                     .body(SdkBytes.fromUtf8String(requestBody))
-                    .build());
+                    .build()));
             ParsedBedrockAnalysis parsed = responseParser.parse(response.body().asUtf8String());
             logCall(context, modelId, attempt, promptMode, parsed.stopReason(), parsed.outputTokens(), false, startedAt);
             return parsed;
@@ -182,10 +170,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
     private void logRejectedCall(AnalysisRequestContext context, String modelId, int attempt, BedrockPromptMode promptMode,
             ArchitectureInputRejectedException exception, long startedAt) {
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.warn("Bedrock analysis call rejected: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} inputType={} classificationConfidence={} maxTokens={} outcome={} errorType={} elapsedMs={}",
-                context.jobId(), context.projectId(), modelId, attempt, promptMode, exception.getInputType(),
-                exception.getClassificationConfidence(), properties.getBedrockMaxTokens(), "REJECTED",
-                exception.getClass().getSimpleName(), elapsedMs);
+        log.warn("Bedrock analysis call rejected outcome=REJECTED errorType={} elapsedMs={}", exception.getClass().getSimpleName(), elapsedMs);
     }
 
     private void logCall(
@@ -200,15 +185,10 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
     ) {
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
         if (truncated) {
-            log.warn("Bedrock analysis call completed with truncation{}: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} elapsedMs={}",
-                    attempt == 1 ? "; compact retry will start" : "",
-                    context.jobId(), context.projectId(), modelId, attempt, promptMode, stopReason, outputTokens,
-                    properties.getBedrockMaxTokens(), true, elapsedMs);
+            log.warn("Bedrock analysis call completed with truncation retry={} elapsedMs={}", attempt == 1, elapsedMs);
             return;
         }
-        log.info("Bedrock analysis call completed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} elapsedMs={}",
-                context.jobId(), context.projectId(), modelId, attempt, promptMode, stopReason, outputTokens,
-                properties.getBedrockMaxTokens(), false, elapsedMs);
+        log.info("Bedrock analysis call completed outcome=SUCCESS elapsedMs={}", elapsedMs);
     }
 
     private void logFailedCall(
@@ -220,9 +200,7 @@ public class BedrockAnalysisProvider implements AnalysisProvider {
             long startedAt
     ) {
         long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.warn("Bedrock analysis call failed: analysisJobId={} projectId={} modelId={} attempt={} promptMode={} stopReason={} outputTokens={} maxTokens={} truncated={} outcome={} errorType={} elapsedMs={}",
-                context.jobId(), context.projectId(), modelId, attempt, promptMode, "unknown", null,
-                properties.getBedrockMaxTokens(), false, "FAILED", exception.getClass().getSimpleName(), elapsedMs);
+        log.warn("Bedrock analysis call failed outcome=FAILED errorType={} elapsedMs={}", exception.getClass().getSimpleName(), elapsedMs);
     }
 
     private String requireModelId() {

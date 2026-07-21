@@ -244,3 +244,127 @@ resource "aws_iam_role_policy_attachment" "backend_runtime_access" {
   role       = aws_iam_role.backend_irsa.name
   policy_arn = aws_iam_policy.backend_runtime_access.arn
 }
+
+# Resolve the compatible add-on version from AWS for the configured EKS version rather
+# than pinning an arbitrary historical release.
+data "aws_eks_addon_version" "cloudwatch_observability" {
+  addon_name         = "amazon-cloudwatch-observability"
+  kubernetes_version = aws_eks_cluster.backend.version
+  most_recent        = true
+}
+
+data "aws_iam_policy_document" "cloudwatch_observability_irsa_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_provider_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_provider_host}:sub"
+      values   = ["system:serviceaccount:amazon-cloudwatch:cloudwatch-agent"]
+    }
+  }
+}
+
+resource "aws_iam_role" "cloudwatch_observability_irsa" {
+  name               = "${local.name_prefix}-cloudwatch-observability-irsa-role"
+  assume_role_policy = data.aws_iam_policy_document.cloudwatch_observability_irsa_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "cloudwatch_observability_agent" {
+  role       = aws_iam_role.cloudwatch_observability_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+resource "aws_iam_role_policy_attachment" "cloudwatch_observability_xray" {
+  role       = aws_iam_role.cloudwatch_observability_irsa.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"
+}
+
+resource "aws_eks_addon" "cloudwatch_observability" {
+  cluster_name             = aws_eks_cluster.backend.name
+  addon_name               = "amazon-cloudwatch-observability"
+  addon_version            = data.aws_eks_addon_version.cloudwatch_observability.version
+  service_account_role_arn = aws_iam_role.cloudwatch_observability_irsa.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "PRESERVE"
+  tags = local.common_tags
+  depends_on = [aws_iam_role_policy_attachment.cloudwatch_observability_agent, aws_iam_role_policy_attachment.cloudwatch_observability_xray]
+}
+
+# The backend publishes only its selected custom metrics to this namespace.
+data "aws_iam_policy_document" "backend_cloudwatch_metrics" {
+  statement {
+    sid       = "PublishTerraformersBackendMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["Terraformers/Backend"]
+    }
+  }
+}
+resource "aws_iam_role_policy" "backend_cloudwatch_metrics" {
+  name   = "${local.name_prefix}-backend-cloudwatch-metrics"
+  role   = aws_iam_role.backend_irsa.id
+  policy = data.aws_iam_policy_document.backend_cloudwatch_metrics.json
+}
+
+resource "aws_cloudwatch_dashboard" "operations_visibility" {
+  dashboard_name = "${local.name_prefix}-operations-visibility"
+  dashboard_body = jsonencode({ widgets = [
+    { type = "text", x = 0, y = 0, width = 24, height = 2, properties = { markdown = "# Terraformers Backend operations\\nEnvironment: ${var.environment} | Service: terraformers-backend" } },
+    { type = "metric", x = 0, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "EKS node and pod CPU / memory", view = "timeSeries", metrics = [["ContainerInsights", "node_cpu_utilization", "ClusterName", aws_eks_cluster.backend.name], [".", "pod_cpu_utilization", ".", "."]] } },
+    { type = "metric", x = 12, y = 2, width = 12, height = 6, properties = { region = var.aws_region, title = "Backend HTTP and restarts", view = "timeSeries", metrics = [["AWS/ApplicationSignals", "Latency", "Service", "terraformers-backend"], [".", "Fault", ".", "."], ["ContainerInsights", "number_of_container_restarts", "ClusterName", aws_eks_cluster.backend.name]] } },
+    { type = "metric", x = 0, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Analysis jobs and duration", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.analysis.jobs", "outcome", "started"], [".", ".", ".", "succeeded"], [".", ".", ".", "failed"], [".", "terraformers.analysis.duration"]] } },
+    { type = "metric", x = 12, y = 8, width = 12, height = 6, properties = { region = var.aws_region, title = "Bedrock and AOSS", view = "timeSeries", metrics = [["Terraformers/Backend", "terraformers.bedrock.invocation"], [".", "terraformers.aoss.retrieval"], [".", "terraformers.aoss.retrieved_hits"]] } }
+  ] })
+}
+
+resource "aws_cloudwatch_metric_alarm" "backend_fault" {
+  alarm_name          = "${local.name_prefix}-backend-fault"
+  alarm_description   = "Backend Application Signals fault count is non-zero."
+  namespace           = "AWS/ApplicationSignals"
+  metric_name         = "Fault"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  dimensions = { Service = "terraformers-backend" }
+}
+resource "aws_cloudwatch_metric_alarm" "analysis_failure" {
+  alarm_name          = "${local.name_prefix}-analysis-failures"
+  alarm_description   = "Analysis job failures require investigation."
+  namespace           = "Terraformers/Backend"
+  metric_name         = "terraformers.analysis.jobs"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  dimensions = { outcome = "failed" }
+}
+resource "aws_cloudwatch_metric_alarm" "backend_restarts" {
+  alarm_name          = "${local.name_prefix}-backend-restarts"
+  alarm_description   = "Repeated backend container restarts can make the service unavailable."
+  namespace           = "ContainerInsights"
+  metric_name         = "number_of_container_restarts"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  dimensions = { ClusterName = aws_eks_cluster.backend.name }
+}
