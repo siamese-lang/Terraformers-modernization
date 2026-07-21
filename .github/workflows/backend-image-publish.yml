@@ -182,7 +182,7 @@ jobs:
           branch="gitops/backend-${IMAGE_DIGEST#sha256:}"
           echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
           if git ls-remote --exit-code --heads origin "${branch}" >/dev/null; then
-            echo "branch_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "release_branch_pushed=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           git switch -c "${branch}"
@@ -196,14 +196,21 @@ jobs:
           ' <<<"${rendered}" || { echo "Rendered Deployment image is not repository@sha256 digest." >&2; exit 1; }
           git diff --check
           git add "${manifest}"
-          git diff --cached --quiet && { echo "No GitOps manifest change was produced." >&2; exit 1; }
+          if git diff --cached --quiet; then
+            echo "manifest_unchanged=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "chore(gitops): deploy backend ${IMAGE_DIGEST:7:12}"
           git push origin "${branch}"
+          echo "manifest_unchanged=false" >> "${GITHUB_OUTPUT}"
+          echo "release_branch_pushed=true" >> "${GITHUB_OUTPUT}"
 
       - name: Create or report GitOps update pull request
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.update.outputs.branch }}
+          MANIFEST_UNCHANGED: ${{ steps.update.outputs.manifest_unchanged }}
+          RELEASE_BRANCH_PUSHED: ${{ steps.update.outputs.release_branch_pushed }}
         run: |
           set -euo pipefail
           existing_pr="$(gh pr list --base "${BASE_BRANCH}" --head "${BRANCH}" --state all --json url,state --jq '.[0] | if . == null then "" else "\(.url) \(.state)" end')"
@@ -211,7 +218,12 @@ jobs:
             pr_url="${existing_pr% *}"
             pr_state="${existing_pr##* }"
             echo "Existing digest release PR (${pr_state}): ${pr_url}"
+          elif [[ "${MANIFEST_UNCHANGED}" == "true" ]]; then
+            pr_url="none"
+            pr_state="ALREADY_CURRENT"
+            echo "GitOps manifest already contains ${IMAGE_DIGEST}."
           else
+            [[ "${RELEASE_BRANCH_PUSHED}" == "true" ]] || { echo "Release branch was not pushed; refusing to create a PR." >&2; exit 1; }
             pr_url="$(gh pr create --base "${BASE_BRANCH}" --head "${BRANCH}" --title "chore(gitops): deploy backend ${IMAGE_DIGEST:7:12}" --body "Automated immutable-digest Backend GitOps update.\n\nSource commit: ${SOURCE_COMMIT_SHA}\nImage tag: ${IMAGE_TAG}\nECR digest: ${REPOSITORY_URI}@${IMAGE_DIGEST}")"
             pr_state="OPEN"
           fi
