@@ -357,9 +357,9 @@ data "aws_iam_policy_document" "terraform_apply_operations_visibility_create" {
   }
 
   statement {
-    sid       = "CreateReviewedOperationsVisibilityAlarms"
-    effect    = "Allow"
-    actions   = ["cloudwatch:PutMetricAlarm"]
+    sid     = "CreateReviewedOperationsVisibilityAlarms"
+    effect  = "Allow"
+    actions = ["cloudwatch:PutMetricAlarm"]
     resources = [
       "arn:aws:cloudwatch:ap-northeast-2:024863981627:alarm:terraformers-dev-backend-fault",
       "arn:aws:cloudwatch:ap-northeast-2:024863981627:alarm:terraformers-dev-analysis-failures",
