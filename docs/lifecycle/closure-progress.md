@@ -77,52 +77,63 @@ A final minimal parity read may be performed immediately before destructive exec
 
 ## Closure Gate 3 - Teardown design and destroy plans
 
-Status: **IN PROGRESS — SIX PLANS REVIEWED, FOUNDATION REPLAN REQUIRED**
+Status: **COMPLETE**
 
 Durable review:
 
 - `docs/lifecycle/terraform-destroy-plan-review.md`.
 
-Completed plan runs from source commit `36a62f8e0368ce22d19a54cca526fdfb85abffd9`:
+Completed plan runs:
 
-| Stage | Run ID | Managed deletes | Result |
-|---|---:|---:|---|
-| `frontend-delivery` | `29856519775` | 14 | PASS |
-| `rag-runtime` | `29856522168` | 23 | PASS |
-| `eks-runtime` | `29856524234` | 30 | PASS |
-| `stateful-dependencies` | `29856526566` | 5 | PASS |
-| `runtime-dependencies` | `29856528584` | 16 | PASS |
-| `network` | `29856530899` | 16 | PASS |
-| `foundation` | `29856533560` | not generated | blocked by committed state-bucket `prevent_destroy` safeguard |
+| Stage | Run ID | Source commit | Managed deletes | Result |
+|---|---:|---|---:|---|
+| `frontend-delivery` | `29856519775` | `36a62f8e…` | 14 | PASS |
+| `rag-runtime` | `29856522168` | `36a62f8e…` | 23 | PASS |
+| `eks-runtime` | `29856524234` | `36a62f8e…` | 30 | PASS |
+| `stateful-dependencies` | `29856526566` | `36a62f8e…` | 5 | PASS |
+| `runtime-dependencies` | `29856528584` | `36a62f8e…` | 16 | PASS |
+| `network` | `29856530899` | `36a62f8e…` | 16 | PASS |
+| `foundation` | `29858008935` | `7f6f32a4…` | 16 | PASS |
+| **Total** | — | — | **120** | **PASS** |
 
-Six successful plans account for 104 managed deletes. They contain no create, update, replacement or import action and passed the delete-only contract.
+Final conclusions:
 
-The foundation failure is not an IAM, state, tfvars, provider, or account failure. Terraform intentionally rejects the plan because the state bucket retains `lifecycle.prevent_destroy = true`.
+- all 120 Terraform-managed resource instances are represented by delete-only actions;
+- create, update, replacement and import counts are zero;
+- all seven plans passed the destroy-only contract;
+- the foundation state-bucket safeguard remains committed;
+- the foundation plan used a runner-temporary override and recorded `foundation_override_committed=false`;
+- all state-external cleanup prerequisites are assigned to runtime or bootstrap phases;
+- no resource deletion occurred.
 
-Approved correction scope for planning only:
-
-1. keep `prevent_destroy = true` in committed foundation source;
-2. create `zz-foundation-destroy-plan_override.tf` only in the GitHub-hosted runner checkout;
-3. set `prevent_destroy = false` only for `destroy_stage=foundation`;
-4. record and remove the temporary override before artifact upload;
-5. rerun only the foundation plan from the new exact integration commit;
-6. do not apply any plan.
-
-Gate 3 stop condition:
-
-- the foundation plan shows the expected remaining 16 managed deletes;
-- all seven plans are delete-only;
-- all 120 Terraform-managed resources reconcile to the inventory;
-- non-state cleanup prerequisites remain assigned to the correct execution phase;
-- bootstrap remains the final teardown phase.
+The reviewed plan artifacts cannot be applied later. An approved execution workflow must generate and apply a fresh saved plan in the same job after checking the exact stage contract.
 
 ## Closure Gate 4 - Approved runtime teardown
 
-Status: **NOT STARTED**
+Status: **DESIGN IN PROGRESS — EXECUTION NOT AUTHORIZED**
+
+Permitted next work:
+
+1. design one separately approved runtime teardown workflow;
+2. exclude foundation/bootstrap deletion;
+3. execute one exact runtime stage per dispatch;
+4. require exact source commit, AWS account, stage name, expected delete count and explicit destructive confirmation;
+5. verify non-Terraform prerequisites for that stage;
+6. create a fresh saved destroy plan and re-enforce delete-only semantics;
+7. apply only the saved plan in the same job;
+8. verify state and service-specific residuals;
+9. stop after one stage and require a new approval for the next stage.
+
+Not permitted until the workflow PR is reviewed and explicitly approved:
+
+- disabling or deleting CloudFront;
+- deleting Kubernetes or Argo CD resources;
+- purging S3 versions or ECR images;
+- deleting Secrets, RDS, Cognito, SQS, AOSS, logs, EKS, network or IAM resources;
+- Terraform apply/destroy;
+- foundation/state/OIDC deletion.
 
 No project resource has been deleted for portfolio closure.
-
-Runtime deletion requires explicit approval after Closure Gate 3 completes.
 
 ## Closure Gate 5 - Bootstrap teardown and zero-resource proof
 
@@ -137,15 +148,17 @@ Status: **DOCUMENTED, NOT EXECUTED**
 Completed:
 
 - zero-state bootstrap and canonical redeployment order documented in `docs/lifecycle/aws-redeploy-runbook.md`;
-- live owner and retention inventory reconciled with the teardown design.
+- live owner and retention inventory reconciled with the teardown design;
+- all seven Terraform destroy plans reconciled to the managed state inventory.
 
 Remaining:
 
-- complete the foundation destroy-plan review;
-- execute approved teardown;
+- implement and review runtime teardown execution workflow;
+- execute explicitly approved runtime teardown;
 - record runtime and bootstrap residual results;
+- execute separately approved bootstrap teardown;
 - create the final repository release/tag after zero-resource proof.
 
 ## Current next action
 
-Validate and merge the runner-temporary foundation destroy-plan override. Register the corrected workflow on the default branch, then rerun only the foundation plan. Do not execute any deletion.
+Implement and review the runtime teardown execution workflow and its static safety contract. Do not run the workflow or delete any resource until the code PR is explicitly approved and merged.

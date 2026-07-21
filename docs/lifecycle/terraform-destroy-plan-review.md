@@ -2,12 +2,13 @@
 
 ## 1. Review scope
 
-This document records the first read-only destroy-plan pass for the seven Terraform state components.
+This document records the completed read-only destroy-plan review for all seven Terraform state components.
 
-Source identity:
+Source identities:
 
 ```text
-integration_commit=36a62f8e0368ce22d19a54cca526fdfb85abffd9
+six_runtime_and_network_plans_commit=36a62f8e0368ce22d19a54cca526fdfb85abffd9
+foundation_replan_commit=7f6f32a4561dab68658bc9307ae83a5733b3bed6
 aws_account=024863981627
 aws_region=ap-northeast-2
 terraform_version=1.15.8
@@ -15,23 +16,22 @@ terraform_apply_executed=false
 terraform_destroy_executed=false
 ```
 
-The workflow retained only sanitized addresses, action/type counts, tfvars and binary-plan hashes, and summary files. Raw plan JSON, binary plans, tfvars, outputs, changed values, and state were not uploaded.
+The workflows retained only sanitized addresses, action/type counts, tfvars and binary-plan hashes, and summary files. Raw plan JSON, binary plans, tfvars, outputs, changed values, and state were not uploaded.
 
-## 2. First-pass result
+## 2. Final result
 
-| Stage | Run ID | Result | Managed deletes | Update/create/replacement/import | High-cost references |
-|---|---:|---|---:|---|---|
-| `frontend-delivery` | `29856519775` | PASS | 14 | 0 | CloudFront distribution |
-| `rag-runtime` | `29856522168` | PASS | 23 | 0 | AOSS collection |
-| `eks-runtime` | `29856524234` | PASS | 30 | 0 | EKS cluster and node group |
-| `stateful-dependencies` | `29856526566` | PASS | 5 | 0 | RDS instance |
-| `runtime-dependencies` | `29856528584` | PASS | 16 | 0 | none |
-| `network` | `29856530899` | PASS | 16 | 0 | NAT gateway |
-| `foundation` | `29856533560` | BLOCKED BY SAFEGUARD | not generated | not evaluated | state bucket and execution roles |
+| Stage | Run ID | Source commit | Result | Managed deletes | Update/create/replacement/import | High-cost references |
+|---|---:|---|---|---:|---|---|
+| `frontend-delivery` | `29856519775` | `36a62f8e…` | PASS | 14 | 0 | CloudFront distribution |
+| `rag-runtime` | `29856522168` | `36a62f8e…` | PASS | 23 | 0 | AOSS collection |
+| `eks-runtime` | `29856524234` | `36a62f8e…` | PASS | 30 | 0 | EKS cluster and node group |
+| `stateful-dependencies` | `29856526566` | `36a62f8e…` | PASS | 5 | 0 | RDS instance |
+| `runtime-dependencies` | `29856528584` | `36a62f8e…` | PASS | 16 | 0 | none |
+| `network` | `29856530899` | `36a62f8e…` | PASS | 16 | 0 | NAT gateway |
+| `foundation` | `29858008935` | `7f6f32a4…` | PASS | 16 | 0 | state bucket and execution roles |
+| **Total** | — | — | **PASS** | **120** | **0** | — |
 
-The six successful plans contain **104 managed delete actions**. The Terraform inventory contains 120 managed resources in total, so the remaining foundation state is expected to account for 16 managed resources.
-
-All six successful plans passed the destroy-only contract:
+All seven plans passed the destroy-only contract:
 
 ```text
 managed_non_delete_action_count=0
@@ -40,6 +40,8 @@ update_resource_count=0
 replacement_resource_count=0
 destroy_only_contract=passed
 ```
+
+The 120 managed delete actions exactly reconcile to the 120 managed resource instances recorded by the read-only Terraform state inventory. The remaining 33 state instances are data sources and are not destruction targets.
 
 ## 3. Saved plan hashes
 
@@ -53,6 +55,7 @@ The binary plans themselves were removed before artifact upload. These hashes id
 | `stateful-dependencies` | `7c9489a83ba3b93113f2d4d08d4ed8bcad50189f025c872e37105e84dde65862` | `6e4ab5d65ac5cb8a3969f0440501ab58db79e829c2988ee6e4fe75106b5573e1` |
 | `runtime-dependencies` | `4c92da27f477d649061c7dcc2000e39d98f16419f9acbce090a46d0a033b4569` | `96c6ba2fd1c4091fb9130cce1dc0cd6ba5ee771c6ac44c70ca15c9cb1c8e67bc` |
 | `network` | `96bc2677713a1dff1971563df558f96dc7743444990e750dc76d2fcb394f097c` | `f53fe8179c601f3b455bb2cccee418c085dbebcec90344a96010e6a0cc4d064a` |
+| `foundation` | `e4694d21f27e2b777d610a2661f991e9b63f211fe16010cd30cb547c88744f43` | `c42af1c7dec9272b13339155116831b4324ee8ea1e608cc7249a4cfd4385d7ea` |
 
 ## 4. Stage review
 
@@ -161,11 +164,37 @@ Required before an approved apply:
 2. confirm no ALB, CloudFront VPC origin, AOSS endpoint, RDS, EKS, interface endpoint, security group or project ENI remains;
 3. delete network only after the residual scan shows no dependent resource.
 
-## 5. Foundation safeguard result
+### 4.7 `foundation` — 16 deletes
 
-The foundation plan did not fail because of credentials, state access, tfvars, provider setup, or account verification. Those steps all succeeded.
+Confirmed resource groups:
 
-The plan was intentionally blocked by the committed state bucket safeguard:
+- Terraform state bucket and its policy, public-access block, ownership, encryption and versioning resources;
+- Terraform live-plan and live-apply roles;
+- four inline policies;
+- three role-policy attachments;
+- Operations Visibility create policy.
+
+The successful plan used the explicitly reviewed runner-only override:
+
+```text
+foundation_prevent_destroy_override=true
+foundation_override_committed=false
+```
+
+Required before an approved bootstrap teardown:
+
+1. complete all runtime teardown and pass the runtime residual scan;
+2. preserve an independent AWS administrator or CloudShell identity;
+3. export state metadata only if explicitly retained;
+4. purge 175 state-bucket object versions and 126 delete markers;
+5. remove the project-dedicated GitHub OIDC provider separately because it is outside Terraform state;
+6. delete the foundation roles and state bucket in an order that does not strand the final operation.
+
+Foundation is not part of runtime teardown and remains the final teardown phase.
+
+## 5. Foundation safeguard and controlled planning exception
+
+The first foundation run `29856533560` was intentionally blocked by the committed state bucket safeguard:
 
 ```hcl
 resource "aws_s3_bucket" "terraform_state" {
@@ -175,37 +204,37 @@ resource "aws_s3_bucket" "terraform_state" {
 }
 ```
 
-Terraform rejects a destroy plan while `prevent_destroy` is enabled. This is the expected default behavior and must remain committed in the normal foundation configuration.
+The safeguard remains committed. Run `29858008935` created a temporary override only in the GitHub-hosted runner checkout, generated and reviewed the plan, recorded the override boundary, and removed the file before artifact upload. No source safeguard was weakened and no plan was applied.
 
-The correction is limited to read-only closure planning:
+The same explicit exception will be required for final bootstrap execution, but only after runtime residual proof and from an execution path that cannot delete its own final credentials prematurely.
 
-- create a runner-temporary override file only for `destroy_stage=foundation`;
-- set `prevent_destroy=false` only in that temporary checkout;
-- record that the override was used;
-- delete the override before artifact upload;
-- do not modify the committed foundation source;
-- do not apply the generated plan.
+## 6. Closure Gate 3 result
 
-The same explicit override boundary will be required in the later bootstrap teardown workflow, but only after runtime residual proof passes and an independent final AWS identity is available.
-
-## 6. Current Gate 3 status
-
-Status: **IN PROGRESS — SIX PLANS REVIEWED, FOUNDATION REPLAN REQUIRED**
+Status: **COMPLETE**
 
 Completed:
 
-- six delete-only plans reviewed;
-- 104 managed deletes reconciled to state inventory;
-- no create, update, replacement or import action observed;
-- non-Terraform cleanup prerequisites attached to execution phases;
-- foundation safeguard root cause identified.
+- all seven state-component plans reviewed;
+- 120 managed deletes reconciled to the state inventory;
+- no create, update, replacement or import action;
+- delete-only contract passed for every stage;
+- all non-Terraform cleanup prerequisites assigned to execution phases;
+- foundation reviewed and fixed as the final phase;
+- no resource deletion executed.
 
-Remaining:
+The reviewed plans are not reusable apply artifacts. Runtime execution must create a fresh saved plan inside the approved destructive job and immediately apply that exact plan after rechecking the stage contract and prerequisites.
 
-1. merge the runner-temporary foundation override correction;
-2. register the corrected workflow on the default branch;
-3. rerun only the foundation destroy plan from the new exact integration commit;
-4. review the expected 16 managed deletes;
-5. mark Closure Gate 3 complete.
+## 7. Next boundary
 
-No resource deletion is authorized by this document.
+Closure Gate 4 may now design a separately approved runtime teardown workflow. The workflow must:
+
+- exclude `foundation`;
+- perform one exact runtime stage per dispatch;
+- require explicit stage confirmation and exact integration commit;
+- run precondition checks for non-Terraform owners and mutable data;
+- create a fresh destroy plan, enforce the reviewed delete-only count/address contract, and apply the saved plan in the same job;
+- verify post-destroy state and service-specific residuals;
+- stop at the first failing stage;
+- never infer that a successful Terraform apply removed state-external data or controller-generated resources.
+
+No runtime deletion is authorized by this document alone.
