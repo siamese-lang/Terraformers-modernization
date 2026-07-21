@@ -14,6 +14,8 @@ public class AnalysisRuntimeProperties {
     private String indexName;
     private String vectorFieldName;
     private String contentFieldName;
+    private String corpusVersion = "terraformers-reference-v1";
+    private String providerVersion = "5.100.0";
     private Integer expectedVectorDimension;
     private boolean bedrockProviderEnabled;
     private int bedrockMaxTokens = 8192;
@@ -82,6 +84,22 @@ public class AnalysisRuntimeProperties {
 
     public void setContentFieldName(String contentFieldName) {
         this.contentFieldName = contentFieldName;
+    }
+
+    public String getCorpusVersion() {
+        return corpusVersion;
+    }
+
+    public void setCorpusVersion(String corpusVersion) {
+        this.corpusVersion = corpusVersion;
+    }
+
+    public String getProviderVersion() {
+        return providerVersion;
+    }
+
+    public void setProviderVersion(String providerVersion) {
+        this.providerVersion = providerVersion;
     }
 
     public Integer getExpectedVectorDimension() { return expectedVectorDimension; }
