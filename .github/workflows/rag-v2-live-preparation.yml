@@ -1,5 +1,5 @@
 name: RAG v2 Live Preparation
-# One-time preparation for corpus ingestion and immutable backend image publication.
+# One-time immutable image publication after the recorded corpus v2 ingestion succeeded.
 
 on:
   push:
@@ -7,28 +7,30 @@ on:
       - agent/rag-corpus-version-scope
     paths:
       - .github/workflows/rag-v2-live-preparation.yml
-      - .github/workflows/rag-corpus-ingestion.yml
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  ingest-v2:
+  verify-v2-ingestion:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
-    uses: ./.github/workflows/rag-corpus-ingestion.yml
-    with:
-      execute_ingestion: true
-      corpus_directory: corpus/terraformers-reference/v2
-      expected_aws_account_id: '024863981627'
-      expected_head_sha: ${{ github.sha }}
-      approval_confirmation: INGEST_REVIEWED_RAG_CORPUS
-    secrets: inherit
+    steps:
+      - name: Checkout preparation branch
+        uses: actions/checkout@v5
+      - name: Verify recorded corpus v2 ingestion
+        run: |
+          set -euo pipefail
+          RESULT=.github/rag-v2-live-preparation-result.txt
+          grep -Fqx 'ingestion_result=success' "$RESULT"
+          grep -Fqx 'corpus_version=terraformers-reference-v2' "$RESULT"
+          grep -Fqx 'count=128' "$RESULT"
+          grep -Fqx 'build_status=SUCCEEDED' "$RESULT"
 
   publish-backend:
-    needs: ingest-v2
+    needs: verify-v2-ingestion
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: aws-backend-image-publish
@@ -59,6 +61,12 @@ jobs:
           IMAGE_URI="${EXPECTED_AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+          {
+            echo "source_commit_sha=$SOURCE_COMMIT_SHA"
+            echo "image_uri=$IMAGE_URI"
+            echo "corpus_version=terraformers-reference-v2"
+            echo "provider_version=5.100.0"
+          } > backend-live-preparation-summary.txt
 
       - name: Configure AWS credentials through OIDC
         uses: aws-actions/configure-aws-credentials@v5
@@ -68,22 +76,33 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           allowed-account-ids: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
 
-      - name: Verify repository and immutable tag availability
+      - name: Verify immutable tag availability
         run: |
           set -euo pipefail
           test "$(aws sts get-caller-identity --query Account --output text)" = "$EXPECTED_AWS_ACCOUNT_ID"
-          aws ecr describe-repositories \
-            --region "$AWS_REGION" \
-            --repository-names "$BACKEND_ECR_REPOSITORY" \
-            >/dev/null
-          if aws ecr describe-images \
+          set +e
+          VERIFY_OUTPUT="$(aws ecr describe-images \
             --region "$AWS_REGION" \
             --repository-name "$BACKEND_ECR_REPOSITORY" \
-            --image-ids imageTag="$IMAGE_TAG" \
-            >/dev/null 2>&1; then
-            echo "Immutable image tag already exists: $IMAGE_TAG" >&2
+            --image-ids imageTag="$IMAGE_TAG" 2>&1)"
+          VERIFY_STATUS=$?
+          set -e
+          if [[ $VERIFY_STATUS -eq 0 ]]; then
+            echo 'image_verify=tag-already-exists' >> backend-live-preparation-summary.txt
             exit 1
           fi
+          if grep -q 'ImageNotFoundException' <<<"$VERIFY_OUTPUT"; then
+            echo 'image_verify=tag-available' >> backend-live-preparation-summary.txt
+            exit 0
+          fi
+          if grep -q 'RepositoryNotFoundException' <<<"$VERIFY_OUTPUT"; then
+            echo 'image_verify=repository-not-found' >> backend-live-preparation-summary.txt
+          elif grep -q 'AccessDenied' <<<"$VERIFY_OUTPUT"; then
+            echo 'image_verify=access-denied' >> backend-live-preparation-summary.txt
+          else
+            echo 'image_verify=unexpected-error' >> backend-live-preparation-summary.txt
+          fi
+          exit 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -112,15 +131,13 @@ jobs:
             --output text)"
           [[ "$IMAGE_DIGEST" == sha256:* ]]
           {
-            echo "source_commit_sha=$SOURCE_COMMIT_SHA"
-            echo "image_uri=$IMAGE_URI"
             echo "image_digest=$IMAGE_DIGEST"
-            echo "corpus_version=terraformers-reference-v2"
-            echo "provider_version=5.100.0"
             echo "pushed=true"
-          } | tee backend-live-preparation-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          } >> backend-live-preparation-summary.txt
+          cat backend-live-preparation-summary.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload sanitized publish evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: rag-v2-backend-image-evidence
@@ -130,7 +147,7 @@ jobs:
   record-result:
     if: ${{ always() }}
     needs:
-      - ingest-v2
+      - verify-v2-ingestion
       - publish-backend
     runs-on: ubuntu-latest
     permissions:
@@ -142,14 +159,6 @@ jobs:
           ref: agent/rag-corpus-version-scope
           fetch-depth: 0
 
-      - name: Download ingestion evidence when available
-        if: ${{ always() }}
-        continue-on-error: true
-        uses: actions/download-artifact@v6
-        with:
-          name: rag-corpus-ingestion-live-evidence
-          path: preparation-evidence/ingestion
-
       - name: Download image evidence when available
         if: ${{ always() }}
         continue-on-error: true
@@ -160,20 +169,20 @@ jobs:
 
       - name: Record sanitized preparation result
         env:
-          INGEST_RESULT: ${{ needs.ingest-v2.result }}
+          INGEST_VERIFY_RESULT: ${{ needs.verify-v2-ingestion.result }}
           PUBLISH_RESULT: ${{ needs.publish-backend.result }}
         run: |
           set -euo pipefail
           RESULT_FILE=.github/rag-v2-live-preparation-result.txt
+          PREVIOUS_RESULT="$(mktemp)"
+          cp "$RESULT_FILE" "$PREVIOUS_RESULT"
           {
             echo "workflow_run_id=${GITHUB_RUN_ID}"
             echo "workflow_commit_sha=${GITHUB_SHA}"
             echo "backend_source_commit_sha=a672a322fcaa784baf19fa7bb0687fc403f0aff7"
-            echo "ingestion_result=${INGEST_RESULT}"
+            echo "ingestion_result=$([[ "$INGEST_VERIFY_RESULT" == success ]] && echo success || echo failure)"
             echo "image_publish_result=${PUBLISH_RESULT}"
-            if [[ -f preparation-evidence/ingestion/package-summary.txt ]]; then
-              cat preparation-evidence/ingestion/package-summary.txt
-            fi
+            grep -E '^(checksum|count|corpus_version|corpus_directory|build_id|build_status)=' "$PREVIOUS_RESULT" || true
             if [[ -f preparation-evidence/image/backend-live-preparation-summary.txt ]]; then
               cat preparation-evidence/image/backend-live-preparation-summary.txt
             fi
