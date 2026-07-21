@@ -172,6 +172,12 @@ def verify_workflow() -> None:
     contains(index_access_policy_statement, 'values   = ["terraformers-dev-refs/terraformers-reference-v1"]')
     assert 'aoss:collection' not in index_access_policy_statement
     assert 'sid       = "CreateExactAossAccessPolicy"' not in foundation
+    cloudwatch_attach_statement = foundation.split('sid       = "AttachApprovedCloudWatchManagedPolicies"', 1)[1].split('  statement {', 1)[0]
+    contains(cloudwatch_attach_statement, 'test     = "ArnEquals"')
+    contains(cloudwatch_attach_statement, 'variable = "iam:PolicyARN"')
+    contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy')
+    contains(cloudwatch_attach_statement, 'arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess')
+    assert 'ForAnyValue:StringEquals' not in cloudwatch_attach_statement
     vpc_statement = foundation.split('sid       = "CreateSecurityGroupsInApprovedVpc"', 1)[1].split('  statement {', 1)[0]
     tagged_sg_statement = foundation.split('sid       = "CreateTaggedRagSecurityGroups"', 1)[1].split('  statement {', 1)[0]
     assert "aws:RequestTag" not in vpc_statement

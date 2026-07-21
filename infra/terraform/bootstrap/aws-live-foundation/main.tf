@@ -309,7 +309,7 @@ data "aws_iam_policy_document" "terraform_apply_operations_visibility_create" {
     resources = ["arn:aws:iam::024863981627:role/terraformers-dev-cloudwatch-observability-irsa-role"]
 
     condition {
-      test     = "ForAnyValue:StringEquals"
+      test     = "ArnEquals"
       variable = "iam:PolicyARN"
       values   = ["arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy", "arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess"]
     }
