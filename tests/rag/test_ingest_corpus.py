@@ -26,6 +26,31 @@ class RecordingClient:
         return {"hits": {"hits": self.hits}}
 
 
+class RecordingIndices:
+    def __init__(self, index_name, properties):
+        self.index_name = index_name
+        self.properties = properties
+        self.put_mapping_body = None
+
+    def get_mapping(self, *, index):
+        return {
+            index: {
+                "mappings": {
+                    "properties": self.properties,
+                }
+            }
+        }
+
+    def put_mapping(self, *, index, body):
+        self.put_mapping_body = body
+        self.properties.update(body["properties"])
+
+
+class MappingClient:
+    def __init__(self, index_name, properties):
+        self.indices = RecordingIndices(index_name, properties)
+
+
 class IngestCorpusTests(unittest.TestCase):
     def test_full_contract_checksum_changes_when_schema_changes(self):
         corpus = Path(__file__).parents[2] / "corpus/terraformers-reference/v1"
@@ -95,6 +120,50 @@ class IngestCorpusTests(unittest.TestCase):
         self.assertEqual(
             {"term": {"corpusVersion": "terraformers-reference-v2"}},
             client.search_bodies[0]["query"]["knn"]["embedding"]["filter"],
+        )
+
+    def test_missing_v2_metadata_mapping_is_added_to_existing_index(self):
+        index_name = "terraformers-reference-v1"
+        client = MappingClient(
+            index_name,
+            {
+                "embedding": {"type": "knn_vector", "dimension": 1024},
+                "content": {"type": "text"},
+                "title": {"type": "text"},
+                "corpusVersion": {"type": "keyword"},
+            },
+        )
+        schema = {
+            "mappings": {
+                "properties": {
+                    "embedding": {"type": "knn_vector", "dimension": 1024},
+                    "content": {"type": "text"},
+                    "title": {"type": "text"},
+                    "corpusVersion": {"type": "keyword"},
+                    "authority": {"type": "keyword"},
+                    "priority": {"type": "integer"},
+                }
+            }
+        }
+
+        added = ingest.ensure_index_mapping(
+            client,
+            index_name,
+            schema,
+            "embedding",
+            "content",
+            1024,
+        )
+
+        self.assertEqual(["authority", "priority"], added)
+        self.assertEqual(
+            {
+                "properties": {
+                    "authority": {"type": "keyword"},
+                    "priority": {"type": "integer"},
+                }
+            },
+            client.indices.put_mapping_body,
         )
 
     def test_sanitized_summary_excludes_document_content(self):
