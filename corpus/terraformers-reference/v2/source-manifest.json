@@ -1,0 +1,568 @@
+{
+  "sources": [
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudfront_distribution.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudfront_origin_access_control.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudwatch_log_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudwatch_metric_alarm.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cognito_user_pool.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cognito_user_pool_client.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/db_instance.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/db_subnet_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/ecr_repository.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/eks_cluster.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/eks_node_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_role.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_role_policy_attachment.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/internet_gateway.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb_listener.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb_target_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/nat_gateway.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/opensearchserverless_access_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/opensearchserverless_collection.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/route.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/route_table.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/s3_bucket.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/s3_bucket_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/security_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/sqs_queue.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/subnet.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/vpc.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/vpc_security_group_ingress_rule.html.markdown",
+      "sourceType": "AWS_PROVIDER_DOC",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudfront_distribution.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudfront_origin_access_control.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudwatch_log_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cloudwatch_metric_alarm.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cognito_user_pool.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/cognito_user_pool_client.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/db_instance.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/db_subnet_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/ecr_repository.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/eks_cluster.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/eks_node_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_role.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/iam_role_policy_attachment.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/internet_gateway.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb_listener.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/lb_target_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/nat_gateway.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/opensearchserverless_access_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/opensearchserverless_collection.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/route.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/route_table.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/s3_bucket.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/s3_bucket_policy.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/security_group.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/sqs_queue.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/subnet.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/vpc.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "website/docs/r/vpc_security_group_ingress_rule.html.markdown",
+      "sourceType": "AWS_PROVIDER_EXAMPLE",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cloudfront_distribution",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cloudfront_origin_access_control",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cloudwatch_log_group",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cloudwatch_metric_alarm",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cognito_user_pool",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_cognito_user_pool_client",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_db_instance",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_db_subnet_group",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_ecr_repository",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_eks_cluster",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_eks_node_group",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_iam_policy",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_iam_role",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_iam_role_policy_attachment",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_internet_gateway",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_lb",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_lb_listener",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_lb_target_group",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_nat_gateway",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_opensearchserverless_access_policy",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_opensearchserverless_collection",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_route",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_route_table",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_s3_bucket",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_s3_bucket_policy",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_security_group",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_sqs_queue",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_subnet",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_vpc",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
+      "sourcePath": "terraform providers schema -json#resource_schemas.aws_vpc_security_group_ingress_rule",
+      "sourceType": "AWS_PROVIDER_SCHEMA",
+      "sourceVersion": "v5.100.0"
+    },
+    {
+      "sourceCommit": "93aa9452cc8df05fe06214a4d932fd761414c8cd",
+      "sourcePath": "docs/source-rag-gitops-reuse-plan.md",
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v2"
+    },
+    {
+      "sourceCommit": "93aa9452cc8df05fe06214a4d932fd761414c8cd",
+      "sourcePath": "infra/terraform/envs/eks-runtime/main.tf",
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v2"
+    },
+    {
+      "sourceCommit": "93aa9452cc8df05fe06214a4d932fd761414c8cd",
+      "sourcePath": "infra/terraform/envs/rag-runtime/main.tf",
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v2"
+    },
+    {
+      "sourceCommit": "93aa9452cc8df05fe06214a4d932fd761414c8cd",
+      "sourcePath": "infra/terraform/envs/rag-runtime/outputs.tf",
+      "sourceType": "TERRAFORMERS_PATTERN",
+      "sourceVersion": "terraformers-reference-v2"
+    }
+  ]
+}
