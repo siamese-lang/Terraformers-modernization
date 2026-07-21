@@ -37,6 +37,7 @@ jobs:
           python3 scripts/checks/rag-corpus-contract-verification.py
           python3 -m unittest \
             tests/rag/test_build_corpus_v2.py \
+            tests/rag/test_curate_corpus_v2.py \
             tests/rag/test_ingest_corpus.py
 
       - name: Setup Terraform
@@ -85,11 +86,12 @@ jobs:
             --provider-source-commit "$PROVIDER_COMMIT" \
             --project-source-commit "$GITHUB_SHA" \
             --output-dir "$OUTPUT_DIR"
+          python3 scripts/rag/curate-corpus-v2.py --corpus-dir "$OUTPUT_DIR"
           python3 scripts/checks/rag-corpus-contract-verification.py \
             --corpus-dir "$OUTPUT_DIR" \
             --summary-json "$OUTPUT_ROOT/contract-summary.json"
 
-          python3 - "$OUTPUT_DIR" "$OUTPUT_ROOT/generation-summary.json" <<'PY'
+          python3 - "$OUTPUT_DIR" "$OUTPUT_ROOT/generation-summary.json" "$GITHUB_SHA" <<'PY'
           import collections
           import json
           import pathlib
@@ -97,6 +99,7 @@ jobs:
 
           corpus = pathlib.Path(sys.argv[1])
           output = pathlib.Path(sys.argv[2])
+          project_commit = sys.argv[3]
           documents = [json.loads(line) for line in (corpus / "documents.jsonl").read_text().splitlines() if line]
           resource_types = sorted({item for document in documents for item in document["resourceTypes"] if item.startswith("aws_")})
           summary = {
@@ -107,7 +110,7 @@ jobs:
               "resourceTypes": resource_types,
               "projectPatternCount": sum(document["authority"] == "PROJECT_DECISION" for document in documents),
               "providerSourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
-              "projectSourceCommit": "${GITHUB_SHA}",
+              "projectSourceCommit": project_commit,
           }
           output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
           print(json.dumps(summary, sort_keys=True))
