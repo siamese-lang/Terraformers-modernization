@@ -1,0 +1,222 @@
+name: AWS Terraform State Inventory
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_read_only_inventory:
+        description: Authenticate through the live-plan role and read sanitized Terraform state addresses only.
+        required: true
+        type: boolean
+        default: false
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller identity.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact integration commit to inventory.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+
+jobs:
+  terraform-state-inventory:
+    name: Read sanitized remote-state inventory
+    if: ${{ inputs.execute_read_only_inventory }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aws-live-plan
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate inventory inputs
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPECTED_HEAD_SHA}" || { echo 'expected_head_sha is required.' >&2; exit 1; }
+          test "${GITHUB_SHA}" = "${EXPECTED_HEAD_SHA}" || {
+            echo "expected_head_sha does not match checked-out GITHUB_SHA (${GITHUB_SHA})." >&2
+            exit 1
+          }
+          test -n "${EXPECTED_AWS_ACCOUNT_ID}" || { echo 'expected_aws_account_id is required.' >&2; exit 1; }
+          test -n "${AWS_ROLE_TO_ASSUME}" || { echo 'AWS_ROLE_TO_ASSUME environment variable is required.' >&2; exit 1; }
+          test -n "${STATE_BUCKET}" || { echo 'AWS_TERRAFORM_STATE_BUCKET environment variable is required.' >&2; exit 1; }
+          test -n "${STATE_PREFIX}" || { echo 'AWS_TERRAFORM_STATE_PREFIX environment variable is required.' >&2; exit 1; }
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersStateInventory
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify AWS identity and state bucket
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          test "${ACTUAL_ACCOUNT_ID}" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          aws s3api head-bucket --bucket "${STATE_BUCKET}"
+          test "$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)" = 'Enabled'
+
+      - name: Collect sanitized state addresses
+        env:
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR='artifacts/aws-terraform-state-inventory'
+          ADDRESS_DIR="${OUTPUT_DIR}/addresses"
+          mkdir -p "${ADDRESS_DIR}"
+          trap 'rm -f "${RUNNER_TEMP}"/terraform-state-*.json' EXIT
+
+          printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            component object_present terraform_version serial resource_instances resource_types \
+            > "${OUTPUT_DIR}/component-summary.tsv"
+          printf '%s\t%s\t%s\t%s\n' \
+            component mode resource_type instance_count \
+            > "${OUTPUT_DIR}/resource-type-counts.tsv"
+
+          components=(
+            bootstrap
+            network
+            runtime-dependencies
+            stateful-dependencies
+            eks-runtime
+            frontend-delivery
+            rag-runtime
+          )
+
+          for component in "${components[@]}"; do
+            key="${STATE_PREFIX%/}/${component}/terraform.tfstate"
+            state_file="${RUNNER_TEMP}/terraform-state-${component}.json"
+            address_file="${ADDRESS_DIR}/${component}.txt"
+
+            if ! aws s3api head-object --bucket "${STATE_BUCKET}" --key "${key}" >/dev/null 2>&1; then
+              : > "${address_file}"
+              printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "${component}" false absent absent 0 0 \
+                >> "${OUTPUT_DIR}/component-summary.tsv"
+              continue
+            fi
+
+            aws s3api get-object \
+              --bucket "${STATE_BUCKET}" \
+              --key "${key}" \
+              "${state_file}" >/dev/null
+
+            python3 - \
+              "${component}" \
+              "${state_file}" \
+              "${address_file}" \
+              "${OUTPUT_DIR}/component-summary.tsv" \
+              "${OUTPUT_DIR}/resource-type-counts.tsv" <<'PY'
+          import collections
+          import json
+          import pathlib
+          import sys
+
+          component, state_path, address_path, summary_path, type_count_path = sys.argv[1:]
+          state = json.loads(pathlib.Path(state_path).read_text(encoding="utf-8"))
+
+          addresses: list[str] = []
+          type_counts: collections.Counter[tuple[str, str]] = collections.Counter()
+
+          for resource in state.get("resources", []):
+              mode = resource.get("mode", "managed")
+              resource_type = resource.get("type", "unknown")
+              resource_name = resource.get("name", "unknown")
+              module = resource.get("module")
+              base = f"{resource_type}.{resource_name}"
+              if mode == "data":
+                  base = f"data.{base}"
+              if module:
+                  base = f"{module}.{base}"
+
+              for instance in resource.get("instances", []):
+                  index_key = instance.get("index_key")
+                  if index_key is None:
+                      address = base
+                  elif isinstance(index_key, str):
+                      address = f"{base}[{json.dumps(index_key, ensure_ascii=True)}]"
+                  else:
+                      address = f"{base}[{index_key}]"
+                  addresses.append(address)
+                  type_counts[(mode, resource_type)] += 1
+
+          addresses.sort()
+          pathlib.Path(address_path).write_text(
+              "\n".join(addresses) + ("\n" if addresses else ""),
+              encoding="utf-8",
+          )
+
+          with pathlib.Path(summary_path).open("a", encoding="utf-8") as handle:
+              handle.write(
+                  "\t".join(
+                      [
+                          component,
+                          "true",
+                          str(state.get("terraform_version", "unknown")),
+                          str(state.get("serial", "unknown")),
+                          str(len(addresses)),
+                          str(len(type_counts)),
+                      ]
+                  )
+                  + "\n"
+              )
+
+          with pathlib.Path(type_count_path).open("a", encoding="utf-8") as handle:
+              for (mode, resource_type), count in sorted(type_counts.items()):
+                  handle.write(
+                      f"{component}\t{mode}\t{resource_type}\t{count}\n"
+                  )
+          PY
+
+            rm -f "${state_file}"
+          done
+
+          {
+            echo 'aws_terraform_state_inventory=completed'
+            echo 'credential_mode=github-oidc'
+            echo 'environment_gate=aws-live-plan'
+            echo 'expected_account_id_verified=true'
+            echo 'expected_head_sha_verified=true'
+            echo 'state_component_count=7'
+            echo 'raw_state_uploaded=false'
+            echo 'terraform_outputs_uploaded=false'
+            echo 'tfvars_used=false'
+            echo 'terraform_plan_executed=false'
+            echo 'terraform_apply_executed=false'
+            echo 'terraform_destroy_executed=false'
+            echo 'aws_mutation=none'
+            echo "source_commit=${GITHUB_SHA}"
+            echo "aws_region=${AWS_REGION}"
+          } > "${OUTPUT_DIR}/inventory-summary.txt"
+
+          if find "${OUTPUT_DIR}" -type f \( -name '*.json' -o -name '*.tfstate' -o -name '*.tfvars' \) | grep -q .; then
+            echo 'Sensitive state-like file found in inventory artifact.' >&2
+            exit 1
+          fi
+
+      - name: Upload sanitized inventory evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-terraform-state-inventory-evidence
+          path: artifacts/aws-terraform-state-inventory
+          if-no-files-found: error
+          retention-days: 30
