@@ -22,6 +22,10 @@ FOUNDATION_RESOURCES = {
     "aws_iam_role_policy.terraform_apply_state_access": "aws_iam_role_policy",
     "aws_iam_role_policy_attachment.terraform_apply_read_only": "aws_iam_role_policy_attachment",
 }
+OPERATIONS_VISIBILITY_PERMISSION_RESOURCES = {
+    "aws_iam_policy.terraform_apply_operations_visibility_create": "aws_iam_policy",
+    "aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create": "aws_iam_role_policy_attachment",
+}
 OPERATIONS_VISIBILITY_RESOURCES = {
     "aws_cloudwatch_dashboard.operations_visibility": "aws_cloudwatch_dashboard",
     "aws_cloudwatch_metric_alarm.analysis_failure": "aws_cloudwatch_metric_alarm",
@@ -186,8 +190,8 @@ def main() -> int:
         if actual_actions(actions) != expected: fail("foundation resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "foundation-operations-visibility-apply-permission-create":
-        check_risk_gates(summary, txt, "foundation", 1, 0)
-        expected = {"aws_iam_role_policy.terraform_apply_operations_visibility_create": ("aws_iam_role_policy", ["create"], [])}
+        check_risk_gates(summary, txt, "foundation", 2, 0)
+        expected = {address: (kind, ["create"], []) for address, kind in OPERATIONS_VISIBILITY_PERMISSION_RESOURCES.items()}
         if actual_actions(actions) != expected: fail("foundation operations visibility permission resource_actions must exactly match the approved contract.")
         check_blocked_types(actions)
     elif args.contract == "eks-runtime-backend-policy-update":

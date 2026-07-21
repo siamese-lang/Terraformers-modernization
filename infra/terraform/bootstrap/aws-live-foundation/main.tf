@@ -368,10 +368,15 @@ data "aws_iam_policy_document" "terraform_apply_operations_visibility_create" {
   }
 }
 
-resource "aws_iam_role_policy" "terraform_apply_operations_visibility_create" {
+resource "aws_iam_policy" "terraform_apply_operations_visibility_create" {
   name   = "terraformers-live-apply-operations-visibility-create"
-  role   = aws_iam_role.terraform_apply.id
   policy = data.aws_iam_policy_document.terraform_apply_operations_visibility_create.json
+  tags   = var.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_apply_operations_visibility_create" {
+  role       = aws_iam_role.terraform_apply.name
+  policy_arn = aws_iam_policy.terraform_apply_operations_visibility_create.arn
 }
 
 data "aws_iam_policy_document" "terraform_apply_rag_runtime_create" {
