@@ -104,7 +104,7 @@ jobs:
           IMAGE_URI: ${{ inputs.image_uri }}
         run: |
           set -euo pipefail
-          docker build --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -f backend/Dockerfile -t "${IMAGE_URI}" backend
+          docker build --build-arg "BUILD_SOURCE_REVISION=${SOURCE_COMMIT_SHA}" --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -f backend/Dockerfile -t "${IMAGE_URI}" backend
           docker image inspect "${IMAGE_URI}" > backend-image-inspect.json
 
       - name: Login to ECR

@@ -23,20 +23,30 @@ public class AnalysisJobRunner {
 
     private final AnalysisJobOrchestrator orchestrator;
     private final AnalysisJobStateService stateService;
+    private final AnalysisObservability observability;
 
-    public AnalysisJobRunner(AnalysisJobOrchestrator orchestrator, AnalysisJobStateService stateService) {
+    public AnalysisJobRunner(AnalysisJobOrchestrator orchestrator, AnalysisJobStateService stateService, AnalysisObservability observability) {
         this.orchestrator = orchestrator;
         this.stateService = stateService;
+        this.observability = observability;
     }
 
     public void run(String jobId) {
         AnalysisJobEntity runningJob = stateService.markRunning(jobId);
-        try {
-            AnalysisJobExecution execution = orchestrator.executeProviderAndStoreDraft(runningJob);
-            stateService.markSucceeded(jobId, execution);
-        } catch (RuntimeException exception) {
-            log.error("Analysis job failed: analysisJobId={}", jobId, exception);
-            stateService.markFailed(jobId, safeFailureReason(exception));
+        try (AnalysisLogCorrelation ignored = AnalysisLogCorrelation.forJob(jobId)) {
+            io.micrometer.core.instrument.Timer.Sample sample = observability.startAnalysis();
+            observability.jobStarted();
+            try {
+                AnalysisJobExecution execution = orchestrator.executeProviderAndStoreDraft(runningJob);
+                stateService.markSucceeded(jobId, execution);
+                observability.jobSucceeded();
+            } catch (RuntimeException exception) {
+                observability.jobFailed(exception);
+                log.error("Analysis job failed outcome=failed exceptionCategory={}", observability.category(exception));
+                stateService.markFailed(jobId, safeFailureReason(exception));
+            } finally {
+                observability.stopAnalysis(sample);
+            }
         }
     }
 

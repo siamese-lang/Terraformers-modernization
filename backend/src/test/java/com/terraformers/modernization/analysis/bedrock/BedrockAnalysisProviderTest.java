@@ -4,24 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.terraformers.modernization.analysis.AnalysisMode;
+import com.terraformers.modernization.analysis.AnalysisObservability;
 import com.terraformers.modernization.analysis.AnalysisRequestContext;
 import com.terraformers.modernization.analysis.AnalysisResult;
 import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
+import com.terraformers.modernization.reference.BedrockArchitectureFactsExtractor;
 import com.terraformers.modernization.reference.ReferenceDocument;
 import com.terraformers.modernization.reference.ReferenceRetriever;
-import com.terraformers.modernization.reference.BedrockArchitectureFactsExtractor;
 import com.terraformers.modernization.reference.RetrievalQueryTextBuilder;
 import com.terraformers.modernization.storage.ObjectContent;
 import com.terraformers.modernization.storage.ObjectMetadata;
 import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +60,8 @@ class BedrockAnalysisProviderTest {
                 new BedrockPromptBuilder(objectMapper),
                 new BedrockResponseParser(objectMapper),
                 new BedrockArchitectureFactsExtractor(client, objectMapper, properties),
-                new RetrievalQueryTextBuilder()
+                new RetrievalQueryTextBuilder(),
+                observability()
         );
 
         AnalysisResult result = provider.analyze(context());
@@ -159,7 +162,12 @@ class BedrockAnalysisProviderTest {
         properties.setBedrockMaxTokens(8192);
         return new BedrockAnalysisProvider(client, objectReader(), referenceRetriever(), properties,
                 new BedrockPromptBuilder(objectMapper), new BedrockResponseParser(objectMapper),
-                new BedrockArchitectureFactsExtractor(client, objectMapper, properties), new RetrievalQueryTextBuilder());
+                new BedrockArchitectureFactsExtractor(client, objectMapper, properties), new RetrievalQueryTextBuilder(),
+                observability());
+    }
+
+    private AnalysisObservability observability() {
+        return new AnalysisObservability(new SimpleMeterRegistry());
     }
 
     private InvokeModelResponse response(String text, String stopReason, int outputTokens) throws Exception {

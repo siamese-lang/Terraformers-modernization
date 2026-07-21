@@ -31,7 +31,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+        namespace: Terraformers/Backend
+        step: 1m
   endpoint:
     health:
       probes:
@@ -81,3 +91,7 @@ terraformers:
     sqs-publisher-enabled: ${ANALYSIS_SQS_PUBLISHER_ENABLED:false}
     progress-queue-url: ${AI_LOG_QUEUE_URL:}
     result-queue-url: ${TERRAFORM_LOG_QUEUE_URL:}
+
+info:
+  build:
+    source-revision: ${BUILD_SOURCE_REVISION:unknown}

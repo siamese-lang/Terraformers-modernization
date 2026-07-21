@@ -9,7 +9,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration
 public class AnalysisExecutorConfig {
-
     @Bean(name = "analysisJobExecutor")
     @ConditionalOnMissingBean(name = "analysisJobExecutor")
     public Executor analysisJobExecutor() {
@@ -21,7 +20,6 @@ public class AnalysisExecutorConfig {
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
-        executor.initialize();
         return executor;
     }
 }

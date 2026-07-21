@@ -23,6 +23,7 @@ public class AnalysisJobService {
     private final Executor analysisJobExecutor;
     private final ProjectDomainService projectDomainService;
     private final ProjectFileRepository projectFileRepository;
+    private final AnalysisObservability observability;
 
     public AnalysisJobService(
             AnalysisJobRepository repository,
@@ -30,7 +31,8 @@ public class AnalysisJobService {
             AnalysisJobRunner jobRunner,
             @Qualifier("analysisJobExecutor") Executor analysisJobExecutor,
             ProjectDomainService projectDomainService,
-            ProjectFileRepository projectFileRepository
+            ProjectFileRepository projectFileRepository,
+            AnalysisObservability observability
     ) {
         this.repository = repository;
         this.properties = properties;
@@ -38,6 +40,7 @@ public class AnalysisJobService {
         this.analysisJobExecutor = analysisJobExecutor;
         this.projectDomainService = projectDomainService;
         this.projectFileRepository = projectFileRepository;
+        this.observability = observability;
     }
 
     @Transactional
@@ -91,6 +94,7 @@ public class AnalysisJobService {
         try {
             analysisJobExecutor.execute(task);
         } catch (RejectedExecutionException exception) {
+            observability.jobRejected();
             jobRunner.markFailed(jobId, "analysis job could not be scheduled because the executor rejected the task");
         }
     }
