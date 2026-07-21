@@ -1,0 +1,123 @@
+name: RAG v2 Live Preparation
+
+on:
+  push:
+    branches:
+      - agent/rag-corpus-version-scope
+    paths:
+      - .github/workflows/rag-v2-live-preparation.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ingest-v2:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/rag-corpus-ingestion.yml
+    with:
+      execute_ingestion: true
+      corpus_directory: corpus/terraformers-reference/v2
+      expected_aws_account_id: '024863981627'
+      expected_head_sha: ${{ github.sha }}
+      approval_confirmation: INGEST_REVIEWED_RAG_CORPUS
+    secrets: inherit
+
+  publish-backend:
+    needs: ingest-v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: aws-backend-image-publish
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.EXPECTED_AWS_ACCOUNT_ID }}
+      BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'terraformers-backend' }}
+      SOURCE_COMMIT_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Validate immutable publish inputs
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_AWS_ACCOUNT_ID" = '024863981627'
+          test "$AWS_REGION" = 'ap-northeast-2'
+          test -n "$AWS_ROLE_TO_ASSUME"
+          [[ "$BACKEND_ECR_REPOSITORY" =~ ^[a-z0-9][a-z0-9._/-]*$ ]]
+          IMAGE_TAG="git-${SOURCE_COMMIT_SHA}"
+          IMAGE_URI="${EXPECTED_AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${BACKEND_ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersRagV2BackendPublish
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
+
+      - name: Verify repository and immutable tag availability
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "$EXPECTED_AWS_ACCOUNT_ID"
+          aws ecr describe-repositories \
+            --region "$AWS_REGION" \
+            --repository-names "$BACKEND_ECR_REPOSITORY" \
+            >/dev/null
+          if aws ecr describe-images \
+            --region "$AWS_REGION" \
+            --repository-name "$BACKEND_ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            >/dev/null 2>&1; then
+            echo "Immutable image tag already exists: $IMAGE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        run: |
+          set -euo pipefail
+          docker build \
+            --label "org.opencontainers.image.revision=${SOURCE_COMMIT_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            -f backend/Dockerfile \
+            -t "$IMAGE_URI" \
+            backend
+
+      - name: Login and push immutable image
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "${EXPECTED_AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          docker push "$IMAGE_URI"
+          IMAGE_DIGEST="$(aws ecr describe-images \
+            --region "$AWS_REGION" \
+            --repository-name "$BACKEND_ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          [[ "$IMAGE_DIGEST" == sha256:* ]]
+          {
+            echo "source_commit_sha=$SOURCE_COMMIT_SHA"
+            echo "image_uri=$IMAGE_URI"
+            echo "image_digest=$IMAGE_DIGEST"
+            echo "corpus_version=terraformers-reference-v2"
+            echo "provider_version=5.100.0"
+            echo "pushed=true"
+          } | tee backend-live-preparation-summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized publish evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: rag-v2-backend-image-evidence
+          path: backend-live-preparation-summary.txt
+          if-no-files-found: error
