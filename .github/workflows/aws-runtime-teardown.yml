@@ -312,7 +312,7 @@ jobs:
           } >> artifacts/aws-runtime-teardown/execution-summary.txt
 
       - name: Verify Kubernetes owner-removal marker
-        if: ${{ inputs.teardown_stage == 'eks-runtime' }}
+        if: ${{ inputs.teardown_stage != 'frontend-delivery' && inputs.teardown_stage != 'kubernetes-owners' }}
         env:
           STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
@@ -473,6 +473,18 @@ jobs:
             stateful-dependencies)
               test "$(aws eks list-clusters --region "${AWS_REGION}" --output json |
                 jq '[.clusters[] | select(contains("terraformers"))] | length')" -eq 0
+              if aws rds describe-db-instances \
+                --region "${AWS_REGION}" \
+                --db-instance-identifier terraformers-modernization-dev-mariadb \
+                --output json > "${RUNNER_TEMP}/stateful-db.json" 2>/dev/null; then
+                jq '{
+                  dbi_resource_id: .DBInstances[0].DbiResourceId,
+                  managed_secret_arn: (.DBInstances[0].MasterUserSecret.SecretArn // "")
+                }' "${RUNNER_TEMP}/stateful-db.json" > "${RUNNER_TEMP}/stateful-identifiers.json"
+              else
+                printf '{"dbi_resource_id":"","managed_secret_arn":""}\n' \
+                  > "${RUNNER_TEMP}/stateful-identifiers.json"
+              fi
               ;;
             runtime-dependencies)
               test "$(aws eks list-clusters --region "${AWS_REGION}" --output json |
@@ -573,6 +585,8 @@ jobs:
               if aws s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1; then exit 1; fi
               test "$(aws cloudfront list-vpc-origins --output json |
                 jq '[.VpcOriginList.Items[]? | select((.Name // "") | contains("terraformers"))] | length')" -eq 0
+              test "$(aws cloudfront list-distributions --output json |
+                jq '[.DistributionList.Items[]? | select((.Comment // "") == "Terraformers React SPA and same-origin backend API delivery.")] | length')" -eq 0
               ;;
             rag-runtime)
               bucket="terraformers-dev-rag-corpus-${EXPECTED_AWS_ACCOUNT_ID}"
@@ -604,6 +618,44 @@ jobs:
               if aws rds describe-db-instances \
                 --region "${AWS_REGION}" \
                 --db-instance-identifier "${db}" >/dev/null 2>&1; then exit 1; fi
+
+              dbi_resource_id="$(jq -r '.dbi_resource_id' "${RUNNER_TEMP}/stateful-identifiers.json")"
+              managed_secret_arn="$(jq -r '.managed_secret_arn' "${RUNNER_TEMP}/stateful-identifiers.json")"
+
+              if [ -n "${dbi_resource_id}" ]; then
+                backup_count="$(
+                  aws rds describe-db-instance-automated-backups \
+                    --region "${AWS_REGION}" \
+                    --dbi-resource-id "${dbi_resource_id}" \
+                    --output json |
+                  jq '.DBInstanceAutomatedBackups | length'
+                )"
+                if [ "${backup_count}" -gt 0 ]; then
+                  aws rds delete-db-instance-automated-backup \
+                    --region "${AWS_REGION}" \
+                    --dbi-resource-id "${dbi_resource_id}" >/dev/null
+                fi
+                test "$(aws rds describe-db-instance-automated-backups \
+                  --region "${AWS_REGION}" \
+                  --dbi-resource-id "${dbi_resource_id}" \
+                  --output json | jq '.DBInstanceAutomatedBackups | length')" -eq 0
+              fi
+
+              if [ -n "${managed_secret_arn}" ]; then
+                for attempt in $(seq 1 40); do
+                  if ! aws secretsmanager describe-secret \
+                    --region "${AWS_REGION}" \
+                    --secret-id "${managed_secret_arn}" >/dev/null 2>&1; then
+                    break
+                  fi
+                  if [ "${attempt}" -eq 40 ]; then
+                    echo 'RDS managed master Secret still exists.' >&2
+                    exit 1
+                  fi
+                  sleep 15
+                done
+              fi
+
               legacy_pool_ids="$(
                 aws cognito-idp list-user-pools \
                   --region "${AWS_REGION}" \
@@ -646,6 +698,22 @@ jobs:
                     --queue-url "${queue_url}"
                 fi
               done
+              for attempt in $(seq 1 20); do
+                remaining_queues="$(
+                  aws sqs list-queues \
+                    --region "${AWS_REGION}" \
+                    --queue-name-prefix terraformers \
+                    --output json |
+                  jq '(.QueueUrls // []) | length'
+                )"
+                if [ "${remaining_queues}" -eq 0 ]; then break; fi
+                if [ "${attempt}" -eq 20 ]; then
+                  echo 'Terraformers SQS queues still exist.' >&2
+                  exit 1
+                fi
+                sleep 15
+              done
+
               for attempt in $(seq 1 40); do
                 secret_count="$(
                   aws secretsmanager list-secrets \
@@ -683,7 +751,9 @@ jobs:
             "${RUNNER_TEMP}/post-destroy-state.json" \
             "${RUNNER_TEMP}/destroy-plan.json" \
             "${RUNNER_TEMP}/destroy.tfplan" \
-            "${RUNNER_TEMP}/kubernetes-owners.json"
+            "${RUNNER_TEMP}/kubernetes-owners.json" \
+            "${RUNNER_TEMP}/stateful-identifiers.json" \
+            "${RUNNER_TEMP}/stateful-db.json"
           if [ -n "${TF_DIR:-}" ]; then
             rm -f \
               "${TF_DIR}/zz-live-backend.tf" \
