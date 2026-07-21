@@ -12,6 +12,7 @@ import com.terraformers.modernization.analysis.bedrock.ArchitectureInputRejected
 import com.terraformers.modernization.analysis.bedrock.ArchitectureInputType;
 import java.util.List;
 import java.net.SocketTimeoutException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import software.amazon.awssdk.core.exception.ApiCallAttemptTimeoutException;
@@ -44,7 +45,7 @@ class AnalysisJobRunnerTest {
         );
         when(stateService.markRunning("job-1")).thenReturn(running);
         when(orchestrator.executeProviderAndStoreDraft(running)).thenReturn(execution);
-        AnalysisJobRunner runner = new AnalysisJobRunner(orchestrator, stateService);
+        AnalysisJobRunner runner = new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(new SimpleMeterRegistry()));
 
         runner.run("job-1");
 
@@ -66,7 +67,7 @@ class AnalysisJobRunnerTest {
                         .cause(new SocketTimeoutException("Read timed out"))
                         .build());
 
-        new AnalysisJobRunner(orchestrator, stateService).run("job-1");
+        new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(new SimpleMeterRegistry())).run("job-1");
 
         verify(stateService).markFailed("job-1", AnalysisJobRunner.TIMEOUT_FAILURE_REASON);
     }
@@ -80,7 +81,7 @@ class AnalysisJobRunnerTest {
         when(orchestrator.executeProviderAndStoreDraft(running))
                 .thenThrow(new IllegalStateException("secret request body and stack details"));
 
-        new AnalysisJobRunner(orchestrator, stateService).run("job-1");
+        new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(new SimpleMeterRegistry())).run("job-1");
 
         verify(stateService).markFailed("job-1", AnalysisJobRunner.GENERIC_FAILURE_REASON);
     }
@@ -126,8 +127,36 @@ class AnalysisJobRunnerTest {
         when(stateService.markRunning("job-1")).thenReturn(running);
         when(orchestrator.executeProviderAndStoreDraft(running)).thenThrow(exception);
 
-        new AnalysisJobRunner(orchestrator, stateService).run("job-1");
+        new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(new SimpleMeterRegistry())).run("job-1");
 
         verify(stateService).markFailed("job-1", expectedReason);
     }
+    @Test
+    void markRunningFailureIsNotReclassifiedAsJobFailure() {
+        AnalysisJobOrchestrator orchestrator = mock(AnalysisJobOrchestrator.class);
+        AnalysisJobStateService stateService = mock(AnalysisJobStateService.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("transition failed")).when(stateService).markRunning("job-transition");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(new SimpleMeterRegistry())).run("job-transition"))
+                .isInstanceOf(IllegalStateException.class);
+        verify(stateService, org.mockito.Mockito.never()).markFailed(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void orchestrationFailureAfterRunningRecordsStartedAndFailedMetrics() {
+        AnalysisJobOrchestrator orchestrator = mock(AnalysisJobOrchestrator.class);
+        AnalysisJobStateService stateService = mock(AnalysisJobStateService.class);
+        AnalysisJobEntity running = new AnalysisJobEntity();
+        when(stateService.markRunning("job-observed")).thenReturn(running);
+        when(orchestrator.executeProviderAndStoreDraft(running)).thenThrow(new IllegalStateException("sensitive detail"));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+
+        new AnalysisJobRunner(orchestrator, stateService, new AnalysisObservability(registry)).run("job-observed");
+
+        verify(stateService).markFailed(org.mockito.ArgumentMatchers.eq("job-observed"), org.mockito.ArgumentMatchers.anyString());
+        org.assertj.core.api.Assertions.assertThat(registry.find("terraformers.analysis.jobs").tags("outcome", "started").counter().count()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(registry.find("terraformers.analysis.jobs").tags("outcome", "failed").counter().count()).isEqualTo(1);
+    }
+
 }

@@ -2,21 +2,23 @@ package com.terraformers.modernization.analysis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 class AnalysisObservabilityTest {
     @Test
-    void recordsOnlyBoundedAnalysisOutcomesAndCategories() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    void publishesFixedPrometheusMeterIdentitiesWithoutSensitiveLabels() {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(io.micrometer.prometheusmetrics.PrometheusConfig.DEFAULT);
         AnalysisObservability observability = new AnalysisObservability(registry);
-
-        observability.jobStarted();
-        observability.jobSucceeded();
-        observability.jobFailed(new IllegalStateException("sensitive detail must not be a tag"));
-
-        assertThat(registry.find("terraformers.analysis.jobs").tags("outcome", "started").counter().count()).isEqualTo(1);
-        assertThat(registry.find("terraformers.analysis.jobs").tags("outcome", "succeeded").counter().count()).isEqualTo(1);
-        assertThat(registry.find("terraformers.analysis.jobs").tags("outcome", "failed", "exception_category", "other").counter().count()).isEqualTo(1);
+        observability.jobStarted(); observability.jobSucceeded(); observability.jobFailed(new IllegalStateException("secret raw message"));
+        observability.recordBedrock(() -> "ok");
+        try { observability.recordBedrock(() -> { throw new IllegalStateException("secret raw message"); }); } catch (IllegalStateException ignored) { }
+        observability.recordAoss(() -> "ok");
+        try { observability.recordAoss(() -> { throw new IllegalStateException("secret raw message"); }); } catch (IllegalStateException ignored) { }
+        observability.retrievedHits(3);
+        String scrape = registry.scrape();
+        assertThat(scrape).contains("terraformers_analysis_jobs", "terraformers_bedrock_invocations", "terraformers_aoss_retrievals", "terraformers_aoss_retrieved_hits");
+        assertThat(scrape).contains("category=\"other\"").doesNotContain("secret raw message");
+        assertThat(registry.find("terraformers.analysis.jobs").meters()).allSatisfy(meter -> assertThat(meter.getId().getTagKeys()).containsExactly("outcome"));
     }
 }

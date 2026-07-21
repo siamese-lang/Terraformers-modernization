@@ -23,9 +23,6 @@ management:
     tags:
       service: terraformers-backend
       environment: ${DEPLOYMENT_ENVIRONMENT:local}
-    export:
-      prometheus:
-        enabled: true
   prometheus:
     metrics:
       export:

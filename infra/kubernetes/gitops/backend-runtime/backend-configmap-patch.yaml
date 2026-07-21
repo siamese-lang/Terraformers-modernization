@@ -6,6 +6,8 @@ data:
   SPRING_PROFILES_ACTIVE: "prod"
   AWS_REGION: "ap-northeast-2"
   DEPLOYMENT_ENVIRONMENT: "dev"
+  OTEL_SERVICE_NAME: "terraformers-backend"
+  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=dev"
 
   # Production image analysis reads private S3 objects and invokes the configured Bedrock models.
   # OPENSEARCH_ENDPOINT is supplied through the private runtime Secret from the rag-runtime output.

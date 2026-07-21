@@ -32,12 +32,11 @@ public class AnalysisJobRunner {
     }
 
     public void run(String jobId) {
+        AnalysisJobEntity runningJob = stateService.markRunning(jobId);
         try (AnalysisLogCorrelation ignored = AnalysisLogCorrelation.forJob(jobId)) {
-            io.micrometer.core.instrument.Timer.Sample sample = null;
+            io.micrometer.core.instrument.Timer.Sample sample = observability.startAnalysis();
+            observability.jobStarted();
             try {
-                AnalysisJobEntity runningJob = stateService.markRunning(jobId);
-                observability.jobStarted();
-                sample = observability.startAnalysis();
                 AnalysisJobExecution execution = orchestrator.executeProviderAndStoreDraft(runningJob);
                 stateService.markSucceeded(jobId, execution);
                 observability.jobSucceeded();
@@ -46,7 +45,7 @@ public class AnalysisJobRunner {
                 log.error("Analysis job failed outcome=failed exceptionCategory={}", observability.category(exception));
                 stateService.markFailed(jobId, safeFailureReason(exception));
             } finally {
-                if (sample != null) sample.stop(io.micrometer.core.instrument.Timer.builder("terraformers.analysis.duration").register(observability.meterRegistry()));
+                observability.stopAnalysis(sample);
             }
         }
     }
