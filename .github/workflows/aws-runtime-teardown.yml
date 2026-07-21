@@ -1,0 +1,581 @@
+name: AWS Runtime Teardown
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute_runtime_teardown:
+        description: Must be true to execute one explicitly reviewed runtime teardown stage.
+        required: true
+        type: boolean
+        default: false
+      teardown_stage:
+        description: Exact runtime teardown stage. Foundation is intentionally excluded.
+        required: true
+        type: choice
+        options:
+          - frontend-delivery
+          - kubernetes-owners
+          - rag-runtime
+          - eks-runtime
+          - stateful-dependencies
+          - runtime-dependencies
+          - network
+        default: frontend-delivery
+      expected_delete_count:
+        description: Reviewed maximum Terraform delete count for the selected stage. Kubernetes owners uses 0.
+        required: true
+        type: number
+      expected_aws_account_id:
+        description: AWS account ID that must match the teardown OIDC caller.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact integration commit to execute.
+        required: true
+        type: string
+      approval_confirmation:
+        description: Exact DESTROY_REVIEWED_<STAGE>_<COUNT> confirmation from the reviewed contract.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  TEARDOWN_CONFIG: config/runtime-teardown-stages.json
+  EKS_CLUSTER_NAME: terraformers-dev-backend
+  RUNTIME_NAMESPACE: terraformers-runtime
+  ARGOCD_NAMESPACE: argocd
+  ARGOCD_APPLICATION: terraformers-backend
+  EXTERNAL_SECRETS_NAMESPACE: external-secrets
+
+concurrency:
+  group: aws-runtime-teardown
+  cancel-in-progress: false
+
+jobs:
+  runtime-teardown:
+    name: Teardown ${{ inputs.teardown_stage }}
+    if: ${{ inputs.execute_runtime_teardown }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: aws-live-teardown
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Resolve exact teardown contract
+        id: target
+        env:
+          EXECUTE_RUNTIME_TEARDOWN: ${{ inputs.execute_runtime_teardown }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          EXPECTED_DELETE_COUNT: ${{ inputs.expected_delete_count }}
+          APPROVAL_CONFIRMATION: ${{ inputs.approval_confirmation }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          test "${EXECUTE_RUNTIME_TEARDOWN}" = true || {
+            echo 'execute_runtime_teardown must be true.' >&2
+            exit 1
+          }
+          test "${GITHUB_SHA}" = "${EXPECTED_HEAD_SHA}" || {
+            echo "expected_head_sha does not match checked-out GITHUB_SHA (${GITHUB_SHA})." >&2
+            exit 1
+          }
+          test -n "${EXPECTED_AWS_ACCOUNT_ID}" || { echo 'expected_aws_account_id is required.' >&2; exit 1; }
+          test -n "${AWS_ROLE_TO_ASSUME}" || { echo 'AWS_ROLE_TO_ASSUME is required in aws-live-teardown.' >&2; exit 1; }
+          test -n "${STATE_BUCKET}" || { echo 'AWS_TERRAFORM_STATE_BUCKET is required.' >&2; exit 1; }
+          test -n "${STATE_PREFIX}" || { echo 'AWS_TERRAFORM_STATE_PREFIX is required.' >&2; exit 1; }
+          mkdir -p artifacts/aws-runtime-teardown
+          python3 scripts/teardown/runtime_teardown.py resolve \
+            --config "${TEARDOWN_CONFIG}" \
+            --stage '${{ inputs.teardown_stage }}' \
+            --expected-delete-count "${EXPECTED_DELETE_COUNT}" \
+            --confirmation "${APPROVAL_CONFIRMATION}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Configure teardown AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersRuntimeTeardown
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify teardown identity and state backend
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          test "${ACTUAL_ACCOUNT_ID}" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          aws s3api head-bucket --bucket "${STATE_BUCKET}"
+          test "$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)" = Enabled
+          {
+            echo 'expected_account_id_verified=true'
+            echo 'expected_head_sha_verified=true'
+            echo 'credential_mode=github-oidc'
+            echo 'environment_gate=aws-live-teardown'
+            echo "teardown_stage=${{ inputs.teardown_stage }}"
+            echo "reviewed_delete_count=${{ steps.target.outputs.reviewed_delete_count }}"
+            echo "source_commit=${GITHUB_SHA}"
+          } > artifacts/aws-runtime-teardown/execution-summary.txt
+
+      - name: Verify prior Terraform states are empty
+        env:
+          REQUIRED_EMPTY_STATES: ${{ steps.target.outputs.required_empty_states }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          STATE_DIR="${RUNNER_TEMP}/prior-states"
+          mkdir -p "${STATE_DIR}"
+          if [ -n "${REQUIRED_EMPTY_STATES}" ]; then
+            IFS=',' read -r -a components <<< "${REQUIRED_EMPTY_STATES}"
+            for component in "${components[@]}"; do
+              key="${STATE_PREFIX%/}/${component}/terraform.tfstate"
+              aws s3api get-object \
+                --bucket "${STATE_BUCKET}" \
+                --key "${key}" \
+                "${STATE_DIR}/${component}.json" >/dev/null
+            done
+          fi
+          python3 scripts/teardown/runtime_teardown.py verify-empty-states \
+            --config "${TEARDOWN_CONFIG}" \
+            --stage '${{ inputs.teardown_stage }}' \
+            --state-dir "${STATE_DIR}" \
+            --output artifacts/aws-runtime-teardown/prior-state-counts.json
+
+      - name: Remove Kubernetes and controller owners
+        if: ${{ steps.target.outputs.kind == 'kubernetes' }}
+        env:
+          TEARDOWN_ROLE_ARN: ${{ vars.AWS_ROLE_TO_ASSUME }}
+        run: |
+          set -euo pipefail
+          ACCESS_POLICY_ARN='arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy'
+
+          if ! aws eks describe-access-entry \
+            --region "${AWS_REGION}" \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --principal-arn "${TEARDOWN_ROLE_ARN}" >/dev/null 2>&1; then
+            aws eks create-access-entry \
+              --region "${AWS_REGION}" \
+              --cluster-name "${EKS_CLUSTER_NAME}" \
+              --principal-arn "${TEARDOWN_ROLE_ARN}" \
+              --type STANDARD >/dev/null
+          fi
+
+          aws eks associate-access-policy \
+            --region "${AWS_REGION}" \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --principal-arn "${TEARDOWN_ROLE_ARN}" \
+            --policy-arn "${ACCESS_POLICY_ARN}" \
+            --access-scope type=cluster >/dev/null
+
+          aws eks update-kubeconfig \
+            --region "${AWS_REGION}" \
+            --name "${EKS_CLUSTER_NAME}" \
+            --alias terraformers-teardown >/dev/null
+
+          INGRESS_HOST="$(
+            kubectl get ingress -n "${RUNTIME_NAMESPACE}" -o json 2>/dev/null |
+            jq -r '.items[0].status.loadBalancer.ingress[0].hostname // ""'
+          )"
+
+          if kubectl get application "${ARGOCD_APPLICATION}" -n "${ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+            kubectl patch application "${ARGOCD_APPLICATION}" \
+              -n "${ARGOCD_NAMESPACE}" \
+              --type merge \
+              -p '{"spec":{"syncPolicy":{}}}' >/dev/null
+            kubectl delete application "${ARGOCD_APPLICATION}" \
+              -n "${ARGOCD_NAMESPACE}" \
+              --wait=true \
+              --timeout=10m
+          fi
+
+          kubectl delete ingress --all -n "${RUNTIME_NAMESPACE}" --ignore-not-found=true
+
+          if [ -n "${INGRESS_HOST}" ]; then
+            for attempt in $(seq 1 40); do
+              FOUND="$(
+                aws elbv2 describe-load-balancers \
+                  --region "${AWS_REGION}" \
+                  --query 'LoadBalancers[].DNSName' \
+                  --output text 2>/dev/null |
+                tr '\t' '\n' |
+                grep -Fxc "${INGRESS_HOST}" || true
+              )"
+              if [ "${FOUND}" -eq 0 ]; then
+                break
+              fi
+              if [ "${attempt}" -eq 40 ]; then
+                echo 'Internal ALB still exists after Ingress deletion.' >&2
+                exit 1
+              fi
+              sleep 15
+            done
+          fi
+
+          kubectl delete externalsecret --all -A --ignore-not-found=true
+          kubectl delete secretstore --all -A --ignore-not-found=true
+          kubectl delete secret terraformers-backend-runtime-secrets \
+            -n "${RUNTIME_NAMESPACE}" \
+            --ignore-not-found=true
+
+          helm uninstall aws-load-balancer-controller -n kube-system --wait --timeout 10m || true
+          helm uninstall external-secrets -n "${EXTERNAL_SECRETS_NAMESPACE}" --wait --timeout 10m || true
+          helm uninstall argocd -n "${ARGOCD_NAMESPACE}" --wait --timeout 10m || true
+
+          kubectl delete namespace "${RUNTIME_NAMESPACE}" --ignore-not-found=true --wait=true --timeout=10m
+          kubectl delete namespace "${EXTERNAL_SECRETS_NAMESPACE}" --ignore-not-found=true --wait=true --timeout=10m
+          kubectl delete namespace "${ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true --timeout=10m
+
+          aws eks disassociate-access-policy \
+            --region "${AWS_REGION}" \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --principal-arn "${TEARDOWN_ROLE_ARN}" \
+            --policy-arn "${ACCESS_POLICY_ARN}" >/dev/null || true
+          aws eks delete-access-entry \
+            --region "${AWS_REGION}" \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --principal-arn "${TEARDOWN_ROLE_ARN}" >/dev/null || true
+
+          test "$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" --output json | jq '[.LoadBalancers[] | select((.LoadBalancerName // "") | contains("terraformers"))] | length')" -eq 0
+          test "$(aws elbv2 describe-target-groups --region "${AWS_REGION}" --output json | jq '[.TargetGroups[] | select((.TargetGroupName // "") | contains("terraformers"))] | length')" -eq 0
+
+          {
+            echo 'kubernetes_owners_removed=true'
+            echo 'argocd_application_removed=true'
+            echo 'runtime_namespace_removed=true'
+            echo 'external_secrets_removed=true'
+            echo 'load_balancer_controller_removed=true'
+            echo 'internal_alb_removed=true'
+            echo 'terraform_apply_executed=false'
+          } >> artifacts/aws-runtime-teardown/execution-summary.txt
+
+      - name: Restore private Terraform inputs
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          STAGE: ${{ inputs.teardown_stage }}
+          FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
+          NETWORK_TFVARS_B64: ${{ secrets.AWS_LIVE_NETWORK_TFVARS_B64 }}
+          RUNTIME_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64 }}
+          STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
+          EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+          FRONTEND_TFVARS_B64: ${{ secrets.AWS_LIVE_FRONTEND_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
+        run: |
+          set -euo pipefail
+          case "${STAGE}" in
+            frontend-delivery) TFVARS_B64="${FRONTEND_TFVARS_B64}" ;;
+            rag-runtime) TFVARS_B64="${RAG_TFVARS_B64}" ;;
+            eks-runtime) TFVARS_B64="${EKS_TFVARS_B64}" ;;
+            stateful-dependencies) TFVARS_B64="${STATEFUL_DEPENDENCIES_TFVARS_B64}" ;;
+            runtime-dependencies) TFVARS_B64="${RUNTIME_DEPENDENCIES_TFVARS_B64}" ;;
+            network) TFVARS_B64="${NETWORK_TFVARS_B64}" ;;
+            *) echo 'Unsupported Terraform teardown stage.' >&2; exit 1 ;;
+          esac
+          test -n "${TFVARS_B64}" || { echo "Private tfvars secret is missing for ${STAGE}." >&2; exit 1; }
+          printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
+          test -s "${RUNNER_TEMP}/live.auto.tfvars"
+          sha256sum "${RUNNER_TEMP}/live.auto.tfvars" | awk '{print $1}' > artifacts/aws-runtime-teardown/tfvars.sha256
+
+      - name: Initialize stage state and capture current identifiers
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+          STATE_COMPONENT: ${{ steps.target.outputs.state_component }}
+          STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+          STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+          fi
+          cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
+          bucket       = "${STATE_BUCKET}"
+          key          = "${STATE_PREFIX%/}/${STATE_COMPONENT}/terraform.tfstate"
+          region       = "${AWS_REGION}"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+          terraform -chdir="${TF_DIR}" init -reconfigure -backend-config="${RUNNER_TEMP}/backend.hcl"
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" show -json > "${RUNNER_TEMP}/current-state.json"
+          python3 scripts/teardown/runtime_teardown.py extract-state \
+            --stage '${{ inputs.teardown_stage }}' \
+            --state-json "${RUNNER_TEMP}/current-state.json" \
+            --output "${RUNNER_TEMP}/stage-values.json"
+
+      - name: Apply runner-only disposable environment overrides
+        if: ${{ steps.target.outputs.kind == 'terraform' && steps.target.outputs.runner_override != 'none' }}
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+          RUNNER_OVERRIDE: ${{ steps.target.outputs.runner_override }}
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OVERRIDE}" in
+            frontend-force-destroy)
+              cat > "${TF_DIR}/zz-runtime-teardown_override.tf" <<'EOF'
+          resource "aws_s3_bucket" "frontend" {
+            force_destroy = true
+          }
+          EOF
+              ;;
+            rag-force-destroy)
+              cat > "${TF_DIR}/zz-runtime-teardown_override.tf" <<'EOF'
+          resource "aws_s3_bucket" "corpus" {
+            force_destroy = true
+          }
+          EOF
+              ;;
+            stateful-disposable-destroy)
+              cat > "${TF_DIR}/zz-runtime-teardown_override.tf" <<'EOF'
+          resource "aws_db_instance" "backend" {
+            skip_final_snapshot       = true
+            delete_automated_backups  = true
+            deletion_protection       = false
+          }
+          EOF
+              ;;
+            runtime-force-destroy)
+              cat > "${TF_DIR}/zz-runtime-teardown_override.tf" <<'EOF'
+          resource "aws_ecr_repository" "backend" {
+            force_delete = true
+          }
+          resource "aws_s3_bucket" "uploads" {
+            force_destroy = true
+          }
+          resource "aws_s3_bucket" "results" {
+            force_destroy = true
+          }
+          resource "aws_secretsmanager_secret" "backend_runtime" {
+            recovery_window_in_days = 0
+          }
+          EOF
+              ;;
+            *) echo "Unknown runner override: ${RUNNER_OVERRIDE}" >&2; exit 1 ;;
+          esac
+          echo "runner_override=${RUNNER_OVERRIDE}" >> artifacts/aws-runtime-teardown/execution-summary.txt
+          echo 'runner_override_committed=false' >> artifacts/aws-runtime-teardown/execution-summary.txt
+
+      - name: Verify stage-specific destructive prerequisites
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          STAGE: ${{ inputs.teardown_stage }}
+        run: |
+          set -euo pipefail
+          values="${RUNNER_TEMP}/stage-values.json"
+          case "${STAGE}" in
+            frontend-delivery)
+              test -n "$(jq -r '.frontend_bucket' "${values}")"
+              ;;
+            rag-runtime)
+              project="$(jq -r '.codebuild_project' "${values}")"
+              active="$(aws codebuild list-builds-for-project --region "${AWS_REGION}" --project-name "${project}" --sort-order DESCENDING --max-items 5 --output json | jq -r '.ids[]?' | xargs -r aws codebuild batch-get-builds --region "${AWS_REGION}" --ids 2>/dev/null | jq '[.builds[]? | select(.buildStatus == "IN_PROGRESS")] | length')"
+              test "${active:-0}" -eq 0
+              ;;
+            eks-runtime)
+              for namespace in "${RUNTIME_NAMESPACE}" "${EXTERNAL_SECRETS_NAMESPACE}" "${ARGOCD_NAMESPACE}"; do
+                if kubectl get namespace "${namespace}" >/dev/null 2>&1; then
+                  echo "Kubernetes owner namespace still exists: ${namespace}" >&2
+                  exit 1
+                fi
+              done
+              test "$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" --output json | jq '[.LoadBalancers[] | select((.LoadBalancerName // "") | contains("terraformers"))] | length')" -eq 0
+              ;;
+            stateful-dependencies)
+              db="$(jq -r '.db_identifier' "${values}")"
+              test "$(aws rds describe-db-instances --region "${AWS_REGION}" --db-instance-identifier "${db}" --query 'DBInstances[0].DeletionProtection' --output text)" = False
+              ;;
+            runtime-dependencies)
+              test -n "$(jq -r '.ecr_repository' "${values}")"
+              ;;
+            network)
+              test "$(aws eks list-clusters --region "${AWS_REGION}" --output json | jq '[.clusters[] | select(contains("terraformers"))] | length')" -eq 0
+              test "$(aws rds describe-db-instances --region "${AWS_REGION}" --output json | jq '[.DBInstances[] | select((.DBInstanceIdentifier // "") | contains("terraformers"))] | length')" -eq 0
+              test "$(aws opensearchserverless list-collections --region "${AWS_REGION}" --output json | jq '[.collectionSummaries[] | select((.name // "") | contains("terraformers"))] | length')" -eq 0
+              test "$(aws cloudfront list-distributions --output json | jq '[.DistributionList.Items[]? | select((.Comment // "") | contains("Terraformers"))] | length')" -eq 0
+              test "$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" --output json | jq '[.LoadBalancers[] | select((.LoadBalancerName // "") | contains("terraformers"))] | length')" -eq 0
+              ;;
+          esac
+
+      - name: Create and verify fresh stage destroy plan
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+          STAGE: ${{ inputs.teardown_stage }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan \
+            -destroy \
+            -lock-timeout=5m \
+            -var-file="${RUNNER_TEMP}/live.auto.tfvars" \
+            -out="${RUNNER_TEMP}/destroy.tfplan" \
+            -no-color
+          terraform -chdir="${TF_DIR}" show -json "${RUNNER_TEMP}/destroy.tfplan" > "${RUNNER_TEMP}/destroy-plan.json"
+          python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/destroy-plan.json" \
+            --output-dir artifacts/aws-runtime-teardown \
+            --stage "${STAGE}" \
+            --allow-destructive \
+            --require-destroy-only
+          python3 scripts/teardown/runtime_teardown.py verify-plan \
+            --config "${TEARDOWN_CONFIG}" \
+            --stage "${STAGE}" \
+            --summary-json artifacts/aws-runtime-teardown/plan-risk-summary.json \
+            --output artifacts/aws-runtime-teardown/execution-plan-contract.json
+          sha256sum "${RUNNER_TEMP}/destroy.tfplan" | awk '{print $1}' > artifacts/aws-runtime-teardown/binary-plan.sha256
+
+      - name: Apply reviewed saved destroy plan
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+        run: |
+          set -euo pipefail
+          actual_delete_count="$(jq -r '.actual_delete_count' artifacts/aws-runtime-teardown/execution-plan-contract.json)"
+          if [ "${actual_delete_count}" -gt 0 ]; then
+            terraform -chdir="${TF_DIR}" apply -no-color -auto-approve "${RUNNER_TEMP}/destroy.tfplan"
+            echo 'saved_destroy_plan_applied=true' >> artifacts/aws-runtime-teardown/execution-summary.txt
+          else
+            echo 'saved_destroy_plan_applied=false' >> artifacts/aws-runtime-teardown/execution-summary.txt
+            echo 'stage_already_empty=true' >> artifacts/aws-runtime-teardown/execution-summary.txt
+          fi
+          echo "actual_delete_count=${actual_delete_count}" >> artifacts/aws-runtime-teardown/execution-summary.txt
+
+      - name: Verify Terraform state is empty
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+        run: |
+          set -euo pipefail
+          state_count="$(terraform -chdir="${TF_DIR}" state list | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+          echo "post_destroy_state_address_count=${state_count}" >> artifacts/aws-runtime-teardown/execution-summary.txt
+          test "${state_count}" -eq 0
+
+      - name: Remove stage-external residuals and verify service absence
+        if: ${{ steps.target.outputs.kind == 'terraform' }}
+        env:
+          STAGE: ${{ inputs.teardown_stage }}
+        run: |
+          set -euo pipefail
+          values="${RUNNER_TEMP}/stage-values.json"
+          case "${STAGE}" in
+            frontend-delivery)
+              bucket="$(jq -r '.frontend_bucket' "${values}")"
+              distribution="$(jq -r '.cloudfront_distribution_id' "${values}")"
+              if aws s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1; then exit 1; fi
+              if aws cloudfront get-distribution --id "${distribution}" >/dev/null 2>&1; then exit 1; fi
+              ;;
+            rag-runtime)
+              bucket="$(jq -r '.corpus_bucket' "${values}")"
+              project="$(jq -r '.codebuild_project' "${values}")"
+              collection="$(jq -r '.aoss_collection_name' "${values}")"
+              if aws s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1; then exit 1; fi
+              if aws codebuild batch-get-projects --region "${AWS_REGION}" --names "${project}" --output json | jq -e '.projects | length > 0' >/dev/null; then exit 1; fi
+              test "$(aws opensearchserverless list-collections --region "${AWS_REGION}" --output json | jq --arg name "${collection}" '[.collectionSummaries[] | select(.name == $name)] | length')" -eq 0
+              ;;
+            eks-runtime)
+              cluster="$(jq -r '.eks_cluster_name' "${values}")"
+              if aws eks describe-cluster --region "${AWS_REGION}" --name "${cluster}" >/dev/null 2>&1; then exit 1; fi
+              aws logs describe-log-groups --region "${AWS_REGION}" --output json |
+              jq -r '.logGroups[] | select((.logGroupName // "") | contains("terraformers")) | .logGroupName' |
+              while IFS= read -r log_group; do
+                [ -n "${log_group}" ] || continue
+                aws logs delete-log-group --region "${AWS_REGION}" --log-group-name "${log_group}"
+              done
+              ;;
+            stateful-dependencies)
+              db="$(jq -r '.db_identifier' "${values}")"
+              if aws rds describe-db-instances --region "${AWS_REGION}" --db-instance-identifier "${db}" >/dev/null 2>&1; then exit 1; fi
+              legacy_pool_ids="$(aws cognito-idp list-user-pools --region "${AWS_REGION}" --max-results 60 --output json | jq -r '.UserPools[] | select(.Name == "terraformers-modernization-live-smoke-users") | .Id')"
+              for pool_id in ${legacy_pool_ids}; do
+                aws cognito-idp delete-user-pool --region "${AWS_REGION}" --user-pool-id "${pool_id}"
+              done
+              ;;
+            runtime-dependencies)
+              repo="$(jq -r '.ecr_repository' "${values}")"
+              upload_bucket="$(jq -r '.upload_bucket' "${values}")"
+              result_bucket="$(jq -r '.result_bucket' "${values}")"
+              secret_id="$(jq -r '.runtime_secret_id' "${values}")"
+              if aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${repo}" >/dev/null 2>&1; then exit 1; fi
+              if aws s3api head-bucket --bucket "${upload_bucket}" >/dev/null 2>&1; then exit 1; fi
+              if aws s3api head-bucket --bucket "${result_bucket}" >/dev/null 2>&1; then exit 1; fi
+              if aws secretsmanager describe-secret --region "${AWS_REGION}" --secret-id "${secret_id}" >/dev/null 2>&1; then exit 1; fi
+              for queue_name in terraformers-ai-log-live-smoke terraformers-terraform-log-live-smoke; do
+                queue_url="$(aws sqs get-queue-url --region "${AWS_REGION}" --queue-name "${queue_name}" --query QueueUrl --output text 2>/dev/null || true)"
+                if [ -n "${queue_url}" ]; then
+                  aws sqs delete-queue --region "${AWS_REGION}" --queue-url "${queue_url}"
+                fi
+              done
+              ;;
+            network)
+              vpc_id="$(jq -r '.vpc_id' "${values}")"
+              if aws ec2 describe-vpcs --region "${AWS_REGION}" --vpc-ids "${vpc_id}" >/dev/null 2>&1; then exit 1; fi
+              ;;
+          esac
+          echo 'service_residual_check=passed' >> artifacts/aws-runtime-teardown/execution-summary.txt
+          echo 'terraform_destroy_executed=true' >> artifacts/aws-runtime-teardown/execution-summary.txt
+          echo 'foundation_deleted=false' >> artifacts/aws-runtime-teardown/execution-summary.txt
+
+      - name: Remove sensitive and runner-only material
+        if: always()
+        env:
+          TF_DIR: ${{ steps.target.outputs.terraform_dir }}
+        run: |
+          rm -rf "${RUNNER_TEMP}/prior-states"
+          rm -f \
+            "${RUNNER_TEMP}/live.auto.tfvars" \
+            "${RUNNER_TEMP}/backend.hcl" \
+            "${RUNNER_TEMP}/current-state.json" \
+            "${RUNNER_TEMP}/stage-values.json" \
+            "${RUNNER_TEMP}/destroy-plan.json" \
+            "${RUNNER_TEMP}/destroy.tfplan"
+          if [ -n "${TF_DIR:-}" ]; then
+            rm -f "${TF_DIR}/zz-live-backend.tf" "${TF_DIR}/zz-runtime-teardown_override.tf"
+          fi
+
+      - name: Reject sensitive evidence files
+        if: always()
+        run: |
+          set -euo pipefail
+          if find artifacts/aws-runtime-teardown -type f \
+            \( -name '*.tfstate' -o -name '*.tfvars' -o -name '*.tfplan' -o -name '*state*.json' \) |
+            grep -q .; then
+            echo 'Sensitive Terraform material found in runtime teardown evidence.' >&2
+            exit 1
+          fi
+
+      - name: Upload sanitized runtime teardown evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-runtime-teardown-${{ inputs.teardown_stage }}-evidence
+          path: artifacts/aws-runtime-teardown
+          if-no-files-found: warn
+          retention-days: 30
