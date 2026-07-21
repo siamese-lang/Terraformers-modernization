@@ -12,11 +12,12 @@ When repository documents conflict:
 
 1. Preserve the project identity and reuse decisions from `docs/source-rag-gitops-reuse-plan.md`.
 2. Use this document for the current completion state, execution order, stop conditions, teardown boundary, and redeployment boundary.
-3. Use live AWS, Kubernetes, workflow, browser, and runtime evidence over historical plans.
-4. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new service work without one concrete defect that blocks closure.
-5. Do not change this plan unless the user explicitly changes the closure scope.
+3. Use `docs/project-system-overview.md` for the current system composition, request flows, active settings, source locations, and the reasons behind major technical decisions.
+4. Use live AWS, Kubernetes, workflow, browser, and runtime evidence over historical plans.
+5. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new service work without one concrete defect that blocks closure.
+6. Do not change this plan unless the user explicitly changes the closure scope.
 
-A new conversation must read this file first, inspect the current repository and live state once, and resume from the first incomplete closure gate. It must not create a new roadmap.
+A new conversation must read this file first, then `docs/project-system-overview.md`, inspect the current repository and live state once, and resume from the first incomplete closure gate. It must not create a new roadmap.
 
 ## 2. Project identity and interview objective
 
@@ -51,6 +52,7 @@ The following are complete source or live baselines and must not be redesigned w
 - Corpus v2 contains curated AWS Provider 5.100.0 schema and examples and completed one bounded v1/v2 comparison.
 - RAG is subordinate and closed. Generated Terraform remains a reviewable draft, not an automatically deployable result.
 - AWS-native Operations Visibility source changes were merged through PR #86, including the CloudWatch add-on configuration, Application Signals workload selection, Micrometer metrics, safe log correlation, and the Pod-level non-root UID required by Java auto-instrumentation.
+- `docs/project-system-overview.md` and the aligned root `README.md` describe the final integrated-Java runtime instead of the obsolete Python-default architecture.
 
 The final live observability result must be recorded from evidence. Source merge alone is not proof that Application Signals, X-Ray, or the final injected Pod state succeeded.
 
@@ -103,9 +105,9 @@ Required outputs:
 - a structured incident record using `symptom -> initial assumption -> evidence -> root cause -> bounded fix -> validation -> prevention -> interview follow-up`;
 - explicit non-claims for autoscaling, multi-AZ application availability, automatic Terraform apply, and generated-code deployability.
 
-The controlling interview artifact is `docs/portfolio/final-evidence-and-interview-guide.md`.
+The controlling interview artifact is `docs/portfolio/final-evidence-and-interview-guide.md`. The technical explanation baseline is `docs/project-system-overview.md`.
 
-Stop condition: the project can be explained for 90 seconds, five minutes, and a technical deep dive without relying on memory or console access.
+Stop condition: the project can be explained for 90 seconds, five minutes, and a technical deep dive without relying on memory, console access, or code-by-code reconstruction.
 
 ### Closure Gate 3 - Teardown design and destroy plans
 
@@ -166,7 +168,7 @@ Purpose: ensure a future redeployment does not depend on forgotten console actio
 - immutable image publication, frontend delivery, RAG corpus ingestion, Cognito test-user setup, and final browser/observability verification;
 - rollback and restart points after a failed stage.
 
-Repository closure then includes the final evidence document, lifecycle runbooks, an integration merge, and a release tag. Actual redeployment is not required after the final full teardown unless the user explicitly chooses to prove it with a new AWS deployment window.
+Repository closure then includes the system overview, final evidence document, lifecycle runbooks, an integration merge, and a release tag. Actual redeployment is not required after the final full teardown unless the user explicitly chooses to prove it with a new AWS deployment window.
 
 ## 6. Lifecycle management boundaries
 
@@ -202,13 +204,15 @@ A command that returned success, a merged pull request, or an AWS resource that 
 
 Use the following instruction when work moves to another conversation:
 
-> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`. This file is the controlling closure plan after PR #86. Preserve the project as the modernization of the 2024 five-person Terraformers team project and preserve the reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features unless one concrete defect blocks closure. Inspect repository and live state once, then resume from the first incomplete Closure Gate. The sequence is read-only inventory -> evidence and interview record -> destroy-plan review -> explicitly approved runtime teardown -> residual scan -> explicitly approved bootstrap teardown -> zero-resource proof -> repository closure. Reuse existing workflows, Terraform roots, manifests, and scripts. Avoid micro-PRs, repeated preflights, one-script-per-failure behavior, and raw evidence dumps. Do not mutate AWS, Kubernetes, Terraform, Argo CD, deployments, or merge a PR without explicit approval.
+> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`, then read `docs/project-system-overview.md` for the current architecture, functions, settings, source locations, and major design reasons. This controlling plan is the closure authority after PR #86. Preserve the project as the modernization of the 2024 five-person Terraformers team project and preserve the reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. The active analysis runtime is Spring Boot integrated Java; do not restore or describe the former Python service as the current default. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features unless one concrete defect blocks closure. Inspect repository and live state once, then resume from the first incomplete Closure Gate. The sequence is read-only inventory -> evidence and interview record -> destroy-plan review -> explicitly approved runtime teardown -> residual scan -> explicitly approved bootstrap teardown -> zero-resource proof -> repository closure. Reuse existing workflows, Terraform roots, manifests, and scripts. Avoid micro-PRs, repeated preflights, one-script-per-failure behavior, and raw evidence dumps. Do not mutate AWS, Kubernetes, Terraform, Argo CD, deployments, or merge a PR without explicit approval.
 
 ## 9. Current next action
 
 Create and review one non-mutating closure PR containing:
 
 - this updated controlling plan;
+- the aligned root `README.md`;
+- `docs/project-system-overview.md`;
 - `docs/lifecycle/aws-resource-inventory.md`;
 - `docs/lifecycle/aws-teardown-runbook.md`;
 - `docs/lifecycle/aws-redeploy-runbook.md`;
