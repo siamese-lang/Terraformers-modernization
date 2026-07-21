@@ -20,23 +20,23 @@ on:
       - "docs/**"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   terraform-static-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Verify RAG corpus tooling
         run: |
           set -euo pipefail
           python3 scripts/checks/rag-corpus-contract-verification.py
+          python3 scripts/checks/rag-corpus-contract-verification.py \
+            --corpus-dir corpus/terraformers-reference/v2
           python3 -m unittest \
             tests/rag/test_build_corpus_v2.py \
             tests/rag/test_curate_corpus_v2.py \
@@ -47,121 +47,6 @@ jobs:
         with:
           terraform_version: 1.15.8
           terraform_wrapper: false
-
-      - name: Generate pinned corpus v2 candidate
-        run: |
-          set -euo pipefail
-          PROVIDER_DIR="${RUNNER_TEMP}/terraform-provider-aws"
-          SCHEMA_DIR="${RUNNER_TEMP}/aws-provider-schema"
-          OUTPUT_ROOT="artifacts/rag-corpus-v2-generated"
-          OUTPUT_DIR="${OUTPUT_ROOT}/corpus/terraformers-reference/v2"
-          PROVIDER_COMMIT="f7a3b98da589ab1d52756b0dcee0dbf2de83d635"
-
-          mapfile -t PROJECT_SOURCE_PATHS < <(
-            python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          paths = set()
-          for line in Path("corpus/terraformers-reference/v1/documents.jsonl").read_text().splitlines():
-              if not line.strip():
-                  continue
-              document = json.loads(line)
-              if document.get("documentType") == "TERRAFORMERS_PATTERN":
-                  paths.add(document["sourcePath"])
-          for path in sorted(paths):
-              print(path)
-          PY
-          )
-          test "${#PROJECT_SOURCE_PATHS[@]}" -gt 0
-          PROJECT_SOURCE_COMMIT="$(git log -1 --format=%H -- "${PROJECT_SOURCE_PATHS[@]}")"
-          [[ "$PROJECT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-
-          rm -rf "$PROVIDER_DIR" "$SCHEMA_DIR" "$OUTPUT_ROOT"
-          git clone \
-            --depth 1 \
-            --branch v5.100.0 \
-            --filter=blob:none \
-            --sparse \
-            https://github.com/hashicorp/terraform-provider-aws.git \
-            "$PROVIDER_DIR"
-          git -C "$PROVIDER_DIR" sparse-checkout set website/docs/r
-          test "$(git -C "$PROVIDER_DIR" rev-parse HEAD)" = "$PROVIDER_COMMIT"
-
-          mkdir -p "$SCHEMA_DIR" "$OUTPUT_ROOT"
-          cat > "$SCHEMA_DIR/main.tf" <<'EOF'
-          terraform {
-            required_providers {
-              aws = {
-                source  = "hashicorp/aws"
-                version = "= 5.100.0"
-              }
-            }
-          }
-          EOF
-          terraform -chdir="$SCHEMA_DIR" init -backend=false -input=false >/dev/null
-          terraform -chdir="$SCHEMA_DIR" providers schema -json > "$SCHEMA_DIR/aws-provider-schema.json"
-
-          python3 scripts/rag/build-corpus-v2.py \
-            --provider-source-dir "$PROVIDER_DIR" \
-            --provider-schema-json "$SCHEMA_DIR/aws-provider-schema.json" \
-            --provider-source-commit "$PROVIDER_COMMIT" \
-            --project-source-commit "$PROJECT_SOURCE_COMMIT" \
-            --output-dir "$OUTPUT_DIR"
-          python3 scripts/rag/curate-corpus-v2.py --corpus-dir "$OUTPUT_DIR"
-          python3 scripts/checks/rag-corpus-contract-verification.py \
-            --corpus-dir "$OUTPUT_DIR" \
-            --summary-json "$OUTPUT_ROOT/contract-summary.json"
-
-          python3 - "$OUTPUT_DIR" "$OUTPUT_ROOT/generation-summary.json" "$PROJECT_SOURCE_COMMIT" <<'PY'
-          import collections
-          import json
-          import pathlib
-          import sys
-
-          corpus = pathlib.Path(sys.argv[1])
-          output = pathlib.Path(sys.argv[2])
-          project_commit = sys.argv[3]
-          documents = [json.loads(line) for line in (corpus / "documents.jsonl").read_text().splitlines() if line]
-          resource_types = sorted({item for document in documents for item in document["resourceTypes"] if item.startswith("aws_")})
-          summary = {
-              "documentCount": len(documents),
-              "documentTypes": dict(sorted(collections.Counter(document["documentType"] for document in documents).items())),
-              "riskTags": dict(sorted(collections.Counter(tag for document in documents for tag in document["riskTags"]).items())),
-              "resourceCount": len(resource_types),
-              "resourceTypes": resource_types,
-              "projectPatternCount": sum(document["authority"] == "PROJECT_DECISION" for document in documents),
-              "providerSourceCommit": "f7a3b98da589ab1d52756b0dcee0dbf2de83d635",
-              "projectSourceCommit": project_commit,
-          }
-          output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-          print(json.dumps(summary, sort_keys=True))
-          PY
-
-      - name: Publish generated corpus v2 to this PR branch
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'agent/rag-corpus-version-scope' }}
-        run: |
-          set -euo pipefail
-          TARGET="corpus/terraformers-reference/v2"
-          rm -rf "$TARGET"
-          mkdir -p "$(dirname "$TARGET")"
-          cp -a artifacts/rag-corpus-v2-generated/corpus/terraformers-reference/v2 "$TARGET"
-          if [[ -z "$(git status --porcelain -- "$TARGET")" ]]; then
-            echo "corpus_v2_publish=no-change"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$TARGET"
-          git commit -m "Add curated Terraform reference corpus v2"
-          git push origin "HEAD:${GITHUB_HEAD_REF}"
-
-      - name: Upload generated corpus v2 candidate
-        uses: actions/upload-artifact@v6
-        with:
-          name: rag-corpus-v2-generated
-          path: artifacts/rag-corpus-v2-generated
-          if-no-files-found: error
 
       - name: Verify Terraform configurations
         run: bash scripts/checks/terraform-static-verification.sh
