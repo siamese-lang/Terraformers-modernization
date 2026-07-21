@@ -1,5 +1,5 @@
-workflow_run_id=29794012427
-workflow_commit_sha=348fd088f0a5d8ee5be1d1673c4cc65e70762a8f
+workflow_run_id=29794188794
+workflow_commit_sha=00e89b6051de9fbf65333ddc6950aabdac5e16c9
 backend_source_commit_sha=a672a322fcaa784baf19fa7bb0687fc403f0aff7
 ingestion_result=failure
 image_publish_result=skipped
@@ -7,3 +7,5 @@ checksum=9bdb39f368d3f05305764bff0aca9c3409e76d29c399a64db61b60d2e98ae9d4
 count=128
 corpus_version=terraformers-reference-v2
 corpus_directory=corpus/terraformers-reference/v2
+build_id=terraformers-dev-refs-ingestion:95a71dd6-f766-4b12-9bf4-c07a879856a7
+build_status=FAILED
