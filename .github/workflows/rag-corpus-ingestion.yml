@@ -101,8 +101,8 @@ jobs:
           CORPUS_VERSION="$(sed -n 's/^corpus_version=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
           CORPUS_DIRECTORY="$(sed -n 's/^corpus_directory=//p' artifacts/rag-corpus-ingestion/package-summary.txt)"
           ROOT_PREFIX="terraformers-reference/v1"
-          KEY="${ROOT_PREFIX}/corpora/${CORPUS_VERSION}/packages/${{ inputs.expected_head_sha }}.zip"
-          RECEIPT="${ROOT_PREFIX}/corpora/${CORPUS_VERSION}/receipts/${CORPUS_VERSION}.json"
+          KEY="${ROOT_PREFIX}/packages/${CORPUS_VERSION}/${{ inputs.expected_head_sha }}.zip"
+          RECEIPT="${ROOT_PREFIX}/receipts/${CORPUS_VERSION}.json"
           aws s3 cp artifacts/rag-corpus-ingestion/corpus-ingestion-package.zip "s3://${CORPUS_BUCKET}/${KEY}" --only-show-errors
           BUILD_ID="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --environment-variables-override name=PACKAGE_KEY,value="$KEY",type=PLAINTEXT name=CORPUS_DIRECTORY,value="$CORPUS_DIRECTORY",type=PLAINTEXT name=EXPECTED_CHECKSUM,value="$CHECKSUM",type=PLAINTEXT name=EXPECTED_DOCUMENT_COUNT,value="$COUNT",type=PLAINTEXT name=RECEIPT_KEY,value="$RECEIPT",type=PLAINTEXT --query 'build.id' --output text)"
           for _ in $(seq 1 90); do STATUS="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"; [[ "$STATUS" =~ ^(SUCCEEDED|FAILED|FAULT|STOPPED|TIMED_OUT)$ ]] && break; sleep 20; done
