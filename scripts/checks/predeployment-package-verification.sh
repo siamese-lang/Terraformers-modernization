@@ -7,6 +7,7 @@ FRONTEND_DIR="${REPO_ROOT}/frontend"
 K8S_BASE_DIR="${REPO_ROOT}/infra/kubernetes/base"
 K8S_LOCAL_DIR="${REPO_ROOT}/infra/kubernetes/overlays/local-stub"
 K8S_AWS_DIR="${REPO_ROOT}/infra/kubernetes/overlays/aws-runtime-template"
+K8S_GITOPS_DIR="${REPO_ROOT}/infra/kubernetes/gitops/backend-runtime"
 EVIDENCE_DIR="${REPO_ROOT}/artifacts/predeployment"
 IMAGE_TAG="terraformers-backend:predeployment"
 LOCAL_IMAGE_TAG="terraformers-backend:local-stub"
@@ -41,6 +42,28 @@ assert_not_contains() {
     echo "Matched pattern: ${pattern}" >&2
     exit 1
   fi
+}
+
+validate_gitops_manifest() {
+  local manifest="$1"
+
+  if [[ ! -s "${manifest}" ]]; then
+    echo "Rendered GitOps package is empty." >&2
+    exit 1
+  fi
+
+  assert_contains '^kind: ConfigMap$' "${manifest}" "GitOps package must contain the runtime ConfigMap."
+  assert_contains '^kind: Service$' "${manifest}" "GitOps package must contain the backend Service."
+  assert_contains '^kind: Deployment$' "${manifest}" "GitOps package must contain the backend Deployment."
+  assert_not_contains '^kind: ServiceAccount$' "${manifest}" "GitOps package must not manage the backend ServiceAccount."
+  assert_not_contains '^kind: Secret$' "${manifest}" "GitOps package must not manage Secret resources."
+  assert_not_contains '^kind: ExternalSecret$' "${manifest}" "GitOps package must not manage ExternalSecret resources."
+  assert_not_contains '^kind: Ingress$' "${manifest}" "GitOps package must not manage Ingress resources."
+  assert_contains 'image: registry\.example\.com/terraformers-backend@sha256:' "${manifest}" "GitOps package must use a digest-based image."
+  assert_not_contains 'image: .*:latest([[:space:]]|$)' "${manifest}" "GitOps package must not use the mutable latest tag."
+  assert_contains 'SPRING_PROFILES_ACTIVE: prod' "${manifest}" "GitOps package must retain the production profile."
+  assert_contains 'RETRIEVAL_MODE: REQUIRED' "${manifest}" "GitOps package must retain the RAG v2 runtime configuration."
+  assert_contains 'CORPUS_VERSION: terraformers-reference-v2' "${manifest}" "GitOps package must retain the RAG v2 corpus configuration."
 }
 
 validate_rendered_manifest() {
@@ -258,10 +281,12 @@ kubectl version --client --output=yaml >"${EVIDENCE_DIR}/kubectl-client-version.
 kubectl kustomize "${K8S_BASE_DIR}" >"${EVIDENCE_DIR}/kubernetes-base.yaml"
 kubectl kustomize "${K8S_LOCAL_DIR}" >"${EVIDENCE_DIR}/kubernetes-local-stub.yaml"
 kubectl kustomize "${K8S_AWS_DIR}" >"${EVIDENCE_DIR}/kubernetes-aws-runtime-template.yaml"
+kubectl kustomize "${K8S_GITOPS_DIR}" >"${EVIDENCE_DIR}/kubernetes-gitops-backend-runtime.yaml"
 
 validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-base.yaml" "base"
 validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-local-stub.yaml" "local-stub"
 validate_rendered_manifest "${EVIDENCE_DIR}/kubernetes-aws-runtime-template.yaml" "aws-runtime-template"
+validate_gitops_manifest "${EVIDENCE_DIR}/kubernetes-gitops-backend-runtime.yaml"
 
 assert_contains \
   'image: terraformers-backend:local-stub' \

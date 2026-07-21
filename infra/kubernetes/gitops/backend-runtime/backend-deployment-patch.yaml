@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: terraformers-backend
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: backend
+          imagePullPolicy: IfNotPresent
+
+# Production-like runtime keeps the Secret dependency from the base Deployment.
+# Do not commit Secret values here. Provide terraformers-backend-runtime-secrets through:
+# - External Secrets
+# - Sealed Secrets
+# - CI/CD secret injection
+# - another environment-specific Secret delivery mechanism
