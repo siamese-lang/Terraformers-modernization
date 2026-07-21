@@ -132,11 +132,13 @@ jobs:
           RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
         run: |
           set -euo pipefail
+          FOUNDATION_OVERRIDE='false'
           case '${{ inputs.destroy_stage }}' in
             foundation)
               TF_DIR='infra/terraform/bootstrap/aws-live-foundation'
               TFVARS_B64="${FOUNDATION_TFVARS_B64}"
               STATE_COMPONENT='bootstrap'
+              FOUNDATION_OVERRIDE='true'
               ;;
             network)
               TF_DIR='infra/terraform/envs/aws-runtime-network'
@@ -183,6 +185,7 @@ jobs:
           printf 'tf_dir=%s\n' "${TF_DIR}" >> "${GITHUB_OUTPUT}"
           printf 'state_component=%s\n' "${STATE_COMPONENT}" >> "${GITHUB_OUTPUT}"
           printf 'tfvars_path=%s\n' "${RUNNER_TEMP}/live.auto.tfvars" >> "${GITHUB_OUTPUT}"
+          printf 'foundation_override=%s\n' "${FOUNDATION_OVERRIDE}" >> "${GITHUB_OUTPUT}"
           sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
             | awk '{print $1}' > artifacts/aws-terraform-destroy-plan/tfvars.sha256
 
@@ -192,12 +195,25 @@ jobs:
           TFVARS_PATH: ${{ steps.stage.outputs.tfvars_path }}
           STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+          FOUNDATION_OVERRIDE: ${{ steps.stage.outputs.foundation_override }}
         run: |
           set -euo pipefail
           if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
             cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
           terraform {
             backend "s3" {}
+          }
+          EOF
+          fi
+
+          if [ "${FOUNDATION_OVERRIDE}" = 'true' ]; then
+            cat > "${TF_DIR}/zz-foundation-destroy-plan_override.tf" <<'EOF'
+          # Runner-temporary override for an explicitly reviewed destroy plan only.
+          # The committed foundation configuration retains prevent_destroy = true.
+          resource "aws_s3_bucket" "terraform_state" {
+            lifecycle {
+              prevent_destroy = false
+            }
           }
           EOF
           fi
@@ -249,6 +265,8 @@ jobs:
             echo 'terraform_plan_mode=destroy'
             echo 'terraform_apply_executed=false'
             echo 'terraform_destroy_executed=false'
+            echo 'foundation_prevent_destroy_override=${{ steps.stage.outputs.foundation_override }}'
+            echo 'foundation_override_committed=false'
             echo 'raw_plan_uploaded=false'
             echo 'binary_plan_uploaded=false'
             echo 'tfvars_uploaded=false'
@@ -259,12 +277,19 @@ jobs:
 
       - name: Remove sensitive plan material
         if: always()
+        env:
+          TF_DIR: ${{ steps.stage.outputs.tf_dir }}
         run: |
           rm -f \
             "${RUNNER_TEMP}/destroy-plan.json" \
             "${RUNNER_TEMP}/destroy.tfplan" \
             "${RUNNER_TEMP}/live.auto.tfvars" \
             "${RUNNER_TEMP}/backend.hcl"
+          if [ -n "${TF_DIR:-}" ]; then
+            rm -f \
+              "${TF_DIR}/zz-live-backend.tf" \
+              "${TF_DIR}/zz-foundation-destroy-plan_override.tf"
+          fi
 
       - name: Reject sensitive artifact file types
         if: always()

@@ -8,7 +8,7 @@ Last live inventory/parity revision:
 b3e3a672dc65c7a712a20459b3d8f1c31ca62861
 ```
 
-Later documentation-only commits do not require repeated browser or telemetry testing unless the runtime contradicts the recorded evidence.
+Later documentation-only or plan-only commits do not require repeated browser or telemetry testing unless the runtime contradicts the recorded evidence.
 
 ## Closure Gate 1 - Read-only live inventory
 
@@ -77,35 +77,44 @@ A final minimal parity read may be performed immediately before destructive exec
 
 ## Closure Gate 3 - Teardown design and destroy plans
 
-Status: **IN PROGRESS**
+Status: **IN PROGRESS — SIX PLANS REVIEWED, FOUNDATION REPLAN REQUIRED**
 
-Permitted work:
+Durable review:
 
-1. add one reusable destroy-plan workflow using the existing remote state, private tfvars, OIDC plan role, Terraform version, and sanitized evidence conventions;
-2. require an exact source commit and exact AWS account;
-3. create one plan per state component;
-4. enforce managed-resource delete-only semantics while allowing read-only data-source refreshes;
-5. upload only sanitized addresses, action counts, type counts, and plan hashes;
-6. keep binary plans, raw JSON, tfvars, outputs, and state out of artifacts;
-7. run the seven destroy plans in dependency-review order;
-8. reconcile plan results with non-Terraform cleanup prerequisites.
+- `docs/lifecycle/terraform-destroy-plan-review.md`.
 
-Not permitted:
+Completed plan runs from source commit `36a62f8e0368ce22d19a54cca526fdfb85abffd9`:
 
-- Terraform apply/destroy;
-- disabling CloudFront;
-- deleting Ingress, Pods, Helm releases, buckets, images, Secrets, queues, pools, logs, snapshots, OIDC, or state;
-- changing retention decisions merely to make a destroy plan pass;
-- broad IAM changes without a concrete planning failure.
+| Stage | Run ID | Managed deletes | Result |
+|---|---:|---:|---|
+| `frontend-delivery` | `29856519775` | 14 | PASS |
+| `rag-runtime` | `29856522168` | 23 | PASS |
+| `eks-runtime` | `29856524234` | 30 | PASS |
+| `stateful-dependencies` | `29856526566` | 5 | PASS |
+| `runtime-dependencies` | `29856528584` | 16 | PASS |
+| `network` | `29856530899` | 16 | PASS |
+| `foundation` | `29856533560` | not generated | blocked by committed state-bucket `prevent_destroy` safeguard |
+
+Six successful plans account for 104 managed deletes. They contain no create, update, replacement or import action and passed the delete-only contract.
+
+The foundation failure is not an IAM, state, tfvars, provider, or account failure. Terraform intentionally rejects the plan because the state bucket retains `lifecycle.prevent_destroy = true`.
+
+Approved correction scope for planning only:
+
+1. keep `prevent_destroy = true` in committed foundation source;
+2. create `zz-foundation-destroy-plan_override.tf` only in the GitHub-hosted runner checkout;
+3. set `prevent_destroy = false` only for `destroy_stage=foundation`;
+4. record and remove the temporary override before artifact upload;
+5. rerun only the foundation plan from the new exact integration commit;
+6. do not apply any plan.
 
 Gate 3 stop condition:
 
-- all seven stage plans have been reviewed;
-- every managed action is delete-only;
-- no create, update, import, or replacement is present;
-- every plan count is reconciled to the inventory;
-- all non-state prerequisites are attached to the correct execution phase;
-- the bootstrap plan is reviewed but remains last.
+- the foundation plan shows the expected remaining 16 managed deletes;
+- all seven plans are delete-only;
+- all 120 Terraform-managed resources reconcile to the inventory;
+- non-state cleanup prerequisites remain assigned to the correct execution phase;
+- bootstrap remains the final teardown phase.
 
 ## Closure Gate 4 - Approved runtime teardown
 
@@ -132,11 +141,11 @@ Completed:
 
 Remaining:
 
-- record destroy-plan results;
+- complete the foundation destroy-plan review;
 - execute approved teardown;
 - record runtime and bootstrap residual results;
 - create the final repository release/tag after zero-resource proof.
 
 ## Current next action
 
-Implement and review the read-only destroy-plan workflow. Then run stage plans only; do not execute any deletion.
+Validate and merge the runner-temporary foundation destroy-plan override. Register the corrected workflow on the default branch, then rerun only the foundation plan. Do not execute any deletion.
