@@ -15,6 +15,12 @@ TERRAFORM_DIRS=(
   "${REPO_ROOT}/infra/terraform/envs/frontend-delivery"
   "${REPO_ROOT}/infra/terraform/envs/rag-runtime"
 )
+TEARDOWN_OVERRIDE_FILES=(
+  "${REPO_ROOT}/infra/terraform/envs/frontend-delivery/zz-runtime-teardown-static_override.tf"
+  "${REPO_ROOT}/infra/terraform/envs/rag-runtime/zz-runtime-teardown-static_override.tf"
+  "${REPO_ROOT}/infra/terraform/envs/backend-stateful-dependencies/zz-runtime-teardown-static_override.tf"
+  "${REPO_ROOT}/infra/terraform/envs/backend-runtime-dependencies/zz-runtime-teardown-static_override.tf"
+)
 
 require_command() {
   local command_name="$1"
@@ -23,6 +29,12 @@ require_command() {
     exit 1
   fi
 }
+
+cleanup_teardown_overrides() {
+  rm -f "${TEARDOWN_OVERRIDE_FILES[@]}"
+}
+
+trap cleanup_teardown_overrides EXIT
 
 require_command terraform
 require_command tee
@@ -53,10 +65,65 @@ for terraform_dir in "${TERRAFORM_DIRS[@]}"; do
   printf 'terraform_directory=%s status=passed\n' "${relative_dir}" >>"${SUMMARY}"
 done
 
+cat > "${TEARDOWN_OVERRIDE_FILES[0]}" <<'EOF'
+resource "aws_s3_bucket" "frontend" {
+  force_destroy = true
+}
+EOF
+
+cat > "${TEARDOWN_OVERRIDE_FILES[1]}" <<'EOF'
+resource "aws_s3_bucket" "corpus" {
+  force_destroy = true
+}
+EOF
+
+cat > "${TEARDOWN_OVERRIDE_FILES[2]}" <<'EOF'
+resource "aws_db_instance" "backend" {
+  skip_final_snapshot      = true
+  delete_automated_backups = true
+  deletion_protection      = false
+}
+EOF
+
+cat > "${TEARDOWN_OVERRIDE_FILES[3]}" <<'EOF'
+resource "aws_ecr_repository" "backend" {
+  force_delete = true
+}
+
+resource "aws_s3_bucket" "uploads" {
+  force_destroy = true
+}
+
+resource "aws_s3_bucket" "results" {
+  force_destroy = true
+}
+
+resource "aws_secretsmanager_secret" "backend_runtime" {
+  recovery_window_in_days = 0
+}
+EOF
+
+for override_file in "${TEARDOWN_OVERRIDE_FILES[@]}"; do
+  override_dir="$(dirname "${override_file}")"
+  relative_dir="${override_dir#${REPO_ROOT}/}"
+  log_name="$(printf '%s' "${relative_dir}" | tr '/ ' '__')__runtime_teardown_override.log"
+  {
+    echo "[terraform-static] validating runtime teardown override in ${relative_dir}"
+    terraform -chdir="${override_dir}" fmt -check -diff "$(basename "${override_file}")"
+    terraform -chdir="${override_dir}" validate
+    echo "runtime_teardown_override=${relative_dir} status=passed"
+  } 2>&1 | tee "${EVIDENCE_DIR}/${log_name}"
+  printf 'runtime_teardown_override=%s status=passed\n' "${relative_dir}" >>"${SUMMARY}"
+done
+
+cleanup_teardown_overrides
+trap - EXIT
+
 printf '%s\n' \
   "terraform_static_verification=passed" \
   "terraform_cli_minimum=1.15.0" \
   "terraform_directory_count=${#TERRAFORM_DIRS[@]}" \
+  "runtime_teardown_override_count=${#TEARDOWN_OVERRIDE_FILES[@]}" \
   >>"${SUMMARY}"
 
 cat "${SUMMARY}"
