@@ -1,6 +1,6 @@
 # Portfolio Closure Progress
 
-This file records the current completion point for `docs/current-operations-delivery-plan.md`. A new conversation must read this file after the controlling plan and `docs/project-system-overview.md`, then resume from the first incomplete gate.
+This file records the completed closure state for `docs/current-operations-delivery-plan.md`. A new conversation must read this file after the controlling plan and `docs/project-system-overview.md`. There is no incomplete closure gate to resume; new work requires an explicit new objective.
 
 Last live inventory/parity revision:
 
@@ -156,22 +156,22 @@ Read-only workflow `AWS Runtime Closure Verification`, run `29904386655` (job `8
 - pending runtime Secret deletion tombstone count: 1;
 - foundation checked/deleted: false/false.
 
-This is runtime closure, not account-wide zero-resource proof. The pending Secret must be checked before immediate same-name redeployment or a final zero-resource declaration.
+This was the pre-state-bucket-deletion runtime closure proof, not an account-wide zero-resource proof. The pending Secret was subsequently removed and verified absent during the final project-scoped residual scan.
 
 ## Closure Gate 6 - Bootstrap closure and zero-resource proof
 
 Status: **COMPLETE**
 
-The independent CloudShell read-only inventory passed with `inventory_contract=ready_for_deletion_command_review`: bootstrap has 16 managed resources and 9 data sources; state bucket versioning is enabled with 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The GitHub OIDC ownership contract is Terraformers-only and the required plan/apply/teardown roles are present. MFA Delete and Object Lock are absent and S3 access-point count is 0.
+Historical pre-delete inventory: the independent CloudShell read-only inventory passed with `inventory_contract=ready_for_deletion_command_review`. Bootstrap had 16 managed resources and 9 data sources; state bucket versioning was enabled with 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The GitHub OIDC ownership contract was Terraformers-only and the required plan/apply/teardown roles were present. MFA Delete and Object Lock were absent and S3 access-point count was 0.
 
 Bootstrap deletion and the discovered live-smoke residual deletion are complete. The final project-scoped residual scan was `2026-07-22T13:32:38Z`, reported `inventory_api_error_labels=[]`, and completed project-scoped zero-AWS-resource proof. See [final proof](aws-final-zero-resource-proof.md).
 
 ## Closure Gate 7 - Repository publication
 
-Status: **pending repository review and publication**
+Status: **COMPLETE**
 
-Keep this draft PR for final review and publication. Full-zero-state redeployment is documented but not executed.
+PR #112 published the completed modernization result to `main` and merged as commit `2cd9d48cb751d72f7e4acee45b9d1045b9c321ed` on 2026-07-22. The obsolete and conflicted PR #32 was closed without merge after being superseded. Full-zero-state redeployment remains documented but was not executed.
 
 ## Current next action
 
-Do not perform further AWS mutation for closure. The next action is PR #111 final review and repository publication.
+No closure action remains. Do not perform further AWS mutation, rerun teardown, recreate the deleted state bucket for verification, or execute redeployment. Optional release tagging or branch cleanup requires a separate explicit decision and is not required for project completion.
