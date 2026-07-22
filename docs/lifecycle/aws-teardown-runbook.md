@@ -21,6 +21,14 @@ Deletion is performed in two phases:
 
 No command in this document is approval to mutate AWS. Each destructive execution requires an explicit user decision after reviewing the inventory, data-loss decisions, and destroy plan.
 
+## Current execution record (not an instruction)
+
+Runtime teardown is already complete. Read-only runtime closure workflow run `29904386655` passed: all six runtime Terraform states have zero managed instances and all exact active runtime AWS counts are zero. Active runtime Secret count is 0; one Secret remains as a pending-deletion tombstone. This runbook remains a deletion **design**; the execution record is [aws-runtime-teardown-closure.md](aws-runtime-teardown-closure.md) and the current gate is [closure-progress.md](closure-progress.md).
+
+Bootstrap inventory passed with 16 managed resources and 9 data sources. The versioned remote-state bucket has 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions; MFA Delete and Object Lock are absent and S3 access-point count is 0. The project GitHub OIDC provider is trusted by `terraformers-live-teardown`, `terraformers-live-terraform-apply`, and `terraformers-live-terraform-plan`. An independent administrator/CloudShell identity is mandatory for final removal.
+
+Extra final-pass inventory is still required for `terraformers-modernization-live-smoke-backend-irsa-role` and its `terraformers-modernization-live-smoke-backend-runtime-access` policy, the `v1` non-default version of `terraformers-live-apply-operations-visibility-create` (default `v2`), and possible EKS OIDC-provider residue. Bootstrap deletion is not approved or executed, and zero-resource proof is not complete.
+
 ## 2. Preconditions
 
 Do not begin destroy planning until all of the following are true:

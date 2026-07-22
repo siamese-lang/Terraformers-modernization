@@ -1,6 +1,6 @@
 # AWS Runtime Teardown Closure
 
-Status: **runtime closure verified by read-only workflow; bootstrap/state/OIDC decision is the next gate**
+Status: **runtime closure verified by read-only workflow; this is not account-wide zero-resource proof**
 
 Runtime closure source commit: `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582`
 
@@ -24,7 +24,7 @@ The following bootstrap resources are intentionally outside this closure:
 - foundation, plan, apply, and final teardown identities and policies;
 - GitHub repository and Environment configuration.
 
-No bootstrap resource is approved for deletion by this document.
+No bootstrap resource is approved for deletion by this document. Bootstrap inventory later passed, but deletion-command review and separate execution approval remain pending; account-wide zero-resource proof is not complete.
 
 ## 2. Verified runtime closure result
 
@@ -159,11 +159,6 @@ The corrected operating rule is:
 
 Runtime deletion and runtime closure verification are complete.
 
-The next gate is separate and read-only:
-
-1. refresh the bootstrap state, state-bucket version counts, GitHub OIDC ownership, trusting IAM roles, and pending Secret tombstone;
-2. distinguish Terraform-managed bootstrap resources from external final-teardown resources;
-3. present retain-versus-delete consequences;
-4. request a new explicit user approval before any bootstrap, state-bucket, IAM, or OIDC mutation.
+Bootstrap inventory is now complete and recorded in [aws-bootstrap-closure-inventory.md](aws-bootstrap-closure-inventory.md). Its pass is only readiness for deletion-command review. The remaining work is to inventory the additional IAM and EKS-OIDC residue exactly, review exact deletion commands, and obtain a new explicit execution approval before any bootstrap, state-bucket, IAM, or OIDC mutation.
 
 GitHub environments, variables, encrypted values, and approval rules remain external configuration and are retained for future redeployment unless separately decided otherwise.

@@ -1,6 +1,6 @@
 # Terraformers Modernization 프로젝트 전체 구성 안내서
 
-Status: current technical overview for the integration branch after PR #86
+Status: canonical technical overview of the last verified deployed architecture; runtime teardown is verified, bootstrap closure is pending
 
 ## 1. 이 문서를 먼저 읽는 이유
 
@@ -17,6 +17,17 @@ Status: current technical overview for the integration branch after PR #86
 - 구현 완료, 라이브 검증 완료, 문서화만 완료, 의도적으로 제외한 범위를 어떻게 구분하는지
 
 세부 코드나 장애 기록이 필요할 때만 각 절에 연결된 파일을 추가로 읽는다.
+
+### 현재 lifecycle claim boundary
+
+이 문서는 현재 실행 중인 서비스의 상태판이 아니라 **마지막으로 검증된 배포 아키텍처와 저장소 구현의 canonical 전체 안내**다. Runtime teardown은 read-only closure run `29904386655`로 검증되었으며, 여섯 runtime Terraform state와 exact active runtime AWS resource count는 모두 0이다. Bootstrap inventory는 통과했지만 bootstrap deletion은 승인·실행되지 않았고 zero-resource proof도 완료되지 않았다.
+
+- 2024년 팀 프로젝트의 기능 구현과 이후 개인 고도화의 재사용·운영 정렬을 구분한다.
+- 실제 구현 및 historical live verification은 증빙 문서가 뒷받침하는 범위에서만 주장한다.
+- Terraform root, workflow, manifest, runbook은 teardown 뒤 재구축 가능한 범위를 설명하지만, 실제 redeployment 완료를 뜻하지 않는다.
+- 현재 workload, 실행 중 CloudFront URL, bootstrap 완전 삭제, account-wide zero-resource proof는 주장하지 않는다.
+
+현재 종료 상태는 [current operations plan](current-operations-delivery-plan.md), runtime 결과는 [runtime closure](lifecycle/aws-runtime-teardown-closure.md), 재구축 절차는 [redeploy runbook](lifecycle/aws-redeploy-runbook.md)를 따른다.
 
 ## 2. 문서 우선순위
 

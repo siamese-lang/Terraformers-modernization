@@ -1,10 +1,14 @@
 # Last Verified Live Evidence Before Teardown
 
+## Closure notice
+
+**This evidence records the last verified live deployment. The AWS runtime was subsequently torn down and independently verified. It does not represent a currently running service.** See [runtime closure](../lifecycle/aws-runtime-teardown-closure.md) and [closure progress](../lifecycle/closure-progress.md) for the current lifecycle status.
+
 ## 1. Evidence scope
 
-This document records the latest verified live runtime state observed before portfolio teardown planning. It is a bounded evidence summary, not a replacement for the final read-only parity check immediately before deletion.
+This document records the latest verified live runtime state observed before portfolio teardown planning. It is a bounded historical evidence summary, not a claim of current runtime state or a replacement for closure verification.
 
-The runtime evidence below was captured after PR #86 and before later documentation-only commits. Documentation merges do not by themselves prove the current Argo CD revision, so the final pre-teardown check must refresh the revision field while preserving the verified workload facts.
+The runtime evidence below was captured after PR #86 and before later documentation-only commits. Documentation merges did not alter these captured workload facts. Runtime closure later supplied the separate post-teardown verification; this document remains historical evidence.
 
 ## 2. Backend delivery identity
 
@@ -18,7 +22,7 @@ The runtime evidence below was captured after PR #86 and before later documentat
 | Argo CD sync | `Synced` |
 | Argo CD health | `Healthy` |
 
-The Argo CD revision must be refreshed before teardown because later documentation-only commits advanced the integration branch without changing the Backend manifest or image digest.
+This revision is retained as the captured historical value; it is not a current Argo CD claim after teardown.
 
 ## 3. Backend Pod and health
 
@@ -120,9 +124,9 @@ Not supported or deliberately excluded:
 - statistical RAG quality claims beyond the bounded v1/v2 comparison;
 - current Argo CD revision after documentation-only commits until the final read-only parity check is captured.
 
-## 7. Final pre-teardown refresh required
+## 7. Historical pre-teardown refresh record
 
-Immediately before runtime teardown, refresh only:
+The pre-teardown process called for refreshing only:
 
 - current integration commit;
 - current Argo CD revision, sync, and health;

@@ -1,6 +1,6 @@
 # Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: **runtime closure verified; bootstrap deletion selected; bounded bootstrap/state/OIDC inventory is the current gate**
+Status: **runtime closure and bootstrap inventory complete; deletion-command review pending; no bootstrap mutation approved**
 
 ## 1. Authority and conflict resolution
 
@@ -127,37 +127,27 @@ Verified results:
 
 The pending Secret tombstone must be rechecked before immediate redeployment or final zero-AWS-resource proof. It does not reopen runtime teardown.
 
-### Gate 6 - Bootstrap/state/OIDC inventory and decision
+### Gate 6 - Bootstrap/state/OIDC closure
 
-Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; bounded read-only inventory pending; mutation not approved**.
+Status: **bootstrap inventory passed; deletion-command review pending; deletion not approved or executed.**
 
-Current action: execute the bounded read-only CloudShell inventory. Do not rerun runtime teardown. Do not delete IAM, the GitHub OIDC provider, or the state bucket before the inventory result is reviewed and a separate execution approval is received.
+The read-only CloudShell inventory passed with `inventory_contract=ready_for_deletion_command_review`. It confirmed an independent administrator caller, zero managed instances in every runtime state, a bootstrap state with **16 managed resources / 9 data sources**, a Terraformers-only GitHub OIDC ownership contract, and 0 active runtime Secrets with 1 pending-deletion tombstone.
 
-Known bootstrap state from the completed state inventory:
+Measured state-bucket facts are: versioning `Enabled`, 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 Terraform lock-object versions. MFA Delete is not enabled, Object Lock is absent, and there are no S3 access points. The OIDC provider is trusted by exactly these Terraformers roles: `terraformers-live-teardown`, `terraformers-live-terraform-apply`, and `terraformers-live-terraform-plan`.
 
-- 16 Terraform-managed resources;
-- one versioned encrypted private state bucket and its bucket controls;
-- Terraform live-plan and live-apply IAM roles;
-- inline and managed policies/attachments for state access and approved creation boundaries;
-- GitHub OIDC provider outside Terraform state;
-- GitHub external configuration retained for redeployment.
+Additional IAM residue requires exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` has default version `v2` and non-default version `v1`. Whether an EKS OIDC provider remains is not asserted until the next exact inventory.
 
-Before any mutation, refresh one bounded inventory containing:
+Next work is **not** another runtime teardown. It is:
 
-- current bootstrap managed state count and exact addresses;
-- current state-bucket version, delete-marker, lock, and multipart-upload counts;
-- the project-dedicated GitHub OIDC provider;
-- every role currently trusting that provider, including any final teardown role outside bootstrap state;
-- current existence of Terraform-managed plan/apply roles and policies;
-- pending runtime Secret deletion state;
-- the independent identity required to remove the final state bucket and OIDC provider;
-- retain-versus-delete consequences.
+1. additional IAM/EKS-OIDC residual inventory;
+2. exact deletion-command review; and
+3. separate deletion approval.
 
-A new explicit user approval is mandatory after this inventory is presented. Runtime teardown approval does not extend to this gate.
+No bootstrap mutation, IAM deletion, OIDC deletion, state-bucket purge, or zero-resource proof has occurred.
 
 ### Gate 7 - Repository closure
 
-Status: pending after the bootstrap decision.
+Status: pending after bootstrap deletion execution and a truthful zero-resource proof; keep one branch and one draft PR for the later final result.
 
 Repository closure includes:
 
@@ -185,12 +175,4 @@ These incidents are retained for interview explanation. They are not a reason to
 
 ## 7. Current next action
 
-1. Run one bounded read-only bootstrap/state/OIDC inventory.
-2. Record the exact current bootstrap state, state-bucket data, OIDC trust, final teardown identity, and pending Secret status.
-3. Review the exact deletion commands once after a passing inventory.
-4. Require a separate explicit execution approval before any bootstrap mutation.
-5. Do not execute additional runtime deletion.
-
-## 8. New-conversation handoff contract
-
-> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`, then read `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. Runtime teardown and read-only runtime closure verification are complete. Run `29904386655` verified all six runtime Terraform states at zero and all exact active runtime AWS resource counts at zero; one Secret remains only as a pending-deletion tombstone. Do not rerun the destructive runtime workflow. The next gate is a bounded read-only inventory of bootstrap state, state-bucket versions, GitHub OIDC trust, plan/apply/final-teardown IAM roles, and the pending Secret. Present retain-versus-delete consequences and require a new explicit approval before any foundation, IAM, state-bucket, or OIDC mutation. Preserve the project as the modernization of the 2024 five-person Terraformers team project, preserve reuse-first decisions, and do not reopen RAG, autoscaling, monitoring expansion, frontend redesign, or new application features without a concrete closure-blocking defect.
+Perform the bounded additional IAM/EKS-OIDC read-only inventory, then review exact deletion commands and request a separate approval. Runtime teardown must not be rerun. The user selected `DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF`, but selection is not execution approval.

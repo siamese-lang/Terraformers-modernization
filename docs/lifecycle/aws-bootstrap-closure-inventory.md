@@ -39,6 +39,12 @@ It reads the exact GitHub OIDC provider, identifies every trusting role by inspe
 
 The other values are `blocked_by_runtime_state`, `blocked_by_oidc_shared_ownership`, and `blocked_by_inventory_error`. Resolve or explicitly review the reported bounded condition before preparing commands.
 
+## Recorded read-only result
+
+The inventory has now passed. The caller was `arn:aws:iam::024863981627:user/admin-user` and `independent_identity_confirmed=true`. All six runtime state counts were 0. Bootstrap measured 16 managed resources and 9 data sources with no expected-address difference. The state bucket was versioned and contained 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The OIDC provider was present with Terraformers-only trust, the three required Terraformers roles were present, active runtime Secret count was 0, and pending runtime Secret deletion count was 1.
+
+`inventory_api_error_labels=[]` and `inventory_contract=ready_for_deletion_command_review`. This does not classify the separately discovered live-smoke IRSA role/policy or possible EKS OIDC-provider residue, and it does not approve a mutation.
+
 ## Approval boundary
 
 No AWS mutation is implemented by this inventory. After a passing result, review the exact deletion commands once, then obtain separate explicit execution approval. IAM, OIDC, state-bucket, object-version, Terraform, and Secret mutations remain outside this scope.

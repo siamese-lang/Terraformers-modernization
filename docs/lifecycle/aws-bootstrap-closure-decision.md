@@ -1,6 +1,6 @@
 # AWS Bootstrap Closure Decision
 
-Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; read-only inventory and deletion-command review pending; no bootstrap mutation approved**
+Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; read-only inventory passed; deletion-command review pending; no bootstrap mutation approved**
 
 This document defines the remaining AWS boundary after verified runtime closure. It is a decision record, not authorization to delete resources.
 
@@ -55,7 +55,7 @@ terraformers-modernization-024863981627-apne2-state
 
 It is versioned, encrypted, private, and still required to read the bootstrap and completed runtime state histories.
 
-The earlier inventory counted 175 object versions and 126 delete markers. Teardown runs have created additional state versions since that snapshot. A deletion procedure must therefore enumerate and purge all current versions and markers rather than depend on the historical count.
+The completed CloudShell inventory measured 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. A deletion procedure must enumerate and purge the then-current versions and markers again rather than rely on this snapshot.
 
 ## 3. External bootstrap resources
 
