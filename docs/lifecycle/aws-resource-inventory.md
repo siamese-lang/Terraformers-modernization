@@ -2,9 +2,13 @@
 
 ## 1. Status and authority
 
-Status: **Closure Gate 1 complete**
+Status: **Closure Gate 1 complete — historical pre-teardown inventory**
 
-This document is the authoritative owner and deletion inventory for removing and later recreating Terraformers-modernization.
+> **Closure notice:** This document preserves the authoritative pre-teardown owner and resource inventory captured at Closure Gate 1. Its live counts describe the environment before runtime teardown and are historical, not current AWS resource counts.
+>
+> Runtime teardown and independent runtime closure verification were subsequently completed. For the current state and next action, use [closure-progress.md](closure-progress.md) and [current-operations-delivery-plan.md](../current-operations-delivery-plan.md).
+
+This document is the authoritative historical owner and deletion inventory for removing and later recreating Terraformers-modernization.
 
 Detailed evidence:
 
@@ -29,6 +33,8 @@ The inventory was assembled from read-only Terraform state, Kubernetes, Argo CD,
 | `external-config` | GitHub configuration outside AWS | Retain or remove as a separate decision |
 
 Terraform state is necessary but not sufficient for zero-resource proof.
+
+The Gate 1 inventory observed five Terraformers trusting roles before runtime teardown. The later bootstrap-closure inventory observed three remaining bootstrap roles. This is lifecycle convergence after runtime-role removal, not conflicting OIDC ownership data.
 
 ## 3. Terraform state summary
 
@@ -128,4 +134,4 @@ Closure Gate 1 is complete because:
 - no unexplained project resource remains;
 - this inventory can drive teardown and redeployment without relying on memory.
 
-The next allowed action is **destroy planning only**. No resource deletion occurs until the resulting plans and non-Terraform cleanup actions receive explicit approval.
+Runtime destroy planning and execution are complete. The current boundary is additional IAM/EKS-OIDC read-only classification, exact bootstrap deletion command review, and separate execution approval. This historical inventory does not authorize a mutation.

@@ -548,7 +548,7 @@ Kustomize image는 tag가 아닌 다음 형식이다.
 <ECR repository>@sha256:<digest>
 ```
 
-현재 source에 기록된 digest는 final evidence 작성 시 실제 runtime과 다시 대조한다.
+The last verified immutable digest is fixed as historical evidence in [final evidence guide](portfolio/final-evidence-and-interview-guide.md) and [last verified live evidence](portfolio/last-verified-live-evidence.md). It does not represent a currently running Pod or service after teardown.
 
 ## 12. 공개 요청 경로
 
