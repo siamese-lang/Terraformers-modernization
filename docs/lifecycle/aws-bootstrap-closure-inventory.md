@@ -41,7 +41,7 @@ The other values are `blocked_by_runtime_state`, `blocked_by_oidc_shared_ownersh
 
 ## Recorded read-only result
 
-The inventory has now passed. The caller was `arn:aws:iam::024863981627:user/admin-user` and `independent_identity_confirmed=true`. All six runtime state counts were 0. Bootstrap measured 16 managed resources and 9 data sources with no expected-address difference. The state bucket was versioned and contained 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The OIDC provider was present with Terraformers-only trust, the three required Terraformers roles were present, active runtime Secret count was 0, and pending runtime Secret deletion count was 1.
+The inventory has now passed. `independent_identity_type=IAM user` and `independent_identity_confirmed=true`. All six runtime state counts were 0. Bootstrap measured 16 managed resources and 9 data sources with no expected-address difference. The state bucket was versioned and contained 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The OIDC provider was present with Terraformers-only trust, the three required Terraformers roles were present, active runtime Secret count was 0, and pending runtime Secret deletion count was 1.
 
 `inventory_api_error_labels=[]` and `inventory_contract=ready_for_deletion_command_review`. This does not classify the separately discovered live-smoke IRSA role/policy or possible EKS OIDC-provider residue, and it does not approve a mutation.
 

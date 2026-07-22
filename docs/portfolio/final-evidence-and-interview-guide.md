@@ -67,24 +67,25 @@ Historical live evidence and closure evidence are separated below. Runtime is no
 
 | 증빙 항목 | 최종 값 | 상태 | 근거 |
 |---|---|---|---|
-| integration commit | historical evidence; closure source commit `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582` | runtime not currently deployed | runtime closure record |
-| Backend source commit | `d39acc4a489fc5e22023281343283609501a36f9` | historical evidence | last verified live evidence |
-| ECR immutable digest | `sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73` | historical evidence | image publish / PR #83 |
-| Argo CD revision | historical evidence | not applicable after teardown | Application status |
-| Argo CD sync/health | historical evidence | not applicable after teardown | `Synced/Healthy` 확인 |
-| Deployment image | historical evidence | not applicable after teardown | Kubernetes Deployment |
-| Pod runtime image ID | historical evidence | not applicable after teardown | Kubernetes Pod status |
-| browser login/upload/analysis/result | historical evidence | not applicable after teardown | CloudFront browser smoke |
-| RAG corpus version | `terraformers-reference-v2` | 완료 | PR #73 |
-| RAG provider version | `5.100.0` | 완료 | PR #73 |
-| corpus document count | `128` | 완료 | ingestion evidence |
-| v1/v2 median pipeline | `45.120 s -> 48.222 s` | 완료 | PR #73 comparison |
-| Application Signals | historical evidence | not applicable after teardown | last verified live evidence |
-| X-Ray trace | historical evidence | not applicable after teardown | last verified live evidence |
-| custom analysis metrics | historical evidence | not applicable after teardown | last verified live evidence |
-| AWS resource inventory | complete | runtime and bootstrap inventories recorded | lifecycle inventory / bootstrap inventory |
+| last live evidence revision | `fbb057b2890109469d49d6e00e47d5734cb20244` | historical live evidence | last verified Argo CD revision |
+| Backend source commit | `d39acc4a489fc5e22023281343283609501a36f9` | historical live evidence | last verified live evidence |
+| immutable ECR digest | `sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73` | historical live evidence | last verified live evidence |
+| runtime image | `024863981627.dkr.ecr.ap-northeast-2.amazonaws.com/terraformers-backend@sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73` | historical live evidence | last verified live evidence |
+| last verified Argo CD revision | `fbb057b2890109469d49d6e00e47d5734cb20244` | historical live evidence | `Synced` / `Healthy` capture |
+| Argo CD sync / health | `Synced` / `Healthy` | historical live evidence | last verified live evidence |
+| Deployment image | immutable digest above | historical live evidence | runtime image recorded above |
+| Pod runtime image ID | not separately recorded | historical evidence gap | do not infer from Deployment image |
+| browser login/upload/analysis/result | one real browser analysis succeeded | historical live evidence | last verified live evidence |
+| runtime closure source commit | `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582` | teardown closure evidence | not an integration commit |
+| runtime closure verification run | `29904386655` (`passed_with_pending_secret_deletion`) | independent read-only closure | runtime closure record |
+| current bootstrap closure status | inventory complete; deletion command review pending; deletion not approved/not executed; zero-resource proof incomplete | current lifecycle status | closure progress |
+| RAG corpus version / provider | `terraformers-reference-v2` / `5.100.0` | historical live evidence | bounded v1/v2 comparison |
+| corpus document count | `128` | historical live evidence | ingestion evidence |
+| v1/v2 median pipeline | `45.120 s -> 48.222 s` | historical comparison | not a statistical quality claim |
+| Application Signals / X-Ray / custom metrics | historical evidence: 78 latency series / 181 traces / analysis outcomes `succeeded started` | not applicable after teardown | last verified live evidence |
+| AWS resource inventory | complete | runtime and bootstrap inventories recorded | lifecycle inventory |
 | runtime teardown result | verified | closure run `29904386655` passed | runtime closure record |
-| bootstrap teardown result | pending bootstrap closure | deletion not approved/not executed; zero-resource proof pending | closure progress |
+| bootstrap teardown result | pending bootstrap closure | not approved/not executed | closure progress |
 
 ## 5. 면접 답변 구조
 

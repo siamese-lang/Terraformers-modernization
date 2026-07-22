@@ -176,3 +176,10 @@ These incidents are retained for interview explanation. They are not a reason to
 ## 7. Current next action
 
 Perform the bounded additional IAM/EKS-OIDC read-only inventory, then review exact deletion commands and request a separate approval. Runtime teardown must not be rerun. The user selected `DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF`, but selection is not execution approval.
+
+
+## 8. New-conversation handoff contract
+
+Resume only from the next incomplete closure boundary. Current facts are: runtime teardown complete; runtime closure verification complete; bootstrap inventory complete; additional IAM/EKS-OIDC inventory pending; bootstrap deletion not approved/not executed; and zero-resource proof incomplete. Runtime teardown must **not** be rerun.
+
+Read [the canonical system overview](project-system-overview.md), [closure progress](lifecycle/closure-progress.md), and [runtime closure](lifecycle/aws-runtime-teardown-closure.md), then perform only the bounded additional inventory, exact deletion-command review, and separately approved bootstrap execution when authorized.

@@ -72,7 +72,30 @@ Terraformers는 2024년 AWS Cloud School 5인 팀 프로젝트다. 사용자가 
 - Python 분석 서비스 현대화 프로젝트
 - Grafana나 Prometheus 운영 자체를 보여 주는 모니터링 프로젝트
 
-## 4. 사용자가 보는 기능
+
+### 3.4 포트폴리오용 요약과 재사용 전략
+
+포트폴리오 제목은 **Terraformers: Backend & Cloud Infrastructure Modernization**이다. 한 문장으로는 “2024년 5인 팀 Terraformers의 이미지 기반 Terraform draft 서비스를 재작성하지 않고, owner-based RDB domain, Spring Boot 통합 분석, private AWS delivery, immutable GitOps와 lifecycle closure로 운영 경계를 재정렬한 후속 개인 고도화”다.
+
+전면 재작성은 팀 프로젝트의 검증된 제품 흐름과 1차 refactor의 도메인 자산을 버리고, 무엇이 개인 고도화인지도 흐리게 만든다. 따라서 다음처럼 재사용 범위를 명시했다.
+
+| 구분 | 유지·재사용 또는 변경 | 이유와 기여 경계 |
+|---|---|---|
+| 원본 Terraformers | generate/personal/public 화면 책임, image-analysis prompt 흐름, embedding/AOSS retrieval 개념, SQS 비동기 개념, EKS/RDS/CloudFront 배포 자산 | 팀 프로젝트의 제품 목적과 검증된 흐름을 유지 |
+| `siamese-lang/rdb-refactor` | ownership 중심 migration, user/project/file/collaboration/analysis domain, API 호환 로직 | 충돌하던 Backend/RDB 모델을 canonical domain으로 정렬 |
+| historical reference | Python analysis service, monolithic AiChat, browser AWS credential, DynamoDB canonical store | 현재 Spring Boot runtime 및 안전한 server-side ownership으로 대체 |
+| compatibility 유지 | 기존 화면/API가 필요한 project tree, public project, comment 경로 | 사용자 흐름을 불필요하게 끊지 않음 |
+| 후속 개인 고도화 | Spring Boot orchestration, Secret/IRSA, private origin, state 분리, digest GitOps, telemetry, teardown/redeploy 문서 | 개인이 직접 정렬·검증한 운영/백엔드 범위 |
+
+### 3.5 기존 문제와 현대화 목표의 연결
+
+문제는 개별 AWS 서비스가 없었다는 사실보다 **한 요청의 소유권·상태·배포 증거가 서로 다른 곳에서 충돌했다는 것**이었다. string slug project와 numeric owner domain이 함께 있으면 Cognito 사용자가 어느 프로젝트를 소유하는지, 누가 private artifact를 읽을 수 있는지 일관되게 판단할 수 없다. upload bytes, result bytes, metadata를 한 row 또는 한 adapter에 섞으면 재시도·soft-delete·object cleanup의 책임도 불명확해진다.
+
+따라서 modernization은 Cognito `sub` → internal user → numeric project ownership을 canonical path로 만들고, RDB에는 관계·visibility·job 상태를, S3에는 bytes를 두었다. analysis job은 `PENDING`부터 `SUCCEEDED`/`FAILED`까지의 상태와 safe failure reason을 남겨 UI polling과 운영 진단을 연결했다. Terraform state와 실제 controller/data resource의 불일치는 state component 분리, exact inventory, reviewed plan, post-delete closure로 다뤘다.
+
+Secret/runtime configuration은 Terraform, Secrets Manager, External Secrets, IRSA의 owner를 분리해 password나 static key를 code와 manifest에 복제하지 않게 했다. mutable image와 desired/runtime drift는 immutable ECR digest 및 Argo CD reconciliation으로 추적했다. public exposure는 CloudFront-only와 internal ALB/VPC origin으로 좁혔고, logs/metrics/traces가 없는 “정상” 주장은 CloudWatch, Application Signals, X-Ray의 bounded evidence로 대체했다. 마지막으로 runtime을 없애는 절차와 bootstrap을 마지막에 다루는 재배포 경로를 문서화해, `terraform destroy` 한 번으로 모든 책임이 사라진다고 가정하지 않았다.
+
+## 4. 마지막 검증 배포에서 사용자가 본 기능
 
 | 기능 | 설명 | 인증 |
 |---|---|---|
@@ -85,6 +108,8 @@ Terraformers는 2024년 AWS Cloud School 5인 팀 프로젝트다. 사용자가 
 | Terraform 초안 편집 | canonical `terraform/main.tf` artifact 내용 수정 | 소유자 또는 관리자 |
 | 댓글 | 공개 프로젝트 board를 통해 댓글 작성·조회 | 작성은 필요 |
 | 프로젝트 삭제 | 프로젝트를 즉시 물리 삭제하지 않고 soft-delete | 소유자 또는 관리자 |
+
+이 절은 **last verified deployed behavior**다. 현재 online service를 뜻하지 않는다.
 
 Frontend의 대표 경로는 다음과 같다.
 
@@ -284,6 +309,12 @@ projects
 | `reference.opensearch` | k-NN request, response parse, SigV4 HTTP | `SignedOpenSearchHttpClient` |
 | `storage` | source object read와 storage adapter API | `SourceObjectReaderService` |
 | `config` | 필수 환경변수와 adapter 조합 검증 | `RuntimeAdapterContractValidator` |
+
+주요 source path는 `backend/src/main/java/com/terraformers/modernization/analysis/AnalysisJobRunner.java`, `analysis/AnalysisJobOrchestrator.java`, `analysis/bedrock/BedrockAnalysisProvider.java`, `reference/RetrievalModeReferenceRetriever.java`, `reference/opensearch/SignedOpenSearchHttpClient.java`, `identity/AuthenticatedUserService.java`, `security/CognitoJwtSecurityConfig.java`, `projectcore/ProjectDomainService.java`, `projectcore/ProjectFileEntity.java`이다. 이 경로는 포트폴리오 작성자가 책임 경계를 code-level로 다시 확인할 때의 출발점이며, Secret 또는 runtime value를 공개하는 위치가 아니다.
+
+### 7.2 비동기·transaction 경계
+
+HTTP 요청은 프로젝트/analysis job 생성과 authorization을 먼저 transactionally 확정하고, executor가 별도 실행 경계에서 source object read, Bedrock/AOSS orchestration, validation, result persistence를 수행한다. 이 분리는 긴 모델 호출이 사용자 요청 transaction을 붙잡지 않게 하며, 실패를 `FAILED` 상태와 bounded safe reason으로 기록해 polling/telemetry에서 같은 job을 추적할 수 있게 한다. 재시도나 provider failure가 ownership을 우회하거나 source/result artifact를 부분적으로 성공처럼 보이게 해서는 안 된다.
 
 ### 7.2 기술 기준
 
@@ -778,7 +809,7 @@ Micrometer base meter 이름과 CloudWatch emitted `.count`, `.avg`, `.sum`, `.m
 
 세부 설명은 `docs/portfolio/final-evidence-and-interview-guide.md`를 따른다.
 
-## 18. 현재 완료 상태와 비주장 범위
+## 18. 구현·historical live 검증·비주장 범위
 
 ### 18.1 소스와 라이브 기준으로 완료된 핵심
 
@@ -793,9 +824,10 @@ Micrometer base meter 이름과 CloudWatch emitted `.count`, `.avg`, `.sum`, `.m
 - immutable Backend image와 digest GitOps
 - Argo CD Synced/Healthy와 self-heal 확인
 - CloudWatch/Application Signals 구성과 Java instrumentation 문제 수정
-- closure inventory/teardown/redeploy 계획
+- closure inventory, runtime teardown, independent runtime closure verification
+- bootstrap inventory (deletion command review pending)
 
-최종 evidence 값은 AWS 철거 전 별도 문서에 고정한다.
+정확한 live/closure 값은 [final evidence guide](portfolio/final-evidence-and-interview-guide.md)와 lifecycle records에 고정한다. 현재 runtime은 실행 중이지 않으며 bootstrap deletion과 account-wide zero-resource proof는 아직 완료되지 않았다.
 
 ### 18.2 구현하거나 증명했다고 주장하지 않는 것
 
@@ -807,9 +839,74 @@ Micrometer base meter 이름과 CloudWatch emitted `.count`, `.avg`, `.sum`, `.m
 - multi-region disaster recovery
 - 통계적으로 충분한 RAG 평가
 - 모든 runtime resource의 Terraform-only ownership
-- final live evidence가 없는 Application Signals/X-Ray 성공
+- 현재 runtime에서의 Application Signals/X-Ray 성공 (마지막 live evidence는 historical record)
 
-## 19. 저장소 구조 안내
+## 19. 포트폴리오 제작용 문제 해결 사례
+
+아래 사례는 source와 evidence가 뒷받침하는 범위에서 1분·3분·5분 설명으로 재구성할 수 있는 canonical outline이다. 숫자·commit·workflow 결과는 [final evidence guide](portfolio/final-evidence-and-interview-guide.md)와 [last verified live evidence](portfolio/last-verified-live-evidence.md)를 우선한다.
+
+### 19.1 Terraform partial apply와 state-aware recovery
+
+- **상황/관찰:** staged Terraform 작업에서 일부 resource가 남거나 provider timeout이 길어져, 고정 delete count만으로는 실제 dependency를 설명할 수 없었다.
+- **초기 가정과 증거:** broad tag/name scan과 단순 state zero는 충분하지 않았다. exact state-owned VPC에는 controller-created non-default security group이 남아 있었다.
+- **근본 원인과 제한:** state 밖 controller/data dependency와 runner-only override가 destroy plan에 보존되지 않은 경계가 원인이었다. 전체 재생성 대신 exact VPC dependency 및 ECR images만 bounded cleanup했다.
+- **수정/검증/교훈:** reviewed saved plan과 stage recovery를 사용했고, runtime closure run `29904386655`가 six states 0 및 exact runtime absence를 확인했다. state zero는 필요조건일 뿐 충분조건이 아니다.
+
+### 19.2 Bedrock/AOSS integration failure boundaries
+
+- **상황/관찰:** AOSS 403, ingestion 가정 오류, Bedrock response JSON parse failure가 analysis completion을 막을 수 있었다.
+- **증거와 원인:** SigV4 canonical request에는 exact payload hash가 필요했고, Serverless는 custom ID/refresh 가정을 그대로 허용하지 않았으며, Bedrock 출력은 Markdown fence 또는 truncation을 포함할 수 있었다.
+- **제한된 수정:** public endpoint나 broad IAM을 추가하지 않고 payload hash, bounded convergence polling, balanced JSON extraction/schema validation 및 token boundary를 조정했다.
+- **검증/교훈:** private AOSS/CodeBuild path와 real analysis evidence를 보존했다. provider response는 UI 성공 상태로 저장하기 전에 structured validation을 통과해야 한다.
+
+### 19.3 Application Signals Java injection
+
+- **상황/관찰:** CloudWatch add-on이 Active여도 Application Signals metrics/traces와 Java injection이 보이지 않았다.
+- **증거/원인:** agent configuration에 receiver가 없고 `monitorAllServices=false`의 Backend selector가 없었으며, Pod-level `runAsUser`가 없어 init container injection이 skip됐다. metric query도 emitted suffix와 달랐다.
+- **제한된 수정과 검증:** targeted selector, receiver, emitted metric name, Pod UID `10001`만 정렬했다. 마지막 live evidence는 ready Pod/zero restarts, 78 Application Signals latency series, 181 X-Ray traces를 기록한다.
+- **교훈:** operator Active 상태는 workload instrumentation proof가 아니다; Pod, emitted metric, trace를 함께 확인해야 한다.
+
+### 19.4 Controller owner와 teardown residual false negative
+
+- **상황/관찰:** CloudFront empty response, scheduled Secret, asynchronous RDS/Cognito cleanup, SQS empty response가 post-delete job을 실패처럼 보이게 했다.
+- **근본 원인:** controller owner와 AWS control-plane convergence를 exact resource identity 대신 broad query/empty-list 처리로 판단했다.
+- **수정/검증/교훈:** Ingress/controller owner를 EKS 전에 제거하고, Secret tombstone을 active runtime과 구분하며, exact service-specific absence check로 read-only closure를 통과시켰다. historical destructive job status를 바꾸기 위해 deletion을 반복하지 않는다.
+
+## 20. 삭제·재배포 lifecycle과 현재 상태
+
+`terraform destroy`만으로 종료할 수 없는 이유는 Terraform state 밖 Kubernetes owner, controller-created ALB/security group, versioned S3 object/delete marker, ECR image, service log, pending Secret, OIDC/IAM foundation이 있기 때문이다. runtime stage는 frontend-delivery → Kubernetes owners → rag-runtime → eks-runtime → stateful-dependencies → runtime-dependencies → network 순서로 끝났고, read-only closure가 이를 별도로 확인했다.
+
+```text
+runtime teardown complete
+runtime closure verification complete
+bootstrap inventory complete
+additional IAM/EKS-OIDC classification pending
+bootstrap deletion not approved/not executed
+zero-resource proof incomplete
+redeployment documented, not executed
+```
+
+Bootstrap/state/OIDC removal은 versioned state bucket purge와 final IAM/OIDC trust 검토를 포함하는 별도 승인 작업이다. pending Secret 하나는 same-name redeployment를 잠시 막을 수 있다. GitHub Environment, variables, encrypted tfvars, approval rules은 AWS 밖의 configuration으로 남으며, full-zero-state redeployment는 independent administrator/CloudShell → state bucket/OIDC/roles → remote backend migration → seven state and controller/delivery/acceptance 순으로 문서화되었을 뿐 실행되지 않았다. 자세한 실제 gate는 [closure progress](lifecycle/closure-progress.md), 절차는 [teardown](lifecycle/aws-teardown-runbook.md) 및 [redeploy](lifecycle/aws-redeploy-runbook.md)에 둔다.
+
+## 21. Evidence classification and contribution boundary
+
+| 구분 | 설명 |
+|---|---|
+| 2024년 팀 프로젝트 | 팀 전체가 구현한 서비스 목적과 초기 아키텍처 |
+| 원본에서 재사용 | 기존 기능·코드·설계 및 사용자 흐름 |
+| `rdb-refactor`에서 재사용 | migration, owner-based domain, service 및 호환 logic |
+| 후속 개인 고도화 | Backend/RDB 정렬, runtime integration, AWS delivery/observability/lifecycle에서 직접 수정·검증한 범위 |
+| historical evidence | teardown 전 실제 AWS에서 마지막으로 확인한 image, Argo CD, browser analysis, telemetry 결과 |
+| documented only | full-zero-state redeployment처럼 문서화했으나 실제 실행하지 않은 범위 |
+| not implemented / not claimed | HA, autoscaling, multi-region DR, generated Terraform automatic apply, RDS restore drill |
+
+## 22. 기술 선택과 trade-off
+
+EKS를 유지한 이유는 original deployment context와 Kubernetes owner/IRSA/GitOps 경계를 현대화 범위 안에서 검증하기 위해서이며, managed node group과 single replica의 비용 제약을 동시에 기록했다. Spring Boot 통합 analysis는 project/job transaction과 provider adapters를 한 runtime에서 책임지기 위한 선택이다. RDS MariaDB, Cognito, S3/RDB separation, private AOSS, CloudFront VPC origin, split Terraform state, GitHub OIDC, immutable digest/Argo CD, AWS-native observability의 구체적 운영 이유는 각각 위 책임 경계에서 설명했다.
+
+EKS를 계속 사용한 비용 대비 대안 분석이나 redeployment를 실제 완료하지 않은 세부 사업상 이유는 **not explicitly recorded**다. 문서가 뒷받침하는 것은 dev portfolio cost boundary, single replica 비-HA 주장, 그리고 redeployment가 documented/not executed라는 사실까지다.
+
+## 23. 저장소 구조 안내
 
 ```text
 backend/
@@ -856,7 +953,7 @@ docs/
   architecture, domain, deployment, GitOps, RAG, operations, lifecycle, interview
 ```
 
-## 20. 기능이나 문제를 추적하는 방법
+## 24. 기능이나 문제를 추적하는 방법
 
 ### 사용자 인증 문제
 
@@ -934,7 +1031,7 @@ Backend Service endpoints
 readiness probe
 ```
 
-## 21. 처음 보는 사람이 읽을 문서 순서
+## 25. 처음 보는 사람이 읽을 문서 순서
 
 1. 이 문서
 2. `docs/rdb-domain-realignment.md`
@@ -948,6 +1045,6 @@ readiness probe
 
 실행 순서는 `docs/current-operations-delivery-plan.md`가 통제한다.
 
-## 22. 프로젝트를 한 문장으로 설명하면
+## 26. 프로젝트를 한 문장으로 설명하면
 
 > 기존 5인 팀 프로젝트의 서비스 기능을 새로 만들지 않고, owner-based RDB domain과 Spring Boot 통합 분석 runtime을 중심으로 AWS EKS·RDS·S3·Cognito·Bedrock·AOSS를 재정렬하고, CloudFront-only private origin, External Secrets, immutable digest GitOps, 승인형 Terraform, AWS-native 관측성, 철거·재배포 절차까지 연결한 백엔드·클라우드 운영환경 고도화 프로젝트다.
