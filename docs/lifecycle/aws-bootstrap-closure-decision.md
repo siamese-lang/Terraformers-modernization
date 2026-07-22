@@ -1,6 +1,6 @@
 # AWS Bootstrap Closure Decision
 
-Status: **decision pending; no bootstrap mutation approved**
+Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; read-only inventory and deletion-command review pending; no bootstrap mutation approved**
 
 This document defines the remaining AWS boundary after verified runtime closure. It is a decision record, not authorization to delete resources.
 
@@ -172,20 +172,14 @@ The final operation must use an independent administrator/CloudShell identity an
 
 Do not run a broad `terraform destroy` that attempts to remove its own remote backend bucket. The state bucket and final identity require the independent final procedure above.
 
-## 7. Approval boundary
+## 7. Selected decision and approval boundary
 
 Runtime teardown approval does not authorize either decision.
 
-The user must explicitly choose one of the following:
-
-```text
-RETAIN_BOOTSTRAP_FOR_REDEPLOYMENT
-```
-
-or
+The user selected:
 
 ```text
 DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF
 ```
 
-Choosing deletion authorizes planning and review of the final bounded CloudShell/admin procedure, not immediate deletion. The exact current IAM/OIDC/state-bucket inventory and deletion commands must be reviewed once before execution.
+This selection authorizes only the bounded read-only CloudShell/admin inventory and one review of the exact deletion commands. It does **not** authorize deletion itself. After the inventory passes, the exact deletion commands must be reviewed once and a separate explicit execution approval must be received before any IAM, OIDC provider, state-bucket, or state-object mutation.
