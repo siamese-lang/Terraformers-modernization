@@ -186,6 +186,12 @@ Migration 전:
 - state serial과 lineage를 기록한다.
 - bucket versioning과 native lockfile 권한을 재확인한다.
 
+향후 full-zero-state 재배포에서 검토된 local bootstrap state를 새 remote backend로 옮길 때만 다음 명령을 사용한다. 현재 종료된 환경을 검증하기 위해 state bucket을 재생성하거나 이 명령을 실행하지 않는다.
+
+```bash
+terraform init -migrate-state -backend-config="<private-backend-config>"
+```
+
 Migration 후:
 
 - remote backend init 성공
