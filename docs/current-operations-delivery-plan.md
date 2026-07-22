@@ -1,10 +1,10 @@
 # Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: **AWS lifecycle closure complete; repository publication is the current gate**
+Status: **AWS lifecycle closure and repository publication complete**
 
 ## 1. Authority and conflict resolution
 
-This document is the current execution source of truth for the remaining Terraformers modernization work.
+This document is the current source of truth for the completed Terraformers modernization lifecycle, retained evidence, and future approval boundaries.
 
 It preserves the project identity and reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. Use `docs/project-system-overview.md` for the final architecture and `docs/lifecycle/aws-runtime-teardown-closure.md` for the verified runtime teardown record.
 
@@ -12,12 +12,12 @@ When repository documents conflict:
 
 1. Preserve the project as the modernization of the 2024 five-person Terraformers team project.
 2. Preserve the reuse-first decisions from the original repository and `siamese-lang/rdb-refactor`.
-3. Use this document for the current completion state, stop conditions, and approval boundaries.
+3. Use this document for the final completion state, stop conditions, and approval boundaries.
 4. Use live AWS, Terraform state, workflow, browser, and runtime evidence over historical plans.
-5. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features without one concrete defect that blocks closure.
+5. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features without one concrete defect that blocks a newly approved objective.
 6. Do not create another broad verifier, recovery framework, or micro-PR sequence for completed runtime deletion.
 
-A new conversation must read this file first, then `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. It must resume from the first incomplete gate rather than create a new roadmap.
+A new conversation must read this file first, then `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. There is no incomplete closure gate to resume. New AWS deployment, release, or feature work requires an explicit new objective and approval boundary.
 
 ## 2. Project identity and interview objective
 
@@ -135,13 +135,15 @@ The read-only CloudShell inventory passed before deletion with `inventory_contra
 
 Measured state-bucket facts are: versioning `Enabled`, 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 Terraform lock-object versions. MFA Delete is not enabled, Object Lock is absent, and there are no S3 access points. The OIDC provider is trusted by exactly these Terraformers roles: `terraformers-live-teardown`, `terraformers-live-terraform-apply`, and `terraformers-live-terraform-plan`.
 
-Historical pre-execution condition: additional IAM residue required exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` has default version `v2` and non-default version `v1`. Whether an EKS OIDC provider remains is not asserted until the next exact inventory.
+Historical pre-execution condition: additional IAM residue required exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` had default version `v2` and non-default version `v1`. At that point an EKS OIDC provider had not yet been classified; the subsequent exact inventory identified and removed the project-owned provider and remaining live-smoke resources.
 
-The subsequent exact residual classification, bootstrap deletion, and project-scoped zero-resource proof are complete. This historical inventory is retained as evidence; current work is repository publication.
+The subsequent exact residual classification, bootstrap deletion, and project-scoped zero-resource proof are complete. This historical inventory is retained as evidence.
 
 ### Gate 7 - Repository closure
 
-Status: pending repository review and publication; keep this one draft PR for final review.
+Status: **complete**.
+
+Repository publication completed through PR #112, merged to `main` as commit `2cd9d48cb751d72f7e4acee45b9d1045b9c321ed` on 2026-07-22. Obsolete PR #32 was closed without merge after being superseded by the reconciled publication PR.
 
 Repository closure includes:
 
@@ -149,7 +151,7 @@ Repository closure includes:
 - aligned lifecycle documents;
 - final evidence/interview guide;
 - the historical retain-versus-delete decision record, subsequently resolved by executed full-zero-state closure;
-- a final integration merge and optional release tag.
+- publication of the completed modernization result to the default branch.
 
 Actual redeployment is not required unless the user explicitly opens a new AWS deployment window.
 
@@ -169,16 +171,14 @@ These incidents are retained for interview explanation. They are not a reason to
 
 ## 7. Current next action
 
-AWS closure work is complete. The current action is final review of PR #111, explicit merge approval, merge into `agent/rdb-domain-realignment`, preparation of a fresh integration-to-main PR, and closure or supersession of obsolete PR #32. Do not rerun runtime teardown, recreate the state bucket for verification, rerun bootstrap deletion, or execute redeployment.
-
+No repository or AWS closure work remains. Do not rerun runtime teardown, recreate the state bucket for verification, rerun bootstrap deletion, or execute redeployment. Optional release tagging, branch cleanup, or future redeployment requires a separate explicit decision; none is required to consider the modernization project complete.
 
 ## 8. New-conversation handoff contract
 
-Resume from repository publication. AWS closure is complete: runtime teardown/closure, bootstrap and live-smoke residual deletion, and project-scoped zero-resource proof. Do not rerun runtime teardown, recreate the state bucket for verification, rerun bootstrap deletion, or execute redeployment. Read [the canonical system overview](project-system-overview.md), [closure progress](lifecycle/closure-progress.md), and [final proof](lifecycle/aws-final-zero-resource-proof.md), then perform only final documentation/PR review and publication when approved.
-
+AWS lifecycle closure and repository publication are complete. Runtime teardown/closure, bootstrap and live-smoke residual deletion, project-scoped zero-resource proof, and publication to `main` through PR #112 are finished. Do not reopen deletion or recreate AWS resources for verification. Read [the canonical system overview](project-system-overview.md), [closure progress](lifecycle/closure-progress.md), and [final proof](lifecycle/aws-final-zero-resource-proof.md). Begin new work only from an explicit new objective such as interview preparation, portfolio extraction, an approved release tag, or a separately approved full-zero-state redeployment.
 
 ## 9. Final closure and repository publication
 
-Runtime teardown, runtime closure verification, bootstrap deletion, live-smoke residual deletion, and project-scoped zero-AWS-resource proof are complete. Do not rerun runtime teardown, recreate the state bucket merely for verification, rerun bootstrap deletion, or execute redeployment.
+Runtime teardown, runtime closure verification, bootstrap deletion, live-smoke residual deletion, project-scoped zero-AWS-resource proof, and default-branch publication are complete. The final publication merge is `2cd9d48cb751d72f7e4acee45b9d1045b9c321ed` from PR #112.
 
-Current work is final documentation review, PR #111 review, explicit merge approval, merge to `agent/rdb-domain-realignment`, a fresh integration-to-main PR, closing or superseding obsolete PR #32, and an optional release tag. See [final zero-resource proof](lifecycle/aws-final-zero-resource-proof.md).
+No further closure mutation is required. See [final zero-resource proof](lifecycle/aws-final-zero-resource-proof.md) for the sanitized AWS result and [closure progress](lifecycle/closure-progress.md) for the completed gate record.
