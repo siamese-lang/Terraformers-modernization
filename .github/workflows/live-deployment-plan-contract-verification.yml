@@ -8,20 +8,24 @@ on:
       - agent/rdb-domain-realignment
     paths:
       - ".github/workflows/aws-live-terraform-plan.yml"
+      - ".github/workflows/aws-live-terraform-apply.yml"
       - ".github/workflows/aws-terraform-destroy-plan.yml"
+      - ".github/workflows/aws-runtime-teardown.yml"
       - ".github/workflows/runtime-contract-verification.yml"
       - ".github/workflows/live-deployment-plan-contract-verification.yml"
       - "config/live-deployment-stages.json"
+      - "config/runtime-teardown-stages.json"
       - "scripts/deploy/build-live-deployment-execution-plan.py"
       - "scripts/deploy/summarize-terraform-plan.py"
       - "scripts/deploy/verify-approved-terraform-apply-contract.py"
+      - "scripts/teardown/**"
       - "scripts/checks/approved-terraform-apply-contract-verification.py"
-      - ".github/workflows/aws-live-terraform-apply.yml"
       - "scripts/checks/live-deployment-plan-contract-verification.sh"
       - "scripts/checks/terraform-plan-changed-paths-verification.py"
       - "scripts/checks/premerge-live-plan-dispatch-verification.sh"
       - "docs/live-aws-deployment-execution-plan.md"
       - "docs/premerge-live-plan-dispatch.md"
+      - "docs/lifecycle/**"
 
 permissions:
   contents: read
@@ -45,6 +49,7 @@ jobs:
             .github/workflows/aws-live-terraform-plan.yml
             .github/workflows/aws-live-terraform-apply.yml
             .github/workflows/aws-terraform-destroy-plan.yml
+            .github/workflows/aws-runtime-teardown.yml
             .github/workflows/live-deployment-plan-contract-verification.yml
 
       - name: Verify live deployment plan contract
