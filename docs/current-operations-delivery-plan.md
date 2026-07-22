@@ -1,6 +1,6 @@
 # Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: **runtime closure verified; bounded bootstrap/state/OIDC inventory is the next gate**
+Status: **runtime closure verified; bootstrap deletion selected; bounded bootstrap/state/OIDC inventory is the current gate**
 
 ## 1. Authority and conflict resolution
 
@@ -129,7 +129,9 @@ The pending Secret tombstone must be rechecked before immediate redeployment or 
 
 ### Gate 6 - Bootstrap/state/OIDC inventory and decision
 
-Status: **read-only inventory pending; mutation not approved**.
+Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; bounded read-only inventory pending; mutation not approved**.
+
+Current action: execute the bounded read-only CloudShell inventory. Do not rerun runtime teardown. Do not delete IAM, the GitHub OIDC provider, or the state bucket before the inventory result is reviewed and a separate execution approval is received.
 
 Known bootstrap state from the completed state inventory:
 
@@ -185,8 +187,8 @@ These incidents are retained for interview explanation. They are not a reason to
 
 1. Run one bounded read-only bootstrap/state/OIDC inventory.
 2. Record the exact current bootstrap state, state-bucket data, OIDC trust, final teardown identity, and pending Secret status.
-3. Present two choices: retain bootstrap for low-friction redeployment, or delete it for zero-AWS-resource proof.
-4. Require explicit approval before any bootstrap mutation.
+3. Review the exact deletion commands once after a passing inventory.
+4. Require a separate explicit execution approval before any bootstrap mutation.
 5. Do not execute additional runtime deletion.
 
 ## 8. New-conversation handoff contract
