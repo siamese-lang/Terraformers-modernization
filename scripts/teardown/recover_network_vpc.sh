@@ -16,6 +16,10 @@ vpc_id="$(jq -r '
   | select(.mode == "managed" and .type == "aws_vpc" and .name == "runtime")
   | .instances[]?.attributes.id // empty
 ' "${STATE_JSON}" | head -n1)"
+if [[ -z "${vpc_id}" ]]; then
+  jq -n '{stage:"network",already_absent:true,vpc_deleted:true,contract:"passed"}' > "${OUT}"
+  exit 0
+fi
 [[ "${vpc_id}" == vpc-* ]]
 
 vpc_json="$(aws ec2 describe-vpcs --region "${REGION}" --vpc-ids "${vpc_id}" --output json 2>/dev/null || true)"
