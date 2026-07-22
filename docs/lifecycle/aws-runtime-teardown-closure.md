@@ -1,6 +1,6 @@
 # AWS Runtime Teardown Closure
 
-Status: **runtime closure verified by read-only workflow; bootstrap/state/OIDC decision is the next gate**
+Status: **historical pre-state-bucket-deletion runtime closure; later project-scoped zero-resource proof complete**
 
 Runtime closure source commit: `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582`
 
@@ -24,7 +24,7 @@ The following bootstrap resources are intentionally outside this closure:
 - foundation, plan, apply, and final teardown identities and policies;
 - GitHub repository and Environment configuration.
 
-No bootstrap resource is approved for deletion by this document.
+No bootstrap resource is approved for deletion by this document. Bootstrap inventory later passed, but deletion-command review and separate execution approval remain pending; account-wide zero-resource proof is not complete.
 
 ## 2. Verified runtime closure result
 
@@ -155,15 +155,6 @@ The corrected operating rule is:
 
 > Resolve the exact state-owned resource, inventory external dependencies before a long delete, use bounded service-specific cleanup only where the inventory proves it is required, and verify the exact identity afterward. Do not repeat the full destructive workflow merely to change a status badge.
 
-## 7. Remaining work
+## 7. Subsequent lifecycle result
 
-Runtime deletion and runtime closure verification are complete.
-
-The next gate is separate and read-only:
-
-1. refresh the bootstrap state, state-bucket version counts, GitHub OIDC ownership, trusting IAM roles, and pending Secret tombstone;
-2. distinguish Terraform-managed bootstrap resources from external final-teardown resources;
-3. present retain-versus-delete consequences;
-4. request a new explicit user approval before any bootstrap, state-bucket, IAM, or OIDC mutation.
-
-GitHub environments, variables, encrypted values, and approval rules remain external configuration and are retained for future redeployment unless separately decided otherwise.
+Bootstrap and remaining live-smoke resources were later deleted. Project-scoped zero-AWS-resource proof completed on 2026-07-22. Run `29904386655` remains the pre-state-bucket-deletion proof that all six runtime states had zero managed instances; remote state history was then intentionally removed with the state bucket. See [final proof](aws-final-zero-resource-proof.md).

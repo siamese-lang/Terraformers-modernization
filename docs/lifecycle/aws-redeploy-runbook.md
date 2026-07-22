@@ -1,5 +1,11 @@
 # AWS Redeployment Runbook
 
+## Current starting condition
+
+This is now a full-zero-state redeployment path: the state bucket, project GitHub OIDC provider, and Terraform plan/apply/teardown roles are absent; runtime resources are absent; GitHub repository configuration remains but AWS identifiers are stale. Redeployment is documented, not executed.
+
+Future work begins from an independent IAM administrator or CloudShell session, a new state bucket, a new or adopted GitHub OIDC provider, new plan/apply roles, GitHub variable/role-ARN refresh, remote backend initialization, seven Terraform stages, controllers, delivery, and acceptance.
+
 ## 1. Purpose
 
 This runbook recreates Terraformers-modernization after a complete AWS teardown without depending on the current local Windows disk for Terraform execution.
@@ -26,7 +32,39 @@ Independent AWS administrator or AWS CloudShell
 
 The local machine is an operator console for `git`, `gh`, `aws`, and `kubectl`; it is not the required Terraform runtime.
 
-## 2. Redeployment principles
+## 2. Redeployment paths and present boundary
+
+This runbook documents recovery; it does **not** prove a redeployment was performed. The AWS runtime has been torn down and independently verified, bootstrap inventory passed, and bootstrap deletion/full zero-resource proof remain pending.
+
+### Retained-bootstrap redeployment
+
+Use this only when the state bucket, GitHub OIDC provider, and required plan/apply roles were deliberately retained. Reconfirm their exact state, trust, versioned objects, and GitHub configuration before resuming at `network`. This is no longer the selected closure outcome.
+
+### Full-zero-state redeployment
+
+The selected `DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` path requires, after deletion and a truthful zero-resource result:
+
+1. independent administrator or CloudShell identity;
+2. state-bucket recreation;
+3. GitHub Actions OIDC provider creation or explicitly documented compatible-provider reuse;
+4. Terraform plan/apply roles and exact trust recreation;
+5. GitHub Environment, variable, and encrypted-tfvars restoration;
+6. bootstrap state migration to the remote backend;
+7. `network`;
+8. `runtime-dependencies`;
+9. `stateful-dependencies`;
+10. `eks-runtime`;
+11. `rag-runtime`;
+12. `frontend-delivery`;
+13. External Secrets and AWS Load Balancer Controller;
+14. immutable Backend image publish;
+15. Argo CD desired-state update;
+16. RAG corpus ingestion; and
+17. browser/API/RDB/S3/GitOps/telemetry acceptance.
+
+A pending Secret deletion can block same-name recreation. Global S3 names can also collide; check both before bootstrap. Exact environment and secret names must be read from current workflow source, not guessed.
+
+## 3. Redeployment principles
 
 - Reuse the existing Terraform roots, workflows, manifests, chart versions, scripts, and committed corpus.
 - Do not recreate resources manually in the AWS Console when a Terraform or GitOps owner exists.
@@ -38,7 +76,7 @@ The local machine is an operator console for `git`, `gh`, `aws`, and `kubectl`; 
 - Do not restore deprecated Python analysis or old public exposure paths.
 - Do not treat a successful resource creation as service acceptance. Complete browser, runtime, GitOps, and observability checks.
 
-## 3. Inputs that must exist outside the repository
+## 4. Inputs that must exist outside the repository
 
 Record names and sources, never values.
 
@@ -90,7 +128,7 @@ Expected Terraform tfvars secret names:
 
 Additional delivery or runtime initialization secrets must be read from the existing workflows. Values are generated from approved private inputs and never committed.
 
-## 4. Stage 0 - Pre-bootstrap checks
+## 5. Stage 0 - Pre-bootstrap checks
 
 Before creating any resource:
 
@@ -105,7 +143,7 @@ Before creating any resource:
 
 Do not begin bootstrap while a prior deletion is still pending under the same resource name.
 
-## 5. Stage 1 - Independent bootstrap
+## 6. Stage 1 - Independent bootstrap
 
 A complete teardown removes the state bucket and GitHub OIDC role, so GitHub Actions cannot bootstrap itself.
 
@@ -152,7 +190,7 @@ Do not create a second foundation implementation unless the existing root cannot
 - GitHub Actions can read the state backend through OIDC;
 - no static credentials are stored.
 
-## 6. Stage 2 - GitHub configuration restoration
+## 7. Stage 2 - GitHub configuration restoration
 
 1. Recreate required GitHub environments and approval rules.
 2. Set non-secret variables.
@@ -164,7 +202,7 @@ Do not create a second foundation implementation unless the existing root cannot
 
 Do not print decoded tfvars or secret values in workflow logs.
 
-## 7. Stage 3 - Terraform deployment order
+## 8. Stage 3 - Terraform deployment order
 
 The canonical order is:
 
@@ -247,7 +285,7 @@ Expected outcome:
 - static and API caching behavior matches the current design;
 - no public S3 or direct public Backend origin exists.
 
-## 8. Stage 4 - Kubernetes platform bootstrap
+## 9. Stage 4 - Kubernetes platform bootstrap
 
 Terraform creates AWS infrastructure; it does not complete every in-cluster owner.
 
@@ -269,7 +307,7 @@ For each operator:
 - record the owner and rollback command;
 - do not add a second operator or install path for convenience.
 
-## 9. Stage 5 - Runtime Secret initialization
+## 10. Stage 5 - Runtime Secret initialization
 
 The Backend runtime Secret is assembled from Terraform outputs and the RDS managed password pointer through the existing External Secrets contract.
 
@@ -282,7 +320,7 @@ Required principles:
 - verify the generated Kubernetes Secret contains the required key names without printing values;
 - rotate or recreate values through the owning AWS Secret, not by editing the generated Kubernetes Secret.
 
-## 10. Stage 6 - Immutable Backend delivery
+## 11. Stage 6 - Immutable Backend delivery
 
 1. Run Backend verification from the integration commit.
 2. Publish an immutable image with the existing GitHub OIDC workflow.
@@ -300,7 +338,7 @@ Required principles:
 
 Rollback is a Git revert to the previous digest followed by Argo CD reconciliation.
 
-## 11. Stage 7 - Internal origin and frontend delivery
+## 12. Stage 7 - Internal origin and frontend delivery
 
 1. Apply the canonical internal Backend Ingress.
 2. Wait for the AWS Load Balancer Controller to create the internal ALB and healthy target group.
@@ -311,7 +349,7 @@ Rollback is a Git revert to the previous digest followed by Argo CD reconciliati
 7. Invalidate CloudFront as defined by the workflow.
 8. Run browser login, upload, analysis, project result, and Terraform draft smoke tests.
 
-## 12. Stage 8 - RAG corpus ingestion
+## 13. Stage 8 - RAG corpus ingestion
 
 1. Validate the committed corpus v2 contract.
 2. Package the corpus and ingestion utility through the existing workflow.
@@ -324,7 +362,7 @@ Rollback is a Git revert to the previous digest followed by Argo CD reconciliati
 
 Corpus source remains in Git; the vector index is reproducible data.
 
-## 13. Stage 9 - Final service acceptance
+## 14. Stage 9 - Final service acceptance
 
 Complete one bounded acceptance pass:
 
@@ -342,7 +380,7 @@ Complete one bounded acceptance pass:
 
 Do not claim automatic deployability of the generated Terraform, autoscaling, application high availability, or multi-region recovery unless separately implemented and proven.
 
-## 14. Failure and restart points
+## 15. Failure and restart points
 
 When a stage fails:
 
@@ -357,7 +395,7 @@ When a stage fails:
 
 Do not create a new recovery workflow for every partial apply. Reuse state-aware contracts and current plan/apply mechanisms.
 
-## 15. Redeployment completion criteria
+## 16. Redeployment completion criteria
 
 Redeployment is complete only when:
 
@@ -373,7 +411,7 @@ Redeployment is complete only when:
 - the resource inventory is regenerated for the new deployment;
 - teardown and redeploy procedures still match the actual owners.
 
-## 16. New-conversation handoff
+## 17. New-conversation handoff
 
 A restarted redeployment conversation must read:
 

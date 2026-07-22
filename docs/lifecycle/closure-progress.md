@@ -108,97 +108,70 @@ Final conclusions:
 
 The reviewed plan artifacts cannot be applied later. An approved execution workflow must generate and apply a fresh saved plan in the same job after checking the exact stage contract.
 
-## Closure Gate 4 - Approved runtime teardown
+## Closure Gate 4 - Runtime teardown
 
-Status: **READY FOR FIRST STAGE APPROVAL — EXECUTION NOT STARTED**
+Status: **COMPLETE**
 
-Execution implementation and registration:
+The staged teardown workflow (merged through PR #97, manual dispatch registered through PR #98, OIDC hardening through PR #99), its protected `aws-live-teardown` environment, and the project-scoped `terraformers-live-teardown` role were prepared and used for the approved runtime stages. Foundation/bootstrap deletion remained excluded; one exact stage per dispatch and global concurrency prevented concurrent destruction. Each dispatch required exact source commit/account/stage/reviewed delete maximum/confirmation, a fresh saved plan checked against the reviewed allowlist, and rejected unreviewed create/update/replacement/import/data-source actions.
 
-- staged runtime teardown workflow merged through PR #97;
-- identical manual-dispatch workflow registered on the default branch through PR #98;
-- GitHub OIDC bootstrap hardening merged through PR #99;
-- foundation/bootstrap deletion remains excluded;
-- one exact runtime stage is permitted per dispatch;
-- global concurrency prevents simultaneous teardown stages;
-- every stage requires exact source commit, AWS account, stage, reviewed maximum delete count and stage-specific destructive confirmation;
-- a fresh saved destroy plan is generated, checked against the reviewed address allowlist and applied in the same job;
-- state-aware subset recovery is permitted only after partial success;
-- unreviewed addresses, creates, updates, replacements, imports and invalid data-source actions are rejected.
-
-Execution environment readiness confirmed on 2026-07-22:
+The pre-execution readiness record was retained as historical setup evidence:
 
 ```text
 environment=aws-live-teardown
 deployment_branch=agent/rdb-domain-realignment
-role_arn=arn:aws:iam::024863981627:role/terraformers-live-teardown
 required_environment_variables=4
 required_tfvars_secrets=6
 missing_tfvars_secrets=0
 setup_result=READY_WITHOUT_DISPATCH
 ```
 
-The environment contains:
+The environment variables were `AWS_REGION`, `AWS_ROLE_TO_ASSUME`, `AWS_TERRAFORM_STATE_BUCKET`, and `AWS_TERRAFORM_STATE_PREFIX`; six non-foundation private tfvars Secrets were available without exposing values. The setup result predates the completed execution and is retained as historical readiness evidence.
 
-- `AWS_REGION`;
-- `AWS_ROLE_TO_ASSUME`;
-- `AWS_TERRAFORM_STATE_BUCKET`;
-- `AWS_TERRAFORM_STATE_PREFIX`;
-- all six non-foundation private tfvars Secrets required by the runtime stages.
+The teardown role trusted only `repo:siamese-lang/Terraformers-modernization:environment:aws-live-teardown`, had `ReadOnlyAccess` plus the project teardown inline policy, did not have `AdministratorAccess`, and could not remove final foundation credentials or itself. Bootstrap/state/OIDC deletion remained outside the workflow.
 
-The state-external `terraformers-live-teardown` role:
+Actual runtime teardown completed in reverse dependency order:
 
-- trusts only `repo:siamese-lang/Terraformers-modernization:environment:aws-live-teardown`;
-- has ReadOnlyAccess plus the project teardown inline policy;
-- does not have AdministratorAccess;
-- remains available until runtime residual verification is complete;
-- cannot remove the final foundation credentials or itself.
+1. `frontend-delivery`;
+2. Kubernetes/controller-owned external resources;
+3. `rag-runtime`;
+4. `eks-runtime`;
+5. `stateful-dependencies`;
+6. `runtime-dependencies`;
+7. `network`.
 
-Approved stage order remains:
+The final network execution was run `29899676188`: it recovered one non-default security group inside the exact state-owned VPC, then removed the security-group dependency and VPC through the reviewed saved plan. Runtime-dependencies run `29894803446` removed 20 ECR image digests and the exact `terraformers-backend` repository after the workflow added the required bounded pre-plan image purge.
 
-1. `frontend-delivery` — reviewed maximum 14 deletes;
-2. `kubernetes-owners` — 0 Terraform deletes;
-3. `rag-runtime` — reviewed maximum 23 deletes;
-4. `eks-runtime` — reviewed maximum 30 deletes;
-5. `stateful-dependencies` — reviewed maximum 5 deletes;
-6. `runtime-dependencies` — reviewed maximum 16 deletes;
-7. `network` — reviewed maximum 16 deletes.
+Several earlier destructive jobs had post-delete residual-check false negatives (empty CloudFront/SQS responses, asynchronous RDS/Secret/Cognito convergence, ECR non-empty deletion, and broad tag scanning). They are retained as incident evidence, not evidence that runtime resources remain. Do not rerun the destructive workflow merely to make those historical jobs green.
 
-No runtime teardown workflow has been dispatched. No CloudFront, S3, Kubernetes, Argo CD, AOSS, EKS, RDS, Cognito, SQS, ECR, Secret, log, IAM, VPC or Terraform-managed resource has been deleted for portfolio closure.
+## Closure Gate 5 - Read-only runtime closure verification
 
-The first destructive boundary is a separately approved `frontend-delivery` dispatch with:
+Status: **COMPLETE**
 
-```text
-stage=frontend-delivery
-reviewed_maximum_delete_count=14
-confirmation=DESTROY_REVIEWED_FRONTEND_DELIVERY_14
-```
+Read-only workflow `AWS Runtime Closure Verification`, run `29904386655` (job `88872221575`), passed with `passed_with_pending_secret_deletion`. It did not run Terraform plan/apply/destroy, mutate Kubernetes, or issue AWS delete APIs.
 
-A successful stage must complete its post-apply state and service residual checks. The next stage must not be dispatched automatically.
+- all six runtime Terraform states: 0 managed instances;
+- Kubernetes owner-removal marker: valid;
+- exact active runtime AWS resource counts: all 0;
+- active runtime Secret count: 0;
+- pending runtime Secret deletion tombstone count: 1;
+- foundation checked/deleted: false/false.
 
-## Closure Gate 5 - Bootstrap teardown and zero-resource proof
+This is runtime closure, not account-wide zero-resource proof. The pending Secret must be checked before immediate same-name redeployment or a final zero-resource declaration.
 
-Status: **NOT STARTED**
+## Closure Gate 6 - Bootstrap closure and zero-resource proof
 
-The state bucket, Terraform plan/apply roles, teardown role and GitHub OIDC provider remain required until runtime residual proof passes.
+Status: **COMPLETE**
 
-## Closure Gate 6 - Redeployment proof and repository closure
+The independent CloudShell read-only inventory passed with `inventory_contract=ready_for_deletion_command_review`: bootstrap has 16 managed resources and 9 data sources; state bucket versioning is enabled with 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The GitHub OIDC ownership contract is Terraformers-only and the required plan/apply/teardown roles are present. MFA Delete and Object Lock are absent and S3 access-point count is 0.
 
-Status: **DOCUMENTED, NOT EXECUTED**
+Bootstrap deletion and the discovered live-smoke residual deletion are complete. The final project-scoped residual scan was `2026-07-22T13:32:38Z`, reported `inventory_api_error_labels=[]`, and completed project-scoped zero-AWS-resource proof. See [final proof](aws-final-zero-resource-proof.md).
 
-Completed:
+## Closure Gate 7 - Repository publication
 
-- zero-state bootstrap and canonical redeployment order documented in `docs/lifecycle/aws-redeploy-runbook.md`;
-- live owner and retention inventory reconciled with the teardown design;
-- all seven Terraform destroy plans reconciled to the managed state inventory;
-- staged runtime teardown workflow implemented, registered and prepared with its dedicated environment and role.
+Status: **pending repository review and publication**
 
-Remaining:
-
-- execute each explicitly approved runtime teardown stage;
-- record runtime and bootstrap residual results;
-- execute separately approved bootstrap teardown;
-- create the final repository release/tag after zero-resource proof.
+Keep this draft PR for final review and publication. Full-zero-state redeployment is documented but not executed.
 
 ## Current next action
 
-Obtain explicit approval for the first `frontend-delivery` runtime teardown dispatch against the exact current integration commit. Do not dispatch it automatically, and do not proceed to `kubernetes-owners` unless the frontend stage and residual verification succeed.
+Do not perform further AWS mutation for closure. The next action is PR #111 final review and repository publication.
