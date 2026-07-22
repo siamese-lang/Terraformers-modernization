@@ -316,7 +316,7 @@ projects
 
 HTTP 요청은 프로젝트/analysis job 생성과 authorization을 먼저 transactionally 확정하고, executor가 별도 실행 경계에서 source object read, Bedrock/AOSS orchestration, validation, result persistence를 수행한다. 이 분리는 긴 모델 호출이 사용자 요청 transaction을 붙잡지 않게 하며, 실패를 `FAILED` 상태와 bounded safe reason으로 기록해 polling/telemetry에서 같은 job을 추적할 수 있게 한다. 재시도나 provider failure가 ownership을 우회하거나 source/result artifact를 부분적으로 성공처럼 보이게 해서는 안 된다.
 
-### 7.2 기술 기준
+### 7.3 기술 기준
 
 | 항목 | 현재 값 |
 |---|---|
@@ -580,13 +580,15 @@ flowchart LR
 
 | State component | 책임 |
 |---|---|
-| `bootstrap` | state bucket, GitHub OIDC, plan/apply foundation roles |
+| `bootstrap` | state bucket, plan/apply foundation roles, GitHub OIDC create-or-adopt boundary |
 | `network` | VPC, public/private subnet, route, NAT, S3 endpoint |
 | `runtime-dependencies` | ECR, upload/result S3, SQS, runtime Secret container, image publisher role |
 | `stateful-dependencies` | RDS MariaDB, DB network, Cognito |
 | `eks-runtime` | EKS, node group, cluster OIDC, IRSA, observability, controller IAM |
 | `rag-runtime` | private AOSS, VPC endpoint, corpus bucket, CodeBuild ingestion, RAG IAM |
 | `frontend-delivery` | frontend S3/OAC, CloudFront, VPC origin, frontend delivery role |
+
+The bootstrap root can conditionally create a GitHub OIDC provider or adopt an existing provider ARN. The current live bootstrap state adopted an existing project-dedicated GitHub OIDC provider, so the provider itself is outside the 16 managed bootstrap addresses and requires separate final deletion. The plan/apply roles are represented in bootstrap state; this distinction prevents a state-only destroy from being misrepresented as final OIDC removal.
 
 분리 이유:
 
@@ -633,7 +635,7 @@ SQS resource는 존재하지만 현재 Backend ConfigMap의 `ANALYSIS_SQS_PUBLIS
 - Kubernetes 1.35 기준
 - control plane private access 활성
 - public endpoint가 필요할 때 exact approved CIDR만 허용
-- managed node group desired/min/max `2/1/2` baseline
+- node-group scaling source values are distinct: Terraform variable defaults are desired/min/max `2/1/2`, while committed `live.tfvars.example` is `1/1/2`; last deployed node-group scaling values are not separately recorded in final evidence
 - Backend, External Secrets, Load Balancer Controller, CloudWatch agent identity 분리
 - Backend IRSA는 승인된 bucket/queue/Secret/model/AOSS/metric 범위만 사용
 - node role에 workload 서비스 권한을 몰아넣지 않음

@@ -67,7 +67,7 @@ Historical live evidence and closure evidence are separated below. Runtime is no
 
 | 증빙 항목 | 최종 값 | 상태 | 근거 |
 |---|---|---|---|
-| last live evidence revision | `fbb057b2890109469d49d6e00e47d5734cb20244` | historical live evidence | last verified Argo CD revision |
+| last live inventory/parity revision | `b3e3a672dc65c7a712a20459b3d8f1c31ca62861` | historical live inventory/parity evidence | closure progress baseline |
 | Backend source commit | `d39acc4a489fc5e22023281343283609501a36f9` | historical live evidence | last verified live evidence |
 | immutable ECR digest | `sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73` | historical live evidence | last verified live evidence |
 | runtime image | `024863981627.dkr.ecr.ap-northeast-2.amazonaws.com/terraformers-backend@sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73` | historical live evidence | last verified live evidence |

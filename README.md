@@ -175,13 +175,15 @@ topK                8
 
 | State | 주요 책임 |
 |---|---|
-| `bootstrap` | state bucket, GitHub OIDC, plan/apply roles |
+| `bootstrap` | state bucket, plan/apply roles, GitHub OIDC create-or-adopt boundary |
 | `network` | VPC, subnet, route, NAT, endpoint |
 | `runtime-dependencies` | ECR, upload/result S3, SQS, runtime Secret container |
 | `stateful-dependencies` | RDS, Cognito |
 | `eks-runtime` | EKS, node group, IRSA, observability |
 | `rag-runtime` | AOSS, corpus bucket, CodeBuild ingestion |
 | `frontend-delivery` | frontend S3/OAC, CloudFront, VPC origin |
+
+The bootstrap root can conditionally create a GitHub OIDC provider or adopt an existing provider ARN. The current live bootstrap state adopted an existing project-dedicated GitHub OIDC provider, so the provider itself is outside the 16 managed bootstrap addresses and requires separate final deletion; plan/apply roles remain in bootstrap state.
 
 Terraform apply는 merge 시 자동 실행하지 않습니다. Live plan을 검토한 뒤 protected environment와 exact approved contract를 통해 별도로 실행합니다.
 
