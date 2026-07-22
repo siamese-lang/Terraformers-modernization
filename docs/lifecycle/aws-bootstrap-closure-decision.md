@@ -21,6 +21,8 @@ The completed Terraform state inventory proved that the `bootstrap` state contai
 
 ## 2. Terraform-managed bootstrap resources
 
+*Historical pre-execution record:* this section preserves the state snapshot and deletion-design boundary before execution.
+
 The 16 managed addresses are:
 
 ```text
@@ -53,11 +55,13 @@ The state bucket is:
 terraformers-modernization-024863981627-apne2-state
 ```
 
-It is versioned, encrypted, private, and still required to read the bootstrap and completed runtime state histories.
+It was versioned, encrypted, private, and required to read the bootstrap and completed runtime state histories before execution.
 
 The completed CloudShell inventory measured 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. A deletion procedure must enumerate and purge the then-current versions and markers again rather than rely on this snapshot.
 
 ## 3. External bootstrap resources
+
+*Historical pre-execution record:* this section preserves the external-resource snapshot before execution.
 
 ### GitHub OIDC provider
 
@@ -71,13 +75,13 @@ Three former trusting roles belonged to runtime delivery states and were removed
 - frontend delivery;
 - RAG corpus ingestion dispatcher.
 
-Known remaining OIDC identities are:
+Known remaining OIDC identities were:
 
 - Terraform live-plan role;
 - Terraform live-apply role;
 - final runtime-teardown role used by the successful closure workflow.
 
-The final teardown role is not represented by the 16 bootstrap state addresses. Its exact role and policy attachments must be included in the final IAM removal pass.
+The final teardown role is not represented by the 16 bootstrap state addresses. Its exact role and policy attachments had to be included in the final IAM removal pass.
 
 Immediately before deletion, list the provider's current trusting roles once and reject the deletion if any non-Terraformers role is present. This is a bounded ownership check, not a new discovery phase.
 
@@ -93,6 +97,8 @@ Decision already recorded:
 
 ## 4. Remaining pending-deletion Secret
 
+*Historical pre-execution record:* the tombstone below was subsequently removed.
+
 The runtime closure artifact reported:
 
 ```text
@@ -105,7 +111,7 @@ This is not active runtime. It is still relevant to:
 - immediate reuse of the same Secret name;
 - a strict final claim that the AWS account contains zero Terraformers-attributable resources.
 
-Before final bootstrap deletion, check the exact Secret name once. If the tombstone is still present, either wait for AWS deletion convergence or explicitly exclude the pending tombstone from the zero-resource claim until it disappears. Do not recreate or repeatedly delete it.
+Before final bootstrap deletion, the exact Secret name had to be checked once; the tombstone was subsequently removed as part of the executed closure.
 
 ## 5. Decision A - Retain bootstrap
 
@@ -174,6 +180,8 @@ Do not run a broad `terraform destroy` that attempts to remove its own remote ba
 
 ## 7. Selected decision and approval boundary
 
+*Historical pre-execution record:* this approval boundary was satisfied before the subsequently executed closure.
+
 Runtime teardown approval does not authorize either decision.
 
 The user selected:
@@ -185,6 +193,6 @@ DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF
 This selection authorizes only the bounded read-only CloudShell/admin inventory and one review of the exact deletion commands. It does **not** authorize deletion itself. After the inventory passes, the exact deletion commands must be reviewed once and a separate explicit execution approval must be received before any IAM, OIDC provider, state-bucket, or state-object mutation.
 
 
-## 9. Executed closure result
+## 8. Executed closure result
 
 The selected decision was executed. Bootstrap resources and additional project-owned live-smoke residue were removed; the state bucket and remote state history were permanently removed; GitHub configuration was retained outside AWS; and project-scoped zero-AWS-resource proof completed on 2026-07-22. Future redeployment starts from the independent bootstrap procedure. See [final zero-resource proof](aws-final-zero-resource-proof.md).

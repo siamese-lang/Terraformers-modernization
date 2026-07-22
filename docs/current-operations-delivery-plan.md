@@ -35,7 +35,7 @@ The project must support a concrete explanation of:
 - how live failures were isolated at the first failing boundary;
 - how AWS-native telemetry was bounded to the project goal;
 - how the runtime environment was inventoried, removed, and independently verified;
-- what remains outside runtime closure and why it requires a separate approval.
+- the historical pre-bootstrap-deletion approval boundary and the subsequently deleted/verified closure scope.
 
 Do not claim autoscaling, multi-replica application HA, multi-region DR, generated-code deployment, or a completed RDS restore drill.
 
@@ -55,7 +55,7 @@ The following are complete and must not be reopened without a closure-blocking d
 - Read-only runtime closure run `29904386655` passed against integration commit `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582`.
 - All six runtime Terraform states contain zero managed instances.
 - All exact active runtime AWS resource counts are zero.
-- One runtime Secret is visible only as a pending-deletion tombstone and is not active runtime.
+- Historical pre-bootstrap-deletion condition: one runtime Secret was visible only as a pending-deletion tombstone; it was subsequently removed and verified absent.
 
 ## 4. Binding execution constraints
 
@@ -68,7 +68,7 @@ The following are complete and must not be reopened without a closure-blocking d
 - Do not treat Terraform state zero as sufficient proof without exact residual verification.
 - Do not use account-wide fuzzy name/tag scans where an exact identity or canonical name is available.
 - The local Windows machine is not the canonical Terraform execution environment.
-- Foundation, state-bucket, IAM, and OIDC deletion require a new explicit approval after a separate bounded review.
+- Historical approval boundary: foundation, state-bucket, IAM, and OIDC deletion required a separate bounded review; they were subsequently deleted and verified.
 
 ## 5. Closure gates and current status
 
@@ -125,7 +125,7 @@ Verified results:
 - foundation deleted: `false`;
 - contract: `passed_with_pending_secret_deletion`.
 
-The pending Secret tombstone must be rechecked before immediate redeployment or final zero-AWS-resource proof. It does not reopen runtime teardown.
+Historical pre-bootstrap-deletion condition: the pending Secret tombstone required recheck before final proof; it was subsequently removed.
 
 ### Gate 6 - Bootstrap/state/OIDC closure
 
@@ -135,7 +135,7 @@ The read-only CloudShell inventory passed before deletion with `inventory_contra
 
 Measured state-bucket facts are: versioning `Enabled`, 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 Terraform lock-object versions. MFA Delete is not enabled, Object Lock is absent, and there are no S3 access points. The OIDC provider is trusted by exactly these Terraformers roles: `terraformers-live-teardown`, `terraformers-live-terraform-apply`, and `terraformers-live-terraform-plan`.
 
-Additional IAM residue requires exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` has default version `v2` and non-default version `v1`. Whether an EKS OIDC provider remains is not asserted until the next exact inventory.
+Historical pre-execution condition: additional IAM residue required exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` has default version `v2` and non-default version `v1`. Whether an EKS OIDC provider remains is not asserted until the next exact inventory.
 
 The subsequent exact residual classification, bootstrap deletion, and project-scoped zero-resource proof are complete. This historical inventory is retained as evidence; current work is repository publication.
 
@@ -148,7 +148,7 @@ Repository closure includes:
 - verified runtime closure evidence;
 - aligned lifecycle documents;
 - final evidence/interview guide;
-- the decision to retain bootstrap for future redeployment or delete it for zero-AWS-resource proof;
+- the historical retain-versus-delete decision record, subsequently resolved by executed full-zero-state closure;
 - a final integration merge and optional release tag.
 
 Actual redeployment is not required unless the user explicitly opens a new AWS deployment window.
@@ -169,7 +169,7 @@ These incidents are retained for interview explanation. They are not a reason to
 
 ## 7. Current next action
 
-Perform the bounded additional IAM/EKS-OIDC read-only inventory, then review exact deletion commands and request a separate approval. Runtime teardown must not be rerun. The user selected `DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF`, but selection is not execution approval.
+AWS closure work is complete. The current action is final review of PR #111, explicit merge approval, merge into `agent/rdb-domain-realignment`, preparation of a fresh integration-to-main PR, and closure or supersession of obsolete PR #32. Do not rerun runtime teardown, recreate the state bucket for verification, rerun bootstrap deletion, or execute redeployment.
 
 
 ## 8. New-conversation handoff contract
