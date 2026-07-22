@@ -15,6 +15,7 @@ import runtime_teardown_base as base
 _original_resolve = base.cmd_resolve
 _original_verify_empty_states = base.cmd_verify_empty_states
 _original_managed_count = base.cmd_managed_count
+_original_verify_plan = base.cmd_verify_plan
 
 
 def cmd_resolve(args: Any) -> None:
@@ -165,6 +166,106 @@ def _recover_stateful(output_dir: pathlib.Path) -> None:
     )
 
 
+def _ecr_image_digests(repository: str, region: str) -> list[str]:
+    response = _json(
+        [
+            "ecr",
+            "list-images",
+            "--region",
+            region,
+            "--repository-name",
+            repository,
+            "--filter",
+            "tagStatus=ANY",
+        ],
+        ("RepositoryNotFoundException", "not found"),
+    )
+    if response is None:
+        return []
+    image_ids = response.get("imageIds", []) or []
+    return sorted(
+        {
+            str(image_id["imageDigest"])
+            for image_id in image_ids
+            if isinstance(image_id, dict) and image_id.get("imageDigest")
+        }
+    )
+
+
+def _purge_runtime_ecr(output_dir: pathlib.Path) -> None:
+    repository = "terraformers-backend"
+    region = os.environ.get("AWS_REGION", "ap-northeast-2")
+    initial_digests = _ecr_image_digests(repository, region)
+    deleted = 0
+    batches = 0
+
+    for offset in range(0, len(initial_digests), 100):
+        batch = initial_digests[offset : offset + 100]
+        payload = json.dumps(
+            [{"imageDigest": digest} for digest in batch],
+            separators=(",", ":"),
+        )
+        response = _json(
+            [
+                "ecr",
+                "batch-delete-image",
+                "--region",
+                region,
+                "--repository-name",
+                repository,
+                "--image-ids",
+                payload,
+            ],
+            ("RepositoryNotFoundException", "not found"),
+        )
+        if response is None:
+            break
+        failures = response.get("failures", []) or []
+        unexpected_failures = [
+            failure
+            for failure in failures
+            if not isinstance(failure, dict) or failure.get("failureCode") != "ImageNotFound"
+        ]
+        if unexpected_failures:
+            raise ValueError("ECR reported image deletion failures")
+        deleted += len(response.get("imageIds", []) or [])
+        batches += 1
+
+    poll_attempts = _poll(
+        lambda: len(_ecr_image_digests(repository, region)) == 0,
+        20,
+        3,
+        "ECR image deletion",
+    )
+    final_count = len(_ecr_image_digests(repository, region))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "ecr-image-purge-summary.json").write_text(
+        json.dumps(
+            {
+                "stage": "runtime-dependencies",
+                "repository": repository,
+                "initial_image_digest_count": len(initial_digests),
+                "deleted_image_id_count": deleted,
+                "final_image_digest_count": final_count,
+                "batch_count": batches,
+                "poll_attempts": poll_attempts,
+                "image_digests_recorded": False,
+                "contract": "approved-stage-only",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def cmd_verify_plan(args: Any) -> None:
+    _original_verify_plan(args)
+    if args.stage == "runtime-dependencies" and base.runtime_teardown_execution_context():
+        _purge_runtime_ecr(pathlib.Path(args.output).parent)
+
+
 def cmd_managed_count(args: Any) -> None:
     _original_managed_count(args)
     if _stateful_context(args):
@@ -174,6 +275,7 @@ def cmd_managed_count(args: Any) -> None:
 
 base.cmd_resolve = cmd_resolve
 base.cmd_verify_empty_states = cmd_verify_empty_states
+base.cmd_verify_plan = cmd_verify_plan
 base.cmd_managed_count = cmd_managed_count
 
 if __name__ == "__main__":
