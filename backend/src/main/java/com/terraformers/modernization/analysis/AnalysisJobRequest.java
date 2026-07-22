@@ -1,12 +1,12 @@
 package com.terraformers.modernization.analysis;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 public record AnalysisJobRequest(
-        @NotBlank @Size(max = 64) String projectId,
-        @NotBlank @Size(max = 255) String sourceBucket,
-        @NotBlank @Size(max = 1024) String sourceKey,
+        @NotNull @Positive Long projectId,
+        @NotNull @Positive Long sourceFileId,
         @Size(max = 128) String correlationId
 ) {
 }

@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: terraformers-runtime
+
+resources:
+  - ../../base
+
+images:
+  - name: public.ecr.aws/example/terraformers-backend
+    newName: 024863981627.dkr.ecr.ap-northeast-2.amazonaws.com/terraformers-backend
+    digest: sha256:2f4a177a06d1e64819b06240a441e619105980e43dea04b3f4709a86e2d95c73
+
+patches:
+  - path: backend-serviceaccount-delete-patch.yaml
+  - path: backend-configmap-patch.yaml
+  - path: backend-deployment-patch.yaml

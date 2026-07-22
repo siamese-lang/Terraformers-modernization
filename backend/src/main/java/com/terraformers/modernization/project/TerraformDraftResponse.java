@@ -1,9 +1,13 @@
 package com.terraformers.modernization.project;
 
+import com.terraformers.modernization.analysis.AnalysisJobEntity;
+import com.terraformers.modernization.projectcore.OwnedProjectEntity;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import java.time.Instant;
 
 public record TerraformDraftResponse(
-        String projectId,
+        Long projectId,
+        Long fileId,
         String fileName,
         String contentType,
         String content,
@@ -12,16 +16,21 @@ public record TerraformDraftResponse(
         Instant draftUpdatedAt,
         Instant projectUpdatedAt
 ) {
-    static TerraformDraftResponse from(ProjectEntity entity) {
+    static TerraformDraftResponse from(
+            OwnedProjectEntity project,
+            ProjectFileEntity terraformFile,
+            AnalysisJobEntity latestJob
+    ) {
         return new TerraformDraftResponse(
-                entity.getProjectId(),
-                "main.tf",
-                "text/plain; charset=utf-8",
-                entity.getTerraformDraft() == null ? "" : entity.getTerraformDraft(),
-                entity.getLatestAnalysisJobId(),
-                entity.getLatestResultObjectKey(),
-                entity.getTerraformDraftUpdatedAt(),
-                entity.getUpdatedAt()
+                project.getProjectId(),
+                terraformFile.getFileId(),
+                terraformFile.getOriginalFilename() == null ? "main.tf" : terraformFile.getOriginalFilename(),
+                terraformFile.getContentType(),
+                terraformFile.getInlineContent() == null ? "" : terraformFile.getInlineContent(),
+                latestJob == null ? null : latestJob.getId(),
+                terraformFile.getS3Key(),
+                terraformFile.getUpdatedAt(),
+                project.getUpdatedAt()
         );
     }
 }

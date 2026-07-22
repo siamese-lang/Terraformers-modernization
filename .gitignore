@@ -69,7 +69,11 @@ logs/
 evidence/raw/
 docs/evidence/raw/
 
-# Local runtime artifacts
+# Local runtime artifacts and downloaded CI evidence
+artifacts/
 .tmp/
 tmp/
 .cache/
+
+# Pin providers used by the live AWS foundation bootstrap
+!infra/terraform/bootstrap/aws-live-foundation/.terraform.lock.hcl

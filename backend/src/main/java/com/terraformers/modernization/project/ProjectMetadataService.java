@@ -1,107 +1,99 @@
 package com.terraformers.modernization.project;
 
-import com.terraformers.modernization.analysis.AnalysisUploadResponse;
-import java.time.Instant;
+import com.terraformers.modernization.analysis.AnalysisJobEntity;
+import com.terraformers.modernization.analysis.AnalysisJobRepository;
+import com.terraformers.modernization.identity.UserEntity;
+import com.terraformers.modernization.projectcore.OwnedProjectEntity;
+import com.terraformers.modernization.projectcore.ProjectArtifactService;
+import com.terraformers.modernization.projectcore.ProjectDomainService;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
+import com.terraformers.modernization.projectcore.ProjectFileRepository;
 import java.util.List;
-import java.util.NoSuchElementException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectMetadataService {
 
-    private final ProjectRepository repository;
+    private final ProjectDomainService projectDomainService;
+    private final ProjectArtifactService projectArtifactService;
+    private final ProjectFileRepository fileRepository;
+    private final AnalysisJobRepository analysisJobRepository;
 
-    public ProjectMetadataService(ProjectRepository repository) {
-        this.repository = repository;
-    }
-
-    @Transactional
-    public ProjectResponse upsertFromUpload(AnalysisUploadResponse upload) {
-        ProjectEntity entity = repository.findById(upload.projectId())
-                .orElseGet(() -> newProject(upload.projectId(), upload.originalFilename()));
-
-        entity.setLatestAnalysisJobId(upload.analysisJobId());
-        entity.setLatestResultObjectKey(upload.resultObjectKey());
-        entity.setTerraformDraft(upload.resultPreview());
-        entity.setTerraformDraftUpdatedAt(Instant.now());
-        entity.setSourceBucket(upload.sourceBucket());
-        entity.setSourceKey(upload.sourceKey());
-        entity.setSourceStorageProvider(upload.storageProvider());
-        entity.setSourceBinaryPersisted(upload.binaryPersisted());
-        entity.setSourceETag(upload.storageETag());
-        entity.setOriginalFilename(upload.originalFilename());
-        entity.setContentType(upload.contentType());
-        entity.setUploadSizeBytes(upload.size());
-
-        return ProjectResponse.from(repository.save(entity));
+    public ProjectMetadataService(
+            ProjectDomainService projectDomainService,
+            ProjectArtifactService projectArtifactService,
+            ProjectFileRepository fileRepository,
+            AnalysisJobRepository analysisJobRepository
+    ) {
+        this.projectDomainService = projectDomainService;
+        this.projectArtifactService = projectArtifactService;
+        this.fileRepository = fileRepository;
+        this.analysisJobRepository = analysisJobRepository;
     }
 
     @Transactional(readOnly = true)
-    public ProjectResponse get(String projectId) {
-        return repository.findById(projectId)
-                .map(ProjectResponse::from)
-                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
+    public ProjectResponse get(Long projectId, UserEntity currentUser) {
+        return toResponse(projectDomainService.requireAccessibleProject(projectId, currentUser));
     }
 
     @Transactional(readOnly = true)
-    public List<ProjectResponse> list() {
-        return repository.findAll().stream()
-                .map(ProjectResponse::from)
+    public List<ProjectResponse> list(UserEntity currentUser) {
+        return projectDomainService.findOwnedProjects(currentUser).stream()
+                .map(this::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<ProjectResponse> listPublic() {
-        return repository.findAllByVisibilityOrderByUpdatedAtDesc(ProjectVisibility.PUBLIC).stream()
-                .map(ProjectResponse::from)
+        return projectDomainService.findPublicProjects().stream()
+                .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public ProjectResponse updateVisibility(String projectId, ProjectVisibility visibility) {
-        ProjectEntity entity = repository.findById(projectId)
-                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
-        entity.setVisibility(visibility);
-        return ProjectResponse.from(repository.save(entity));
+    public void delete(Long projectId, UserEntity currentUser) {
+        projectDomainService.softDelete(projectId, currentUser);
+    }
+
+    public ProjectResponse updateVisibility(
+            Long projectId,
+            UserEntity currentUser,
+            ProjectVisibility visibility
+    ) {
+        return toResponse(projectDomainService.updateVisibility(projectId, currentUser, visibility));
     }
 
     @Transactional(readOnly = true)
-    public TerraformDraftResponse getTerraformDraft(String projectId) {
-        ProjectEntity entity = repository.findById(projectId)
-                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
-        return TerraformDraftResponse.from(entity);
+    public TerraformDraftResponse getTerraformDraft(Long projectId, UserEntity currentUser) {
+        OwnedProjectEntity project = projectDomainService.requireAccessibleProject(projectId, currentUser);
+        ProjectFileEntity terraformFile = projectArtifactService.requireLatestJobTerraform(projectId);
+        AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
+                .orElse(null);
+        return TerraformDraftResponse.from(project, terraformFile, latestJob);
     }
 
     @Transactional
-    public TerraformDraftResponse updateTerraformDraft(String projectId, String content) {
-        ProjectEntity entity = repository.findById(projectId)
-                .orElseThrow(() -> new NoSuchElementException("project not found: " + projectId));
-        entity.setTerraformDraft(content);
-        entity.setTerraformDraftUpdatedAt(Instant.now());
-        return TerraformDraftResponse.from(repository.save(entity));
+    public TerraformDraftResponse updateTerraformDraft(
+            Long projectId,
+            UserEntity currentUser,
+            String content
+    ) {
+        OwnedProjectEntity project = projectDomainService.requireModifiableProject(projectId, currentUser);
+        ProjectFileEntity terraformFile = projectArtifactService.updateTerraform(projectId, currentUser, content);
+        AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
+                .orElse(null);
+        return TerraformDraftResponse.from(project, terraformFile, latestJob);
     }
 
-    private ProjectEntity newProject(String projectId, String originalFilename) {
-        ProjectEntity entity = new ProjectEntity();
-        entity.setProjectId(projectId);
-        entity.setDisplayName(displayNameFrom(projectId, originalFilename));
-        entity.setVisibility(ProjectVisibility.PRIVATE);
-        return entity;
-    }
-
-    private String displayNameFrom(String projectId, String originalFilename) {
-        if (originalFilename == null || originalFilename.isBlank()) {
-            return projectId;
-        }
-
-        String displayName = originalFilename;
-        int dotIndex = displayName.lastIndexOf('.');
-        if (dotIndex > 0) {
-            displayName = displayName.substring(0, dotIndex);
-        }
-
-        displayName = displayName.strip();
-        return displayName.isBlank() ? projectId : displayName;
+    private ProjectResponse toResponse(OwnedProjectEntity project) {
+        Long projectId = project.getProjectId();
+        AnalysisJobEntity latestJob = analysisJobRepository.findFirstByProjectIdOrderByCreatedAtDesc(projectId)
+                .orElse(null);
+        ProjectFileEntity sourceFile = latestJob == null ? null : fileRepository
+                .findByFileIdAndDeletedAtIsNull(latestJob.getSourceFileId()).orElse(null);
+        ProjectFileEntity terraformFile = latestJob == null || latestJob.getResultFileId() == null ? null : fileRepository
+                .findByFileIdAndDeletedAtIsNull(latestJob.getResultFileId()).orElse(null);
+        return ProjectResponse.from(project, sourceFile, terraformFile, latestJob);
     }
 }

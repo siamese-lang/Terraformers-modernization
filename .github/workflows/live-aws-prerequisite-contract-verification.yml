@@ -1,0 +1,52 @@
+name: Live AWS Prerequisite Contract Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/live-aws-prerequisite-contract-verification.yml"
+      - "config/live-aws-prerequisites.json"
+      - "scripts/deploy/live-aws-prerequisite-inventory.py"
+      - "scripts/checks/live-aws-prerequisite-inventory-portability-verification.py"
+      - "infra/terraform/envs/aws-runtime-network/variables.tf"
+      - "infra/terraform/envs/aws-runtime-network/outputs.tf"
+      - "infra/terraform/envs/backend-runtime-dependencies/variables.tf"
+      - "infra/terraform/envs/backend-runtime-dependencies/outputs.tf"
+      - "infra/terraform/envs/backend-stateful-dependencies/variables.tf"
+      - "infra/terraform/envs/backend-stateful-dependencies/outputs.tf"
+      - "infra/terraform/envs/eks-runtime/variables.tf"
+      - "infra/terraform/envs/eks-runtime/outputs.tf"
+      - "infra/terraform/envs/frontend-delivery/variables.tf"
+      - "infra/terraform/envs/frontend-delivery/outputs.tf"
+      - "docs/live-aws-prerequisite-inventory.md"
+
+permissions:
+  contents: read
+
+jobs:
+  live-aws-prerequisite-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify Terraform stage input handoffs
+        run: |
+          python3 scripts/deploy/live-aws-prerequisite-inventory.py \
+            --static-only \
+            --fail-on-missing
+
+      - name: Verify Windows output portability
+        run: python3 scripts/checks/live-aws-prerequisite-inventory-portability-verification.py
+
+      - name: Upload prerequisite contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-aws-prerequisite-contract-evidence
+          path: artifacts/live-aws-prerequisite-inventory
+          if-no-files-found: error

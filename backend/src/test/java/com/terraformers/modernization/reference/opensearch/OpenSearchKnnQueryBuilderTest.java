@@ -13,13 +13,33 @@ class OpenSearchKnnQueryBuilderTest {
     private final OpenSearchKnnQueryBuilder builder = new OpenSearchKnnQueryBuilder(objectMapper);
 
     @Test
-    void buildsKnnQueryBody() throws Exception {
-        String body = builder.build("embedding", "content", List.of(0.1f, 0.2f, 0.3f), 3);
+    void buildsVersionAndResourceFilteredKnnQueryBody() throws Exception {
+        String body = builder.build(
+                "embedding",
+                "content",
+                List.of(0.1f, 0.2f, 0.3f),
+                8,
+                "terraformers-reference-v2",
+                "5.100.0",
+                List.of("aws_vpc", "aws_subnet")
+        );
 
         JsonNode root = objectMapper.readTree(body);
-        assertThat(root.path("size").asInt()).isEqualTo(3);
-        assertThat(root.path("query").path("knn").path("embedding").path("k").asInt()).isEqualTo(3);
-        assertThat(root.path("query").path("knn").path("embedding").path("vector").size()).isEqualTo(3);
-        assertThat(root.path("_source").toString()).contains("content");
+        JsonNode parameters = root.path("query").path("knn").path("embedding");
+        JsonNode filters = parameters.path("filter").path("bool").path("filter");
+
+        assertThat(root.path("size").asInt()).isEqualTo(8);
+        assertThat(parameters.path("k").asInt()).isEqualTo(8);
+        assertThat(parameters.path("vector").size()).isEqualTo(3);
+        assertThat(filters.toString()).contains("terraformers-reference-v2", "5.100.0", "aws_vpc", "aws_subnet");
+        assertThat(root.path("_source").toString()).contains("documentId", "authority", "riskTags", "content");
+    }
+
+    @Test
+    void keepsUnfilteredCompatibilityOverload() throws Exception {
+        String body = builder.build("embedding", "content", List.of(0.1f), 1);
+
+        JsonNode parameters = objectMapper.readTree(body).path("query").path("knn").path("embedding");
+        assertThat(parameters.has("filter")).isFalse();
     }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../utils/api';
 
 function flattenNodeCount(nodes = []) {
@@ -79,6 +79,11 @@ function normalizeTreeResponse(data, selectedProjectId) {
       visibility: data.visibility,
       latestAnalysisJobId: data.latestAnalysisJobId,
       latestResultObjectKey: data.latestResultObjectKey,
+      analysisStatus: data.analysisStatus,
+      analysisSummary: data.analysisSummary,
+      detectedComponents: data.detectedComponents || [],
+      detectedRelationships: data.detectedRelationships || [],
+      warnings: data.warnings || [],
       updatedAt: data.updatedAt,
     },
   };
@@ -103,6 +108,9 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
   const [filePreview, setFilePreview] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sourceImageUrl, setSourceImageUrl] = useState('');
+  const sourceImageUrlRef = useRef('');
+  const [terraformContent, setTerraformContent] = useState('');
 
   const nodeCount = useMemo(() => flattenNodeCount(treeState.roots), [treeState.roots]);
 
@@ -112,13 +120,25 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
     const loadTree = async () => {
       setIsLoading(true);
       setError('');
+      if (sourceImageUrlRef.current) { URL.revokeObjectURL(sourceImageUrlRef.current); sourceImageUrlRef.current = ''; setSourceImageUrl(''); }
+      setTerraformContent('');
       try {
         const path = selectedProjectId
           ? `/api/project-tree/${encodeURIComponent(selectedProjectId)}`
           : '/api/project-tree';
         const response = await api.get(path);
         if (isMounted) {
-          setTreeState(normalizeTreeResponse(response.data, selectedProjectId));
+          const normalized = normalizeTreeResponse(response.data, selectedProjectId);
+          setTreeState(normalized);
+          const pid = normalized.metadata?.projectId || selectedProjectId;
+          if (pid) {
+            api.get(`/api/projects/${encodeURIComponent(pid)}/source-image`, { responseType: 'blob' })
+              .then((imageResponse) => { if (isMounted) { const nextUrl = URL.createObjectURL(imageResponse.data); sourceImageUrlRef.current = nextUrl; setSourceImageUrl(nextUrl); } })
+              .catch(() => {});
+            api.get(`/api/projects/${encodeURIComponent(pid)}/terraform/main.tf`)
+              .then((draftResponse) => { if (isMounted) setTerraformContent(draftResponse.data?.content || ''); })
+              .catch(() => {});
+          }
         }
       } catch (loadError) {
         if (isMounted) {
@@ -138,6 +158,7 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
 
     return () => {
       isMounted = false;
+      if (sourceImageUrlRef.current) { URL.revokeObjectURL(sourceImageUrlRef.current); sourceImageUrlRef.current = ''; }
     };
   }, [selectedProjectId, refreshToken]);
 
@@ -170,7 +191,7 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
 
       <p className="muted-copy">
         업로드된 프로젝트의 source 참조와 최신 Terraform draft를 읽기 전용 트리로 표시합니다.
-        실행, 삭제, 이름 변경, 파일 생성은 아직 비활성화했습니다.
+        원본 이미지, 분석 결과와 전체 Terraform draft를 표시합니다. 삭제는 프로젝트 목록에서 가능합니다.
       </p>
 
       {treeState.metadata && (
@@ -184,10 +205,26 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
             <dd>{treeState.metadata.visibility}</dd>
           </div>
           <div>
-            <dt>Latest job</dt>
-            <dd>{treeState.metadata.latestAnalysisJobId || '-'}</dd>
+            <dt>Analysis status</dt>
+            <dd>{treeState.metadata.analysisStatus || 'NO_ANALYSIS'}</dd>
           </div>
         </dl>
+      )}
+
+      {sourceImageUrl && <section className="project-source-image-section"><h3>Original architecture image</h3><div className="project-source-image-wrapper"><img src={sourceImageUrl} alt="Persisted architecture" className="project-source-image" /></div></section>}
+
+      {treeState.metadata && (
+        <section className="analysis-detail-panel">
+          <section className="analysis-detail-card"><h3>Analysis summary</h3>
+          <p>{treeState.metadata.analysisSummary || 'No analysis summary is available yet.'}</p>
+          </section><section className="analysis-detail-card"><h4>Detected components</h4>
+          {treeState.metadata.detectedComponents.length > 0 ? <ul>{treeState.metadata.detectedComponents.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No components have been recorded.</p>}
+          </section><section className="analysis-detail-card"><h4>Relationships</h4>
+          {treeState.metadata.detectedRelationships.length > 0 ? <ul>{treeState.metadata.detectedRelationships.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No relationships have been recorded.</p>}
+          </section><section className="analysis-detail-card"><h4>Warnings</h4>
+          {treeState.metadata.warnings.length > 0 ? <ul>{treeState.metadata.warnings.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No warnings.</p>}
+          </section>
+        </section>
       )}
 
       {error && <p className="project-tree-error">{error}</p>}
@@ -197,11 +234,18 @@ function ProjectTreeReadOnly({ selectedProjectId, refreshToken = 0 }) {
       )}
 
       {treeState.roots.length > 0 && (
-        <ul className="project-tree-list">
+        <section className="project-tree-technical"><h3>Project tree and file preview</h3>{treeState.metadata?.latestAnalysisJobId && <p className="muted-copy">Latest job: {treeState.metadata.latestAnalysisJobId}</p>}<ul className="project-tree-list">
           {treeState.roots.map((root) => (
             <ProjectTreeNode key={root.id} node={root} onFileClick={handleFileClick} />
           ))}
-        </ul>
+        </ul></section>
+      )}
+
+      {treeState.metadata && (
+        <section className="analysis-result-panel">
+          <h3>Full terraform/main.tf</h3>
+          {terraformContent ? <pre><code>{terraformContent}</code></pre> : <p>Terraform draft is not available yet.</p>}
+        </section>
       )}
 
       {selectedNode && (

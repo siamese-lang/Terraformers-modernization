@@ -1,0 +1,30 @@
+project_name = "terraformers-modernization"
+environment  = "dev"
+aws_region  = "ap-northeast-2"
+
+vpc_cidr            = "10.40.0.0/16"
+public_subnet_count  = 2
+private_subnet_count = 2
+subnet_newbits       = 4
+
+# Keep the subnet discovery tag aligned with the EKS cluster name produced by
+# infra/terraform/envs/eks-runtime.
+eks_cluster_name = "terraformers-dev-backend"
+
+# Short-lived validation baseline: one NAT gateway gives private nodes the
+# ECR/STS/CloudWatch access needed for cluster bootstrap. Review hourly and
+# data-processing cost before apply and remove it during cleanup.
+enable_nat_gateway = true
+single_nat_gateway = true
+
+# S3 traffic stays on the gateway endpoint. Optional Bedrock connectivity and
+# application adapters remain disabled until separately reviewed.
+enable_s3_gateway_endpoint       = true
+enable_bedrock_runtime_endpoint = false
+
+common_tags = {
+  Project     = "terraformers-modernization"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostOwner   = "replace-with-owner"
+}

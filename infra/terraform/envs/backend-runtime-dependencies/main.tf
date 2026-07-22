@@ -1,5 +1,6 @@
 locals {
-  common_name = "${var.name_prefix}-${var.environment}"
+  common_name                   = "${var.name_prefix}-${var.environment}"
+  backend_image_publish_subject = "repo:${var.github_repository}:environment:${var.backend_image_publish_environment}"
 }
 
 resource "aws_ecr_repository" "backend" {
@@ -30,6 +31,70 @@ resource "aws_ecr_lifecycle_policy" "backend" {
       }
     ]
   })
+}
+
+resource "aws_iam_role" "backend_image_publisher" {
+  name = "${local.common_name}-backend-image-publisher"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = var.github_oidc_provider_arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:sub" = local.backend_image_publish_subject
+          }
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_policy" "backend_image_publisher" {
+  name        = "${local.common_name}-backend-image-publisher"
+  description = "Allows the dedicated GitHub OIDC publisher to push only the Terraformers backend image."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "EcrAuthorization"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      {
+        Sid    = "BackendRepositoryPush"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "ecr:DescribeImages",
+        ]
+        Resource = aws_ecr_repository.backend.arn
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "backend_image_publisher" {
+  role       = aws_iam_role.backend_image_publisher.name
+  policy_arn = aws_iam_policy.backend_image_publisher.arn
 }
 
 resource "aws_s3_bucket" "uploads" {

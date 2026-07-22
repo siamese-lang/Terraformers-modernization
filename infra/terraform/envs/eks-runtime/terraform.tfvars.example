@@ -3,7 +3,8 @@ environment  = "dev"
 aws_region   = "ap-northeast-2"
 
 # Existing network values. Do not commit real account-specific values here.
-vpc_id = "<vpc-id>"
+vpc_id         = "<vpc-id>"
+vpc_cidr_block = "10.40.0.0/16"
 private_subnet_ids = [
   "<private-subnet-id-a>",
   "<private-subnet-id-b>"
@@ -22,8 +23,11 @@ node_desired_size   = 1
 node_min_size       = 1
 node_max_size       = 2
 
-backend_namespace            = "terraformers-runtime"
-backend_service_account_name = "terraformers-backend"
+backend_namespace                         = "terraformers-runtime"
+backend_service_account_name              = "terraformers-backend"
+external_secrets_service_account_name     = "terraformers-external-secrets"
+load_balancer_controller_namespace        = "kube-system"
+load_balancer_controller_service_account_name = "aws-load-balancer-controller"
 
 # Outputs from backend-runtime-dependencies.
 upload_bucket_arn          = "arn:aws:s3:::<upload-bucket-name>"
@@ -31,6 +35,9 @@ result_bucket_arn          = "arn:aws:s3:::<result-bucket-name>"
 ai_log_queue_arn           = "arn:aws:sqs:ap-northeast-2:<account-id>:<ai-log-queue-name>"
 terraform_log_queue_arn    = "arn:aws:sqs:ap-northeast-2:<account-id>:<terraform-log-queue-name>"
 backend_runtime_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:<account-id>:secret:<backend-runtime-secret-name>"
+
+# Output from backend-stateful-dependencies. External Secrets reads only its password property.
+database_master_user_secret_arn = "arn:aws:secretsmanager:ap-northeast-2:<account-id>:secret:<rds-managed-secret-name>"
 
 # Keep empty until Bedrock adapter access is intentionally validated.
 bedrock_model_resource_arns = []

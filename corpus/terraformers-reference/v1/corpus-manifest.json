@@ -1,0 +1,12 @@
+{
+  "corpusVersion": "terraformers-reference-v1",
+  "awsProviderVersion": "5.100.0",
+  "embeddingModelId": "amazon.titan-embed-text-v2:0",
+  "vectorDimension": 1024,
+  "indexName": "terraformers-reference-v1",
+  "vectorField": "embedding",
+  "contentField": "content",
+  "documentCount": 12,
+  "chunkCount": 12,
+  "checksumAlgorithm": "SHA-256"
+}

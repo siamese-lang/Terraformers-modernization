@@ -1,0 +1,44 @@
+project_name = "terraformers-modernization"
+environment  = "dev"
+aws_region  = "ap-northeast-2"
+
+# Replace these values with reviewed outputs from the applied network stage.
+vpc_id = "vpc-replace-from-network-output"
+private_subnet_ids = [
+  "subnet-replace-private-a",
+  "subnet-replace-private-b",
+]
+
+# Prefer a security-group reference after the EKS boundary is known. For the
+# initial dependency stage, use only the private subnet CIDRs emitted by the
+# network state and never a public CIDR.
+allowed_app_security_group_ids = []
+allowed_database_cidr_blocks = [
+  "10.40.2.0/20",
+  "10.40.3.0/20",
+]
+
+database_name                         = "terraformers"
+database_username                     = "terraformers_app"
+database_port                         = 3306
+database_instance_class               = "db.t4g.micro"
+database_allocated_storage_gb         = 20
+database_max_allocated_storage_gb     = 100
+database_storage_type                 = "gp3"
+database_engine_version               = "10.11"
+database_multi_az                     = false
+database_storage_encrypted            = true
+database_publicly_accessible          = false
+database_backup_retention_days        = 7
+database_deletion_protection          = false
+database_skip_final_snapshot          = true
+database_apply_immediately            = false
+database_jdbc_ssl_params              = "sslMode=trust"
+cognito_deletion_protection           = false
+
+common_tags = {
+  Project     = "terraformers-modernization"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostOwner   = "replace-with-owner"
+}

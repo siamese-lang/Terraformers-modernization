@@ -1,22 +1,24 @@
 package com.terraformers.modernization.analysis;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import com.terraformers.modernization.reference.RetrievalMode;
 
 @ConfigurationProperties(prefix = "terraformers.analysis")
 public class AnalysisRuntimeProperties {
 
     private AnalysisMode mode = AnalysisMode.INTEGRATED_JAVA;
+    private RetrievalMode retrievalMode = RetrievalMode.DISABLED;
     private String bedrockModelId;
     private String bedrockEmbeddingModelId;
     private String opensearchEndpoint;
     private String indexName;
     private String vectorFieldName;
     private String contentFieldName;
-    private String externalPythonServiceUrl;
+    private String corpusVersion = "terraformers-reference-v1";
+    private String providerVersion = "5.100.0";
+    private Integer expectedVectorDimension;
     private boolean bedrockProviderEnabled;
-    private boolean bedrockEmbeddingEnabled;
-    private int bedrockMaxTokens = 4096;
-    private boolean opensearchRetrieverEnabled;
+    private int bedrockMaxTokens = 8192;
     private int opensearchTopK = 3;
     private String opensearchServiceName = "aoss";
     private String resultBucketName;
@@ -32,6 +34,9 @@ public class AnalysisRuntimeProperties {
     public void setMode(AnalysisMode mode) {
         this.mode = mode;
     }
+
+    public RetrievalMode getRetrievalMode() { return retrievalMode; }
+    public void setRetrievalMode(RetrievalMode retrievalMode) { this.retrievalMode = retrievalMode; }
 
     public String getBedrockModelId() {
         return bedrockModelId;
@@ -81,13 +86,24 @@ public class AnalysisRuntimeProperties {
         this.contentFieldName = contentFieldName;
     }
 
-    public String getExternalPythonServiceUrl() {
-        return externalPythonServiceUrl;
+    public String getCorpusVersion() {
+        return corpusVersion;
     }
 
-    public void setExternalPythonServiceUrl(String externalPythonServiceUrl) {
-        this.externalPythonServiceUrl = externalPythonServiceUrl;
+    public void setCorpusVersion(String corpusVersion) {
+        this.corpusVersion = corpusVersion;
     }
+
+    public String getProviderVersion() {
+        return providerVersion;
+    }
+
+    public void setProviderVersion(String providerVersion) {
+        this.providerVersion = providerVersion;
+    }
+
+    public Integer getExpectedVectorDimension() { return expectedVectorDimension; }
+    public void setExpectedVectorDimension(Integer expectedVectorDimension) { this.expectedVectorDimension = expectedVectorDimension; }
 
     public boolean isBedrockProviderEnabled() {
         return bedrockProviderEnabled;
@@ -97,28 +113,12 @@ public class AnalysisRuntimeProperties {
         this.bedrockProviderEnabled = bedrockProviderEnabled;
     }
 
-    public boolean isBedrockEmbeddingEnabled() {
-        return bedrockEmbeddingEnabled;
-    }
-
-    public void setBedrockEmbeddingEnabled(boolean bedrockEmbeddingEnabled) {
-        this.bedrockEmbeddingEnabled = bedrockEmbeddingEnabled;
-    }
-
     public int getBedrockMaxTokens() {
         return bedrockMaxTokens;
     }
 
     public void setBedrockMaxTokens(int bedrockMaxTokens) {
         this.bedrockMaxTokens = bedrockMaxTokens;
-    }
-
-    public boolean isOpensearchRetrieverEnabled() {
-        return opensearchRetrieverEnabled;
-    }
-
-    public void setOpensearchRetrieverEnabled(boolean opensearchRetrieverEnabled) {
-        this.opensearchRetrieverEnabled = opensearchRetrieverEnabled;
     }
 
     public int getOpensearchTopK() {

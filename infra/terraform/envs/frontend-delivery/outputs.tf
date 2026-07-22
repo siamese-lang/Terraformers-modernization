@@ -1,0 +1,69 @@
+output "frontend_bucket_name" {
+  description = "Private S3 bucket containing the React production bundle."
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_bucket_arn" {
+  description = "ARN of the private frontend bundle bucket."
+  value       = aws_s3_bucket.frontend.arn
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID used for frontend cache invalidation."
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "cloudfront_distribution_arn" {
+  description = "ARN of the frontend CloudFront distribution."
+  value       = aws_cloudfront_distribution.frontend.arn
+}
+
+output "cloudfront_distribution_domain_name" {
+  description = "Default CloudFront domain serving the React SPA and /api/* proxy."
+  value       = aws_cloudfront_distribution.frontend.domain_name
+}
+
+output "frontend_base_url" {
+  description = "HTTPS base URL for browser access when no custom alias is used."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "frontend_api_base_url" {
+  description = "Same-origin browser API base. The React client intentionally uses relative /api paths."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}/api"
+}
+
+output "frontend_origin_access_control_id" {
+  description = "CloudFront OAC ID that protects the private frontend bucket."
+  value       = aws_cloudfront_origin_access_control.frontend.id
+}
+
+output "backend_vpc_origin_id" {
+  description = "CloudFront VPC origin ID that connects /api/* to the internal backend ALB."
+  value       = aws_cloudfront_vpc_origin.backend.id
+}
+
+output "backend_origin_load_balancer_arn" {
+  description = "Approved internal Application Load Balancer ARN used by the CloudFront VPC origin."
+  value       = data.aws_lb.backend_origin.arn
+}
+
+output "backend_origin_load_balancer_dns_name" {
+  description = "Private DNS name of the backend Application Load Balancer."
+  value       = data.aws_lb.backend_origin.dns_name
+}
+
+output "frontend_delivery_role_arn" {
+  description = "Non-sensitive IAM role ARN for GitHub Actions frontend delivery OIDC. Configure it as FRONTEND_AWS_ROLE_TO_ASSUME."
+  value       = aws_iam_role.frontend_delivery.arn
+}
+
+output "frontend_delivery_role_name" {
+  description = "IAM role name for GitHub Actions frontend delivery OIDC."
+  value       = aws_iam_role.frontend_delivery.name
+}
+
+output "github_environment_name" {
+  description = "GitHub Environment whose OIDC subject may assume the frontend delivery role."
+  value       = var.github_environment
+}

@@ -1,119 +1,73 @@
 # Terraformers Modernization
 
+## Lifecycle 상태
+
+| 구분 | 정확한 상태 |
+|---|---|
+| `last_verified_deployed_architecture` | EKS Backend, RDS, S3, Cognito, Bedrock, private AOSS, CloudFront private origin, External Secrets/IRSA, immutable ECR digest와 Argo CD GitOps를 사용한 마지막 검증 배포 구조 |
+| `current_aws_runtime_status` | 현재 실행 중인 AWS runtime 없음 |
+| `runtime_teardown_status` | verified — read-only runtime closure run `29904386655` passed; six runtime Terraform states와 exact active runtime AWS resource count가 모두 0 |
+| `bootstrap_closure_status` | deletion complete; bootstrap and live-smoke residuals removed |
+| `project_scoped_zero_resource_proof` | complete on 2026-07-22 |
+| `redeployment_status` | documented, not executed |
+
+이 README의 기능·아키텍처·workload 설명은 **현재 online service의 주장**이 아니라 마지막으로 검증된 배포와 저장소 구현 범위다. Bootstrap deletion is complete; full-zero-state redeployment remains documented, not executed. 상세 canonical source는 [`docs/project-system-overview.md`](docs/project-system-overview.md)다.
+
 ## 1. 프로젝트 개요
 
-**Terraformers Modernization**은 AWS Cloud School 팀 프로젝트 `Terraformers`를 기반으로, 당시 산출물을 현재 기준에서 포트폴리오 제출 가능한 수준의 **백엔드 중심·클라우드 인프라 운영환경 고도화 버전**으로 정리하는 프로젝트입니다.
+**Terraformers Modernization**은 2024년 AWS Cloud School 5인 팀 프로젝트 `Terraformers`를 기반으로, 기존 산출물을 현재 기준의 **백엔드·클라우드 인프라 운영환경 고도화 프로젝트**로 정리한 저장소입니다.
 
-원본 Terraformers는 사용자가 아키텍처 이미지를 업로드하면 AI 분석 결과를 바탕으로 Terraform 코드 초안을 생성하고, 프로젝트·파일·결과·로그·댓글 등 관련 데이터를 관리하는 웹서비스입니다.
+원본 서비스는 사용자가 AWS 아키텍처 이미지를 업로드하면 AI 분석 결과를 바탕으로 Terraform 코드 초안을 생성하고, 프로젝트·파일·결과·댓글 등 관련 데이터를 웹에서 관리합니다.
 
-이 저장소의 목적은 AI 생성 품질을 고도화하거나 새로운 개인 서비스를 만드는 것이 아닙니다. 팀 프로젝트 당시 부족했던 **백엔드 구조, RDB 정합성, 클라우드 의존성 연동, Secret 관리, Terraform 인프라, CI/CD, 배포 후 검증, 장애 대응 문서화**를 후속 작업으로 보강하여 **백엔드 개발과 클라우드 인프라 구축·관리 역량**을 설명할 수 있도록 정리하는 것입니다.
+이 저장소의 목적은 서비스를 새로 만들거나 생성 AI 자체를 연구하는 것이 아닙니다. 기존 팀 결과물과 `siamese-lang/rdb-refactor`를 재사용하면서 다음을 보강했습니다.
 
-## 2. 프로젝트 설명 제목
+- Spring Boot API와 owner-based RDB domain
+- Flyway migration과 Hibernate schema validation
+- Cognito 사용자와 내부 사용자·프로젝트 소유권 연결
+- S3 object와 RDB metadata 책임 분리
+- Spring Boot 내부 Bedrock/AOSS 분석 orchestration
+- EKS, RDS, S3, SQS, Cognito, CloudFront, IAM, Secrets Manager Terraform 구성
+- External Secrets와 IRSA 기반 Secret·AWS 권한 전달
+- immutable ECR digest와 Argo CD GitOps
+- 승인형 Terraform plan/apply
+- CloudWatch/Application Signals/X-Ray 기반 관측성
+- AWS 전체 철거·재배포 lifecycle 문서화
 
-포트폴리오에서는 다음 제목으로 설명합니다.
+프로젝트 전체 구조를 가장 먼저 이해하려면 다음 문서를 읽습니다.
+
+- **[`docs/project-system-overview.md`](docs/project-system-overview.md): 기능, 요청 흐름, Backend·AWS 구성, 주요 설정과 설계 이유를 연결한 전체 안내서**
+- [`docs/current-operations-delivery-plan.md`](docs/current-operations-delivery-plan.md): 현재 종료 단계와 작업 순서
+- [`docs/portfolio/final-evidence-and-interview-guide.md`](docs/portfolio/final-evidence-and-interview-guide.md): 최종 증빙과 면접 설명
+
+## 2. 포트폴리오 제목
 
 ```text
 Terraformers: 백엔드·클라우드 인프라 운영환경 고도화
 ```
 
-또는 영문 보조 제목으로 다음을 사용할 수 있습니다.
+영문 보조 제목:
 
 ```text
 Terraformers Backend & Cloud Infrastructure Modernization
 ```
 
-기존 제목인 `Terraformers: 컨테이너 기반 웹서비스 배포·운영환경 고도화`도 사용할 수 있으나, 앞으로의 작업 초점은 **백엔드 개발과 클라우드 인프라 구축·관리**에 둡니다.
+## 3. 마지막 검증 서비스 기능
 
-## 3. 고도화 작업의 중심 범위
+- Cognito 회원가입·로그인
+- 공개 프로젝트 조회
+- 인증 사용자의 프로젝트 생성과 이미지 업로드
+- 비동기 architecture analysis job 실행과 상태 조회
+- Bedrock architecture facts 추출
+- Titan embedding과 private AOSS vector retrieval
+- reference-aware Terraform 코드 초안 생성
+- 프로젝트 file tree와 원본 이미지·Terraform artifact 조회
+- Terraform `main.tf` 편집
+- 프로젝트 공개/비공개 전환과 soft-delete
+- 공개 프로젝트 댓글
 
-이 저장소에서 중점적으로 다루는 범위는 다음입니다.
+생성된 Terraform은 **검토 가능한 초안**이며 자동으로 `terraform apply`되지 않습니다.
 
-### Backend development
-
-- Spring Boot backend API 구조 정리
-- 사용자, 프로젝트, 파일, 댓글, 실행 이력 등 도메인 데이터 흐름 정리
-- RDB 중심 persistence 구조 정리
-- Flyway migration과 Hibernate validate 기반 schema 정합성 관리
-- S3 object 저장과 RDB metadata 저장 책임 분리
-- SQS 기반 처리 로그·결과 polling 흐름 정리
-- Cognito 인증 정보와 backend 사용자 매핑 흐름 정리
-- runtime config와 Secret 주입 방식 정리
-- health check, startup failure, dependency failure 진단 기준 정리
-- backend build/test/smoke test 기준 정리
-
-### Cloud infrastructure and operations
-
-- Terraform 기반 AWS 인프라 정의 정리
-- EKS, ECR, RDS, S3, SQS, Cognito, IAM, Secrets Manager, CloudFront 구성 정리
-- GitHub Actions OIDC 기반 AWS 접근 구조 정리
-- 승인 기반 Terraform plan/apply 흐름 정리
-- backend/analysis service image build와 ECR publish 흐름 정리
-- Kubernetes manifest image tag와 runtime deployment 일치성 검증
-- External Secrets 또는 Kubernetes Secret 기반 runtime config 전달 구조 정리
-- 배포 후 rollout, health, API smoke, log inspection 절차 정리
-- 장애 상황별 runbook 작성
-
-## 4. 현재 공개 backend 기준선
-
-현재 `backend/` 디렉터리에는 공개 저장소에서 먼저 검증 가능한 backend 기준선이 포함되어 있습니다.
-
-포함된 항목은 다음입니다.
-
-- Maven 기반 Spring Boot 3.3 / Java 17 프로젝트 구조
-- backend Dockerfile
-- actuator health check
-- runtime config key presence inspection endpoint
-- prod profile datasource/Flyway/JPA validate contract
-- Flyway baseline schema
-- runtime config inspector unit test
-- Maven verification workflow
-- Docker image build workflow
-
-검증 명령은 다음입니다.
-
-```bash
-bash scripts/checks/backend-local-verification.sh
-```
-
-자세한 내용은 [`docs/backend-public-baseline.md`](docs/backend-public-baseline.md)를 기준으로 설명합니다.
-
-## 5. 서비스 기능 범위
-
-서비스 기능은 다음 수준으로 유지합니다.
-
-- 사용자가 AWS 아키텍처 이미지를 업로드합니다.
-- Python 분석 서비스가 Bedrock/OpenSearch 기반 분석을 수행합니다.
-- 분석 결과를 바탕으로 Terraform 코드 초안을 생성합니다.
-- Spring Boot backend가 프로젝트, 파일, 결과, 로그, 댓글 등 업무 데이터를 관리합니다.
-- S3에는 업로드 이미지와 생성 파일을 저장하고, RDB에는 metadata와 관계형 업무 데이터를 저장합니다.
-- SQS를 통해 AI/Terraform 처리 로그와 결과 흐름을 비동기적으로 다룹니다.
-
-이 프로젝트에서 중요한 것은 “Terraform 코드를 얼마나 잘 생성하는가”가 아니라, 위 서비스 흐름을 **백엔드와 클라우드 인프라 관점에서 어떻게 안정적으로 구성하고, 배포하고, 검증하고, 장애 시 어디부터 확인할 수 있게 만들었는가**입니다.
-
-## 6. 팀 프로젝트와 후속 고도화 구분
-
-### 팀 프로젝트 당시 기여
-
-- 백엔드 일부 기능 구현
-- 컨테이너/클라우드 배포 흐름 점검
-- S3, 인증, 배포, 결과 조회 등 서비스 흐름 일부 검증
-- 팀 프로젝트 전체 산출물 완성에 참여
-
-### 후속 고도화 기여
-
-- 기존 팀 프로젝트 산출물 재점검
-- backend domain/API/persistence 구조 정리
-- RDB 중심 데이터 구조 및 schema migration 정리
-- S3/SQS/RDS/Secrets Manager 등 backend 외부 의존성 연결 검증
-- Docker 기반 backend/analysis service 실행 환경 정리
-- Terraform 기반 AWS 인프라 구성 정리
-- GitHub Actions 기반 backend build/test, image publish, Terraform 검증 흐름 정리
-- runtime config와 Secret 분리
-- 배포 후 smoke test와 E2E 검증 절차 문서화
-- 장애 상황별 점검 runbook 작성
-- 포트폴리오 제출용 README, architecture, deployment, validation, runbook 문서 정리
-
-## 7. 아키텍처 요약
+## 4. 마지막 검증 배포 아키텍처
 
 ```text
 User Browser
@@ -121,80 +75,241 @@ User Browser
   | HTTPS
   v
 CloudFront
-  |-- S3 static frontend
-  |-- /api/* backend origin
+  |-- static route -> private versioned S3 through OAC
+  |-- /api/*       -> VPC origin -> internal ALB
   v
-Spring Boot Backend on container runtime
-  |-- RDS MariaDB: users/projects/files/comments/reactions metadata
-  |-- S3: uploaded images, generated Terraform files, tfstate objects
-  |-- SQS: AI/Terraform progress logs and result messages
-  |-- Cognito: auth token validation and user mapping
-  |-- Secrets Manager / External Secrets: runtime config and secret delivery
-  |
-  | HTTP /analyze
-  v
-Python Bedrock Analysis Service
-  |-- Bedrock: image analysis and Terraform draft generation
-  |-- OpenSearch/AOSS: reference search
-  |-- SQS publish: progress and final result
+Spring Boot Backend on EKS
+  |-- Cognito JWT validation and RDB user mapping
+  |-- RDS MariaDB: users/projects/files/analysis_jobs/comments
+  |-- S3: architecture images and generated Terraform artifacts
+  |-- Bedrock: architecture facts and Terraform draft generation
+  |-- private AOSS: version-filtered vector retrieval
+  |-- SQS: available progress/result adapter; current publisher disabled
+  |-- CloudWatch/Application Signals/X-Ray: bounded telemetry
+  |-- Secrets Manager -> External Secrets -> Kubernetes Secret
 ```
 
-자세한 내용은 [`docs/architecture.md`](docs/architecture.md)를 기준으로 설명합니다.
+기존 Python analysis service는 팀 프로젝트의 historical reference입니다. 현재 기본 runtime에서는 **Spring Boot Backend가 analysis job lifecycle과 AWS adapter orchestration을 소유**합니다.
 
-## 8. 운영환경 고도화 핵심 포인트
-
-- **Backend 중심 구조 정리**: API, 도메인 데이터, persistence, 외부 AWS 의존성 호출 흐름을 운영 관점에서 설명 가능하게 정리합니다.
-- **RDB 중심 데이터 구조**: 사용자, 프로젝트, 파일, 댓글, 반응 등 관계형 업무 데이터는 RDS MariaDB 기준으로 정리합니다.
-- **Schema migration**: Flyway migration과 Hibernate validate로 schema drift를 조기에 확인합니다.
-- **Object/metadata 분리**: S3는 실제 파일 content를 저장하고, RDB는 metadata와 관계를 관리합니다.
-- **Secret 분리**: DB credential, runtime config, AWS 연동값은 코드와 manifest에서 분리합니다.
-- **Cloud infrastructure 관리**: Terraform으로 EKS, RDS, S3, SQS, ECR, IAM, Secrets Manager, CloudFront 구성을 관리합니다.
-- **Container image 관리**: backend와 Python analysis service를 각각 image로 build/publish하고, image tag가 manifest와 runtime에 일치하는지 확인합니다.
-- **CI/CD 통제**: PR 검증과 실제 apply/deploy를 분리하고, Terraform apply는 승인 기반 workflow로 실행합니다.
-- **배포 후 검증**: rollout status, health check, API smoke, E2E flow, log inspection을 기준으로 운영 상태를 확인합니다.
-- **Runbook 문서화**: DB 연결 실패, Secret 누락, SQS 처리 실패, worker 장애, image tag 불일치 등 장애 상황별 점검 절차를 문서화합니다.
-
-## 9. 문서 구조
-
-- [`PROJECT_DIRECTION.md`](PROJECT_DIRECTION.md): 프로젝트 방향 고정 문서
-- [`docs/backend-infra-scope.md`](docs/backend-infra-scope.md): 백엔드·클라우드 인프라 중심 작업 범위
-- [`docs/backend-public-baseline.md`](docs/backend-public-baseline.md): 공개 backend 기준선 설명
-- [`docs/migration-plan.md`](docs/migration-plan.md): private 작업물에서 공개 저장소로 이전할 범위와 제외 기준
-- [`docs/architecture.md`](docs/architecture.md): 시스템 아키텍처와 구성요소 책임
-- [`docs/deployment.md`](docs/deployment.md): Docker, Terraform, GitHub Actions, runtime config, 배포 순서
-- [`docs/validation.md`](docs/validation.md): 배포 후 smoke/E2E/API/log 검증 절차
-- [`docs/runbook.md`](docs/runbook.md): 장애 상황별 운영 점검 절차
-- [`docs/interview-guide.md`](docs/interview-guide.md): 포트폴리오·면접 설명 가이드
-- [`docs/evidence/README.md`](docs/evidence/README.md): 검증 증거 템플릿과 마스킹 기준
-
-## 10. 주의: 이 프로젝트가 아닌 것
-
-이 프로젝트는 다음이 아닙니다.
-
-- Terraformers를 완전히 새로 만든 개인 프로젝트
-- AI 코드 생성 품질 개선 프로젝트
-- Terraform plan 검증·승인 플랫폼
-- Backstage, AWS Service Catalog, env0의 하위호환 서비스
-- 운영 로그 분석 리포트 서비스
-- 프론트엔드 개발 역량 중심 프로젝트
-- Terraform 자체를 주제로 삼는 프로젝트
-
-## 11. 다른 운영 프로젝트와의 차별점
-
-별도 개인 프로젝트인 **AWS EC2 기반 다계층 업무시스템 운영환경 구축 및 장애·복구 검증**은 VM 기반 WEB/WAS/DB/NFS 운영환경, 장애·성능·복구 검증, 로그·지표 기반 원인 분석, 백업/복구 runbook을 보여 주는 프로젝트입니다.
-
-반면 이 Terraformers 고도화 프로젝트는 다음 역량을 보여 줍니다.
-
-- Spring Boot backend 개발 및 운영 구조 정리
-- RDB/Flyway 기반 schema 관리
-- AWS 관리형 서비스 연동
-- RDS, S3, SQS, Secrets Manager 기반 runtime 구성
-- EKS/ECR/Terraform/GitHub Actions 기반 클라우드 인프라 구축·관리
-- 배포 후 smoke test와 E2E 검증
-- 클라우드 네이티브 서비스 운영 문서화
-
-## 12. 핵심 설명 문장
+핵심 공개 경계:
 
 ```text
-팀 프로젝트에서는 기능 완성과 시연에 집중했지만, 이후 실제 서비스로 설명하려면 백엔드 구조, DB 스키마 정합성, 외부 AWS 의존성 연결, Secret 관리, 인프라 변경 통제, 배포 후 상태 확인, 장애 시 점검 절차가 필요하다고 판단했습니다. 그래서 기존 Terraformers 산출물을 기반으로 Spring Boot backend, RDB/Flyway, S3/SQS 연동, Secrets Manager/External Secrets, Terraform 인프라, GitHub Actions 배포 흐름, smoke test와 runbook을 정리해 백엔드·클라우드 인프라 중심의 운영환경 고도화를 수행했습니다.
+CloudFront only
+  -> private S3 frontend
+  -> private VPC origin
+     -> internal ALB
+        -> ClusterIP Backend Service / Pod IP
+```
+
+직접 public ALB, public AOSS, public Argo CD endpoint는 사용하지 않습니다.
+
+## 5. Backend와 데이터 책임
+
+### Backend
+
+- Cognito access token 검증
+- Cognito `sub`와 RDB user 매핑
+- owner/public/admin authorization
+- project, file, comment, analysis API
+- analysis job 상태 전이
+- Bedrock/AOSS/S3 adapter orchestration
+- 생성 Terraform 검증·저장
+- safe failure reason과 telemetry 기록
+
+### RDS MariaDB
+
+```text
+users
+  └─ projects
+       ├─ project_files
+       ├─ analysis_jobs
+       ├─ terraform_runs
+       └─ boards
+            ├─ comments
+            └─ board_reactions
+```
+
+RDB는 관계, 소유권, visibility, soft-delete, analysis status와 object metadata를 관리합니다.
+
+### S3
+
+- 업로드 architecture image bytes
+- 생성 Terraform result bytes
+- frontend static bundle
+- RAG corpus package/receipt
+- Terraform remote state
+
+S3 object와 RDB metadata가 서로 다른 책임을 가지므로 운영 검증에서는 양쪽 상태를 함께 확인합니다.
+
+## 6. 주요 기술과 설정
+
+| 영역 | 마지막 검증 기준 |
+|---|---|
+| Backend | Java 17, Spring Boot 3.3.2, Spring Data JPA |
+| Schema | Flyway, production `ddl-auto=validate` |
+| Database | RDS MariaDB |
+| Auth | Cognito + OAuth2 resource-server JWT |
+| Object storage | private/versioned S3 |
+| Analysis | Bedrock + Titan embedding + private AOSS |
+| Runtime | EKS managed node group |
+| Secret | RDS managed password + External Secrets |
+| Public delivery | CloudFront, private S3 OAC, private ALB VPC origin |
+| Image delivery | immutable ECR tag/digest + Argo CD |
+| Infrastructure | seven remote Terraform state components |
+| CI/CD identity | GitHub Actions OIDC |
+| Observability | CloudWatch, Container Insights, Application Signals, X-Ray, Micrometer |
+
+AWS runtime RAG 설정:
+
+```text
+analysis mode       integrated-java
+retrieval mode      REQUIRED
+generation model    global.anthropic.claude-sonnet-4-6
+embedding model     amazon.titan-embed-text-v2:0
+vector dimension    1024
+physical index      terraformers-reference-v1
+selected corpus     terraformers-reference-v2
+provider version    5.100.0
+topK                8
+```
+
+## 7. Terraform state 구성
+
+| State | 주요 책임 |
+|---|---|
+| `bootstrap` | state bucket, plan/apply roles, GitHub OIDC create-or-adopt boundary |
+| `network` | VPC, subnet, route, NAT, endpoint |
+| `runtime-dependencies` | ECR, upload/result S3, SQS, runtime Secret container |
+| `stateful-dependencies` | RDS, Cognito |
+| `eks-runtime` | EKS, node group, IRSA, observability |
+| `rag-runtime` | AOSS, corpus bucket, CodeBuild ingestion |
+| `frontend-delivery` | frontend S3/OAC, CloudFront, VPC origin |
+
+The bootstrap root can conditionally create a GitHub OIDC provider or adopt an existing provider ARN. The current live bootstrap state adopted an existing project-dedicated GitHub OIDC provider, so the provider itself is outside the 16 managed bootstrap addresses and requires separate final deletion; plan/apply roles remain in bootstrap state.
+
+Terraform apply는 merge 시 자동 실행하지 않습니다. Live plan을 검토한 뒤 protected environment와 exact approved contract를 통해 별도로 실행합니다.
+
+## 8. GitOps delivery
+
+```text
+Backend source commit
+  -> GitHub OIDC image workflow
+  -> immutable git-<full-sha> tag
+  -> ECR digest
+  -> digest-only GitOps pull request
+  -> integration merge
+  -> Argo CD reconciliation
+  -> Deployment image / Pod imageID parity
+```
+
+Image workflow는 `kubectl apply`나 `kubectl set image`를 실행하지 않습니다. Rollback은 이전 digest를 가리키는 Git commit으로 되돌립니다.
+
+마지막 검증 Backend workload 기준:
+
+- namespace `terraformers-runtime`
+- Deployment replica 1
+- Service `ClusterIP`
+- UID 10001, non-root, RuntimeDefault seccomp
+- startup/readiness/liveness probes
+- requests 250m/512Mi, limits 1CPU/1Gi
+- Java auto-instrumentation annotation
+
+단일 replica이므로 application high availability를 구현했다고 주장하지 않습니다.
+
+## 9. 검증 흐름
+
+PR 단계:
+
+```text
+Backend Local Verification
+Frontend CI
+Terraform Static Verification
+Runtime Contract Verification
+Backend Origin Contract Verification
+Pre-deployment Package Verification
+```
+
+승인 delivery 단계:
+
+```text
+Terraform live plan -> reviewed apply
+Backend image publish -> GitOps digest PR -> Argo CD
+RAG package -> private CodeBuild ingestion
+Frontend build -> private S3 sync -> limited CloudFront invalidation
+Browser/API/runtime/telemetry evidence
+```
+
+Workflow 성공만으로 실제 서비스 완료를 판단하지 않습니다. Git desired state, Pod runtime image, browser outcome, RDB/S3 상태와 telemetry를 함께 확인합니다.
+
+## 10. 팀 프로젝트와 후속 고도화 구분
+
+### 팀 프로젝트 당시
+
+- 5인 팀이 architecture image 기반 Terraform 생성 서비스를 구현
+- 백엔드 일부 기능과 배포 흐름 점검에 참여
+- S3, 인증, 결과 조회 등 서비스 흐름 검증에 참여
+
+### 후속 개인 고도화
+
+- 원본과 `rdb-refactor` 비교 및 재사용 범위 결정
+- canonical RDB domain과 인증/소유권 정렬
+- Spring Boot 통합 분석 runtime 구현·검증
+- AWS Terraform state와 실제 배포 복구
+- private RAG와 corpus v2 비교
+- External Secrets와 private origin
+- immutable digest GitOps
+- AWS-native observability
+- 장애 원인·수정·검증 기록
+- AWS inventory, teardown, redeployment runbook
+
+2024년 팀 구현 전체를 개인 작업으로 설명하지 않습니다.
+
+## 11. 주요 문서
+
+### 전체 이해와 방향
+
+- [`docs/project-system-overview.md`](docs/project-system-overview.md)
+- [`docs/current-operations-delivery-plan.md`](docs/current-operations-delivery-plan.md)
+- [`docs/source-rag-gitops-reuse-plan.md`](docs/source-rag-gitops-reuse-plan.md)
+
+### Backend와 데이터
+
+- [`docs/rdb-domain-realignment.md`](docs/rdb-domain-realignment.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/deployment.md`](docs/deployment.md)
+
+### Delivery와 운영
+
+- [`docs/gitops-delivery.md`](docs/gitops-delivery.md)
+- [`docs/backend-origin-delivery.md`](docs/backend-origin-delivery.md)
+- [`docs/frontend-delivery.md`](docs/frontend-delivery.md)
+- [`docs/managed-secret-delivery.md`](docs/managed-secret-delivery.md)
+- [`docs/terraform-rag-runtime.md`](docs/terraform-rag-runtime.md)
+- [`docs/operations-visibility.md`](docs/operations-visibility.md)
+
+### 종료와 면접
+
+- [`docs/portfolio/final-evidence-and-interview-guide.md`](docs/portfolio/final-evidence-and-interview-guide.md)
+- [`docs/lifecycle/aws-resource-inventory.md`](docs/lifecycle/aws-resource-inventory.md)
+- [`docs/lifecycle/aws-teardown-runbook.md`](docs/lifecycle/aws-teardown-runbook.md)
+- [`docs/lifecycle/aws-redeploy-runbook.md`](docs/lifecycle/aws-redeploy-runbook.md)
+- [`docs/lifecycle/aws-runtime-teardown-closure.md`](docs/lifecycle/aws-runtime-teardown-closure.md)
+- [`docs/lifecycle/aws-final-zero-resource-proof.md`](docs/lifecycle/aws-final-zero-resource-proof.md)
+- [`docs/lifecycle/closure-progress.md`](docs/lifecycle/closure-progress.md)
+
+## 12. 의도적으로 주장하지 않는 범위
+
+- 생성 Terraform의 자동 배포 가능성
+- HPA/JMeter autoscaling 완료
+- 다중 Backend replica 기반 HA
+- multi-region disaster recovery
+- RDS restore drill 완료
+- 모든 AWS 리소스의 Terraform-only 관리
+- 통계적으로 충분한 RAG 품질 평가
+- 최종 live evidence가 없는 telemetry 성공
+
+## 13. 핵심 설명 문장
+
+```text
+팀 프로젝트에서는 기능 완성과 시연에 집중했지만, 이후 실제 서비스로 설명하려면 데이터 소유권, DB schema 정합성, AWS 의존성 연결, Secret 전달, 인프라 변경 통제, image와 runtime 일치, 관측성과 장애 대응, 전체 환경의 철거·재배포 절차가 필요하다고 판단했습니다. 그래서 기존 Terraformers와 RDB refactor 결과를 재사용해 Spring Boot 통합 분석 runtime, owner-based RDB domain, private AWS architecture, immutable digest GitOps, 승인형 Terraform과 운영 runbook을 연결했습니다.
 ```

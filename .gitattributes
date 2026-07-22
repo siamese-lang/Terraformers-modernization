@@ -1,0 +1,32 @@
+# Keep repository source and deployment artifacts stable across Windows and WSL.
+* text=auto
+
+*.java text eol=lf
+*.kt text eol=lf
+*.xml text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.tf text eol=lf
+*.tfvars text eol=lf
+*.properties text eol=lf
+*.env text eol=lf
+
+# Native Windows command scripts remain CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.zip binary
+*.gz binary

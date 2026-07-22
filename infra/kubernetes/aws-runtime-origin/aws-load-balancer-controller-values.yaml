@@ -1,0 +1,15 @@
+clusterName: __EKS_CLUSTER_NAME__
+region: __AWS_REGION__
+vpcId: __VPC_ID__
+serviceAccount:
+  create: false
+  name: __LOAD_BALANCER_CONTROLLER_SERVICE_ACCOUNT__
+replicaCount: 1
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+enableServiceMutatorWebhook: false

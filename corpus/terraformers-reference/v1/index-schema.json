@@ -1,0 +1,57 @@
+{
+  "settings": {
+    "index": {
+      "knn": true
+    }
+  },
+  "mappings": {
+    "properties": {
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 1024,
+        "method": {
+          "name": "hnsw",
+          "engine": "faiss",
+          "space_type": "cosinesimil",
+          "parameters": {}
+        }
+      },
+      "title": {
+        "type": "text"
+      },
+      "content": {
+        "type": "text"
+      },
+      "documentId": {
+        "type": "keyword"
+      },
+      "documentType": {
+        "type": "keyword"
+      },
+      "sourceVersion": {
+        "type": "keyword"
+      },
+      "sourcePath": {
+        "type": "keyword"
+      },
+      "corpusVersion": {
+        "type": "keyword"
+      },
+      "services": {
+        "type": "keyword"
+      },
+      "resourceTypes": {
+        "type": "keyword"
+      },
+      "architecturePattern": {
+        "type": "keyword"
+      },
+      "securityConsiderations": {
+        "type": "keyword"
+      },
+      "providerVersion": {
+        "type": "keyword"
+      }
+    }
+  }
+}

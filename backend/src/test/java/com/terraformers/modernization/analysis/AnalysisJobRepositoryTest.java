@@ -15,9 +15,10 @@ class AnalysisJobRepositoryTest {
     private AnalysisJobRepository repository;
 
     @Test
-    void savesAnalysisJobLifecycleState() {
+    void savesAnalysisJobLifecycleStateWithNumericProjectAndFileIds() {
         AnalysisJobEntity entity = new AnalysisJobEntity();
-        entity.setProjectId("project-1");
+        entity.setProjectId(101L);
+        entity.setSourceFileId(201L);
         entity.setSourceBucket("example-bucket");
         entity.setSourceKey("uploads/diagram.png");
         entity.setCorrelationId("corr-1");
@@ -27,6 +28,8 @@ class AnalysisJobRepositoryTest {
         AnalysisJobEntity saved = repository.saveAndFlush(entity);
 
         assertThat(saved.getId()).isNotBlank();
+        assertThat(saved.getProjectId()).isEqualTo(101L);
+        assertThat(saved.getSourceFileId()).isEqualTo(201L);
         assertThat(saved.getStatus()).isEqualTo(AnalysisJobStatus.PENDING);
         assertThat(saved.getAnalysisMode()).isEqualTo(AnalysisMode.INTEGRATED_JAVA);
         assertThat(saved.getCreatedAt()).isNotNull();

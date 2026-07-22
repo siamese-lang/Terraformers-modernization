@@ -9,7 +9,9 @@ public record AnalysisUploadResponse(
         boolean binaryPersisted,
         String storageETag,
         String analysisJobId,
-        String projectId,
+        Long projectId,
+        Long sourceFileId,
+        Long resultFileId,
         String sourceBucket,
         String sourceKey,
         String originalFilename,
@@ -20,6 +22,10 @@ public record AnalysisUploadResponse(
         String provider,
         String resultObjectKey,
         String resultPreview,
+        String analysisSummary,
+        java.util.List<String> detectedComponents,
+        java.util.List<String> detectedRelationships,
+        java.util.List<String> warnings,
         String failureReason,
         Instant createdAt,
         Instant updatedAt
@@ -32,12 +38,14 @@ public record AnalysisUploadResponse(
             StoredUploadObject storedUpload
     ) {
         return new AnalysisUploadResponse(
-                "analysis-job-compatibility",
+                "owned-project-analysis",
                 storedUpload.provider(),
                 storedUpload.binaryPersisted(),
                 storedUpload.eTag(),
                 job.id(),
                 job.projectId(),
+                job.sourceFileId(),
+                job.resultFileId(),
                 job.sourceBucket(),
                 job.sourceKey(),
                 originalFilename,
@@ -48,6 +56,10 @@ public record AnalysisUploadResponse(
                 job.provider(),
                 job.resultObjectKey(),
                 job.resultPreview(),
+                job.analysisSummary(),
+                job.detectedComponents(),
+                job.detectedRelationships(),
+                job.warnings(),
                 job.failureReason(),
                 job.createdAt(),
                 job.updatedAt()

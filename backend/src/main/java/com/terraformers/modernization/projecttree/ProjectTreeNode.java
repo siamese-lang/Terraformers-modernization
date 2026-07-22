@@ -6,7 +6,7 @@ public record ProjectTreeNode(
         String id,
         String name,
         String type,
-        String projectId,
+        Long projectId,
         String parentId,
         boolean isLeaf,
         boolean isPrivate,
@@ -17,13 +17,13 @@ public record ProjectTreeNode(
         List<ProjectTreeNode> children
 ) {
     public static ProjectTreeNode project(
-            String projectId,
+            Long projectId,
             String name,
             boolean isPrivate,
             List<ProjectTreeNode> children
     ) {
         return new ProjectTreeNode(
-                projectId,
+                String.valueOf(projectId),
                 name,
                 "project",
                 projectId,
@@ -38,7 +38,13 @@ public record ProjectTreeNode(
         );
     }
 
-    public static ProjectTreeNode folder(String id, String name, String projectId, String parentId, List<ProjectTreeNode> children) {
+    public static ProjectTreeNode folder(
+            String id,
+            String name,
+            Long projectId,
+            String parentId,
+            List<ProjectTreeNode> children
+    ) {
         return new ProjectTreeNode(
                 id,
                 name,
@@ -58,7 +64,7 @@ public record ProjectTreeNode(
     public static ProjectTreeNode file(
             String id,
             String name,
-            String projectId,
+            Long projectId,
             String parentId,
             String apiPath,
             String sourceBucket,

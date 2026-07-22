@@ -9,8 +9,13 @@ output "database_subnet_group_name" {
 }
 
 output "database_instance_id" {
-  description = "RDS MariaDB instance ID."
+  description = "RDS MariaDB DbiResourceId used as the immutable Terraform resource identity."
   value       = aws_db_instance.backend.id
+}
+
+output "database_instance_identifier" {
+  description = "RDS DBInstanceIdentifier used by RDS APIs and AWS CLI --db-instance-identifier."
+  value       = aws_db_instance.backend.identifier
 }
 
 output "database_instance_arn" {
