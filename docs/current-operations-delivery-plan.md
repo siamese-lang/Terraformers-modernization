@@ -1,21 +1,21 @@
 # Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: runtime teardown completed after PR #106; read-only runtime closure verification is the next gate
+Status: **runtime closure verified; bounded bootstrap/state/OIDC inventory is the next gate**
 
 ## 1. Authority and conflict resolution
 
 This document is the current execution source of truth for the remaining Terraformers modernization work.
 
-It preserves the project identity and reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. Use `docs/project-system-overview.md` for the final architecture and `docs/lifecycle/aws-runtime-teardown-closure.md` for the completed runtime teardown record.
+It preserves the project identity and reuse decisions in `docs/source-rag-gitops-reuse-plan.md`. Use `docs/project-system-overview.md` for the final architecture and `docs/lifecycle/aws-runtime-teardown-closure.md` for the verified runtime teardown record.
 
 When repository documents conflict:
 
 1. Preserve the project as the modernization of the 2024 five-person Terraformers team project.
 2. Preserve the reuse-first decisions from the original repository and `siamese-lang/rdb-refactor`.
-3. Use this document for the current completion state, execution order, stop conditions, and approval boundaries.
+3. Use this document for the current completion state, stop conditions, and approval boundaries.
 4. Use live AWS, Terraform state, workflow, browser, and runtime evidence over historical plans.
 5. Do not reopen RAG, autoscaling, monitoring-stack expansion, frontend redesign, or new application features without one concrete defect that blocks closure.
-6. Do not create another broad verifier, recovery framework, or micro-PR sequence for already completed runtime deletion.
+6. Do not create another broad verifier, recovery framework, or micro-PR sequence for completed runtime deletion.
 
 A new conversation must read this file first, then `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. It must resume from the first incomplete gate rather than create a new roadmap.
 
@@ -34,10 +34,10 @@ The project must support a concrete explanation of:
 - how immutable image delivery, Git desired state, Argo CD reconciliation, and browser verification were connected;
 - how live failures were isolated at the first failing boundary;
 - how AWS-native telemetry was bounded to the project goal;
-- how the runtime environment was inventoried and removed without relying on the local Windows machine for Terraform execution;
-- what remained outside runtime closure and why it requires a separate approval.
+- how the runtime environment was inventoried, removed, and independently verified;
+- what remains outside runtime closure and why it requires a separate approval.
 
-The final portfolio must distinguish implemented source, proven live behavior, documented procedures, and deliberate non-claims.
+Do not claim autoscaling, multi-replica application HA, multi-region DR, generated-code deployment, or a completed RDS restore drill.
 
 ## 3. Completed baseline that must not be redesigned
 
@@ -50,12 +50,12 @@ The following are complete and must not be reopened without a closure-blocking d
 - Backend delivery used immutable ECR digests and GitOps reconciliation.
 - Private Bedrock embedding -> AOSS retrieval -> Bedrock Terraform generation was proven live.
 - Corpus v2 and the bounded RAG comparison are closed.
-- AWS-native operations visibility source and live evidence are closed to the extent recorded in the final evidence guide.
-- Runtime teardown source, recovery, and evidence were completed through PR #106.
-- All six runtime Terraform states reached zero managed instances.
-- The exact runtime VPC was deleted after its final non-default security-group dependency was removed.
-
-Do not claim autoscaling, multi-replica application HA, multi-region DR, generated-code deployment, or a completed RDS restore drill.
+- AWS-native operations visibility is closed to the extent recorded in the final evidence guide.
+- Runtime teardown source, recovery, and evidence were completed through PR #107.
+- Read-only runtime closure run `29904386655` passed against integration commit `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582`.
+- All six runtime Terraform states contain zero managed instances.
+- All exact active runtime AWS resource counts are zero.
+- One runtime Secret is visible only as a pending-deletion tombstone and is not active runtime.
 
 ## 4. Binding execution constraints
 
@@ -63,12 +63,12 @@ Do not claim autoscaling, multi-replica application HA, multi-region DR, generat
 - Do not restore the former Python analysis service.
 - Do not add public ALB, public AOSS, public Argo CD, or a second monitoring stack.
 - Do not store AWS credentials, GitHub PATs, kubeconfig, tfvars, raw tfstate, saved plans, prompts, retrieved text, generated Terraform, or Secret values in evidence.
-- Terraform mutation remains separately approved.
+- Terraform and AWS mutation remain separately approved.
 - Do not rerun a destructive workflow solely to turn a completed deletion into a green GitHub status.
 - Do not treat Terraform state zero as sufficient proof without exact residual verification.
-- Do not use account-wide fuzzy name/tag scans where an exact resource identity or exact canonical name is available.
+- Do not use account-wide fuzzy name/tag scans where an exact identity or canonical name is available.
 - The local Windows machine is not the canonical Terraform execution environment.
-- Foundation, state-bucket, and OIDC deletion require a new explicit approval after a separate bounded review.
+- Foundation, state-bucket, IAM, and OIDC deletion require a new explicit approval after a separate bounded review.
 
 ## 5. Closure gates and current status
 
@@ -106,39 +106,52 @@ Status: complete.
 
 The destructive work completed even though several runs ended with residual-check false negatives after state zero or exact resource deletion. The authoritative incident and completion record is `docs/lifecycle/aws-runtime-teardown-closure.md`.
 
-The old destructive workflow must not be rerun merely to obtain a successful conclusion.
+The destructive runtime workflow must not be rerun merely to obtain a successful conclusion.
 
 ### Gate 5 - Read-only runtime closure verification
 
-Status: pending.
+Status: **complete**.
 
-Run `.github/workflows/aws-runtime-closure-verification.yml` once after the closure PR is merged.
+Run `29904386655` completed successfully and produced sanitized artifact `8523216242`.
 
-The workflow must:
+Verified results:
 
-- verify all six runtime state counts are zero;
-- verify the Kubernetes owner-removal marker;
-- check exact runtime AWS names or identities;
-- classify an active Secret separately from a Secret already pending deletion;
-- produce only sanitized counts;
-- leave foundation unchecked and undeleted.
+- six runtime state counts: all `0`;
+- Kubernetes owner-removal marker: valid;
+- exact active runtime AWS resource counts: all `0`;
+- active runtime Secret count: `0`;
+- pending runtime Secret deletion count: `1`;
+- foundation checked: `false`;
+- foundation deleted: `false`;
+- contract: `passed_with_pending_secret_deletion`.
 
-Stop condition: the workflow reports no active runtime resource and records any AWS pending-deletion tombstone separately.
+The pending Secret tombstone must be rechecked before immediate redeployment or final zero-AWS-resource proof. It does not reopen runtime teardown.
 
-### Gate 6 - Bootstrap/state/OIDC decision
+### Gate 6 - Bootstrap/state/OIDC inventory and decision
 
-Status: not approved and not started.
+Status: **read-only inventory pending; mutation not approved**.
 
-Before any mutation, present one bounded inventory containing:
+Known bootstrap state from the completed state inventory:
 
-- state bucket versions and lock objects;
-- GitHub OIDC provider ownership and whether it is project-specific;
-- foundation, plan, apply, delivery, and teardown IAM roles/policies still present;
-- the independent identity required to remove the final OIDC/state resources;
-- GitHub Environment, variable, and secret retention decisions;
-- the redeployment consequence of deleting or retaining each item.
+- 16 Terraform-managed resources;
+- one versioned encrypted private state bucket and its bucket controls;
+- Terraform live-plan and live-apply IAM roles;
+- inline and managed policies/attachments for state access and approved creation boundaries;
+- GitHub OIDC provider outside Terraform state;
+- GitHub external configuration retained for redeployment.
 
-A new explicit user approval is mandatory. Runtime teardown approval does not extend to this gate.
+Before any mutation, refresh one bounded inventory containing:
+
+- current bootstrap managed state count and exact addresses;
+- current state-bucket version, delete-marker, lock, and multipart-upload counts;
+- the project-dedicated GitHub OIDC provider;
+- every role currently trusting that provider, including any final teardown role outside bootstrap state;
+- current existence of Terraform-managed plan/apply roles and policies;
+- pending runtime Secret deletion state;
+- the independent identity required to remove the final state bucket and OIDC provider;
+- retain-versus-delete consequences.
+
+A new explicit user approval is mandatory after this inventory is presented. Runtime teardown approval does not extend to this gate.
 
 ### Gate 7 - Repository closure
 
@@ -146,10 +159,10 @@ Status: pending after the bootstrap decision.
 
 Repository closure includes:
 
-- final closure verification evidence;
+- verified runtime closure evidence;
 - aligned lifecycle documents;
 - final evidence/interview guide;
-- a decision on whether bootstrap is retained for future redeployment or deleted for zero-AWS-resource proof;
+- the decision to retain bootstrap for future redeployment or delete it for zero-AWS-resource proof;
 - a final integration merge and optional release tag.
 
 Actual redeployment is not required unless the user explicitly opens a new AWS deployment window.
@@ -170,14 +183,12 @@ These incidents are retained for interview explanation. They are not a reason to
 
 ## 7. Current next action
 
-1. Merge the PR containing the read-only closure workflow, idempotent network recovery, and runtime teardown closure document after checks pass.
-2. Run `AWS Runtime Closure Verification` once against the merged integration commit.
-3. Record the sanitized result.
-4. Present the bootstrap/state/OIDC inventory and decision boundary separately.
-5. Do not mutate bootstrap resources without a new explicit approval.
-
-No further runtime destroy execution is planned.
+1. Run one bounded read-only bootstrap/state/OIDC inventory.
+2. Record the exact current bootstrap state, state-bucket data, OIDC trust, final teardown identity, and pending Secret status.
+3. Present two choices: retain bootstrap for low-friction redeployment, or delete it for zero-AWS-resource proof.
+4. Require explicit approval before any bootstrap mutation.
+5. Do not execute additional runtime deletion.
 
 ## 8. New-conversation handoff contract
 
-> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`, then read `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. Runtime deletion through the network state is complete after PR #106. Do not rerun the destructive runtime workflow merely to obtain green status. The next gate is one read-only runtime closure verification. After that, inspect and present the bootstrap/state-bucket/GitHub-OIDC boundary separately and require explicit approval before mutation. Preserve the project as the modernization of the 2024 five-person Terraformers team project, preserve reuse-first decisions, and do not reopen RAG, autoscaling, monitoring expansion, frontend redesign, or new application features without a concrete closure-blocking defect.
+> Continue `siamese-lang/Terraformers-modernization` from `docs/current-operations-delivery-plan.md`, then read `docs/project-system-overview.md` and `docs/lifecycle/aws-runtime-teardown-closure.md`. Runtime teardown and read-only runtime closure verification are complete. Run `29904386655` verified all six runtime Terraform states at zero and all exact active runtime AWS resource counts at zero; one Secret remains only as a pending-deletion tombstone. Do not rerun the destructive runtime workflow. The next gate is a bounded read-only inventory of bootstrap state, state-bucket versions, GitHub OIDC trust, plan/apply/final-teardown IAM roles, and the pending Secret. Present retain-versus-delete consequences and require a new explicit approval before any foundation, IAM, state-bucket, or OIDC mutation. Preserve the project as the modernization of the 2024 five-person Terraformers team project, preserve reuse-first decisions, and do not reopen RAG, autoscaling, monitoring expansion, frontend redesign, or new application features without a concrete closure-blocking defect.
