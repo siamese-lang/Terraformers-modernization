@@ -264,6 +264,14 @@ def cmd_verify_plan(args: Any) -> None:
     _original_verify_plan(args)
     if args.stage == "runtime-dependencies" and base.runtime_teardown_execution_context():
         _purge_runtime_ecr(pathlib.Path(args.output).parent)
+    if args.stage == "network" and base.runtime_teardown_execution_context():
+        output_dir = pathlib.Path(args.output).parent
+        state_path = pathlib.Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "current-state.json"
+        script = pathlib.Path(__file__).with_name("recover_network_vpc.sh")
+        subprocess.run(
+            ["bash", str(script), str(state_path), str(output_dir)],
+            check=True,
+        )
 
 
 def cmd_managed_count(args: Any) -> None:
