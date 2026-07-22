@@ -110,36 +110,76 @@ The reviewed plan artifacts cannot be applied later. An approved execution workf
 
 ## Closure Gate 4 - Approved runtime teardown
 
-Status: **DESIGN IN PROGRESS — EXECUTION NOT AUTHORIZED**
+Status: **READY FOR FIRST STAGE APPROVAL — EXECUTION NOT STARTED**
 
-Permitted next work:
+Execution implementation and registration:
 
-1. design one separately approved runtime teardown workflow;
-2. exclude foundation/bootstrap deletion;
-3. execute one exact runtime stage per dispatch;
-4. require exact source commit, AWS account, stage name, expected delete count and explicit destructive confirmation;
-5. verify non-Terraform prerequisites for that stage;
-6. create a fresh saved destroy plan and re-enforce delete-only semantics;
-7. apply only the saved plan in the same job;
-8. verify state and service-specific residuals;
-9. stop after one stage and require a new approval for the next stage.
+- staged runtime teardown workflow merged through PR #97;
+- identical manual-dispatch workflow registered on the default branch through PR #98;
+- GitHub OIDC bootstrap hardening merged through PR #99;
+- foundation/bootstrap deletion remains excluded;
+- one exact runtime stage is permitted per dispatch;
+- global concurrency prevents simultaneous teardown stages;
+- every stage requires exact source commit, AWS account, stage, reviewed maximum delete count and stage-specific destructive confirmation;
+- a fresh saved destroy plan is generated, checked against the reviewed address allowlist and applied in the same job;
+- state-aware subset recovery is permitted only after partial success;
+- unreviewed addresses, creates, updates, replacements, imports and invalid data-source actions are rejected.
 
-Not permitted until the workflow PR is reviewed and explicitly approved:
+Execution environment readiness confirmed on 2026-07-22:
 
-- disabling or deleting CloudFront;
-- deleting Kubernetes or Argo CD resources;
-- purging S3 versions or ECR images;
-- deleting Secrets, RDS, Cognito, SQS, AOSS, logs, EKS, network or IAM resources;
-- Terraform apply/destroy;
-- foundation/state/OIDC deletion.
+```text
+environment=aws-live-teardown
+deployment_branch=agent/rdb-domain-realignment
+role_arn=arn:aws:iam::024863981627:role/terraformers-live-teardown
+required_environment_variables=4
+required_tfvars_secrets=6
+missing_tfvars_secrets=0
+setup_result=READY_WITHOUT_DISPATCH
+```
 
-No project resource has been deleted for portfolio closure.
+The environment contains:
+
+- `AWS_REGION`;
+- `AWS_ROLE_TO_ASSUME`;
+- `AWS_TERRAFORM_STATE_BUCKET`;
+- `AWS_TERRAFORM_STATE_PREFIX`;
+- all six non-foundation private tfvars Secrets required by the runtime stages.
+
+The state-external `terraformers-live-teardown` role:
+
+- trusts only `repo:siamese-lang/Terraformers-modernization:environment:aws-live-teardown`;
+- has ReadOnlyAccess plus the project teardown inline policy;
+- does not have AdministratorAccess;
+- remains available until runtime residual verification is complete;
+- cannot remove the final foundation credentials or itself.
+
+Approved stage order remains:
+
+1. `frontend-delivery` — reviewed maximum 14 deletes;
+2. `kubernetes-owners` — 0 Terraform deletes;
+3. `rag-runtime` — reviewed maximum 23 deletes;
+4. `eks-runtime` — reviewed maximum 30 deletes;
+5. `stateful-dependencies` — reviewed maximum 5 deletes;
+6. `runtime-dependencies` — reviewed maximum 16 deletes;
+7. `network` — reviewed maximum 16 deletes.
+
+No runtime teardown workflow has been dispatched. No CloudFront, S3, Kubernetes, Argo CD, AOSS, EKS, RDS, Cognito, SQS, ECR, Secret, log, IAM, VPC or Terraform-managed resource has been deleted for portfolio closure.
+
+The first destructive boundary is a separately approved `frontend-delivery` dispatch with:
+
+```text
+stage=frontend-delivery
+reviewed_maximum_delete_count=14
+confirmation=DESTROY_REVIEWED_FRONTEND_DELIVERY_14
+```
+
+A successful stage must complete its post-apply state and service residual checks. The next stage must not be dispatched automatically.
 
 ## Closure Gate 5 - Bootstrap teardown and zero-resource proof
 
 Status: **NOT STARTED**
 
-The state bucket, Terraform plan/apply roles, and GitHub OIDC provider remain required until runtime residual proof passes.
+The state bucket, Terraform plan/apply roles, teardown role and GitHub OIDC provider remain required until runtime residual proof passes.
 
 ## Closure Gate 6 - Redeployment proof and repository closure
 
@@ -149,16 +189,16 @@ Completed:
 
 - zero-state bootstrap and canonical redeployment order documented in `docs/lifecycle/aws-redeploy-runbook.md`;
 - live owner and retention inventory reconciled with the teardown design;
-- all seven Terraform destroy plans reconciled to the managed state inventory.
+- all seven Terraform destroy plans reconciled to the managed state inventory;
+- staged runtime teardown workflow implemented, registered and prepared with its dedicated environment and role.
 
 Remaining:
 
-- implement and review runtime teardown execution workflow;
-- execute explicitly approved runtime teardown;
+- execute each explicitly approved runtime teardown stage;
 - record runtime and bootstrap residual results;
 - execute separately approved bootstrap teardown;
 - create the final repository release/tag after zero-resource proof.
 
 ## Current next action
 
-Implement and review the runtime teardown execution workflow and its static safety contract. Do not run the workflow or delete any resource until the code PR is explicitly approved and merged.
+Obtain explicit approval for the first `frontend-delivery` runtime teardown dispatch against the exact current integration commit. Do not dispatch it automatically, and do not proceed to `kubernetes-owners` unless the frontend stage and residual verification succeed.
