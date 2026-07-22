@@ -1,6 +1,8 @@
 # AWS Bootstrap Closure Inventory
 
-This is the bounded, read-only prerequisite for reviewing bootstrap deletion commands after the user selected `DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF`. It is not a deletion procedure and does not grant execution approval.
+Status: **historical pre-delete bootstrap inventory; deletion subsequently completed**
+
+This preserves the bounded, read-only pre-delete inventory. Its counts are historical evidence; deletion subsequently completed.
 
 ## Execution environment
 
@@ -48,3 +50,8 @@ The inventory has now passed. `independent_identity_type=IAM user` and `independ
 ## Approval boundary
 
 No AWS mutation is implemented by this inventory. After a passing result, review the exact deletion commands once, then obtain separate explicit execution approval. IAM, OIDC, state-bucket, object-version, Terraform, and Secret mutations remain outside this scope.
+
+
+## Final closure addendum
+
+The final residual scan removed the discovered project-owned live-smoke IRSA role/policy, EKS OIDC/provider roles, Secret, and exact VPC ownership residue. Bootstrap resources and state history are absent. The project-scoped zero-AWS-resource proof completed with no inventory API errors; see [final proof](aws-final-zero-resource-proof.md).

@@ -1,6 +1,6 @@
 # Terraformers Modernization 프로젝트 전체 구성 안내서
 
-Status: canonical technical overview of the last verified deployed architecture; runtime teardown is verified, bootstrap closure is pending
+Status: canonical technical overview of the last verified deployed architecture; runtime and bootstrap closure complete; project-scoped zero-AWS-resource proof verified; redeployment documented but not executed
 
 ## 1. 이 문서를 먼저 읽는 이유
 
@@ -20,12 +20,12 @@ Status: canonical technical overview of the last verified deployed architecture;
 
 ### 현재 lifecycle claim boundary
 
-이 문서는 현재 실행 중인 서비스의 상태판이 아니라 **마지막으로 검증된 배포 아키텍처와 저장소 구현의 canonical 전체 안내**다. Runtime teardown은 read-only closure run `29904386655`로 검증되었으며, 여섯 runtime Terraform state와 exact active runtime AWS resource count는 모두 0이다. Bootstrap inventory는 통과했지만 bootstrap deletion은 승인·실행되지 않았고 zero-resource proof도 완료되지 않았다.
+이 문서는 현재 실행 중인 서비스의 상태판이 아니라 **마지막으로 검증된 배포 아키텍처와 저장소 구현의 canonical 전체 안내**다. Runtime teardown은 read-only closure run `29904386655`로 검증되었으며, 여섯 runtime Terraform state와 exact active runtime AWS resource count는 모두 0이다. Bootstrap and live-smoke residual deletion subsequently completed; project-scoped zero-AWS-resource proof is complete.
 
 - 2024년 팀 프로젝트의 기능 구현과 이후 개인 고도화의 재사용·운영 정렬을 구분한다.
 - 실제 구현 및 historical live verification은 증빙 문서가 뒷받침하는 범위에서만 주장한다.
 - Terraform root, workflow, manifest, runbook은 teardown 뒤 재구축 가능한 범위를 설명하지만, 실제 redeployment 완료를 뜻하지 않는다.
-- 현재 workload, 실행 중 CloudFront URL, bootstrap 완전 삭제, account-wide zero-resource proof는 주장하지 않는다.
+- 현재 workload, 실행 중 CloudFront URL, account-wide zero-resource proof는 주장하지 않는다. Bootstrap deletion은 completed project-scoped closure로 [final proof](lifecycle/aws-final-zero-resource-proof.md)에 기록한다.
 
 현재 종료 상태는 [current operations plan](current-operations-delivery-plan.md), runtime 결과는 [runtime closure](lifecycle/aws-runtime-teardown-closure.md), 재구축 절차는 [redeploy runbook](lifecycle/aws-redeploy-runbook.md)를 따른다.
 
@@ -829,7 +829,7 @@ Micrometer base meter 이름과 CloudWatch emitted `.count`, `.avg`, `.sum`, `.m
 - closure inventory, runtime teardown, independent runtime closure verification
 - bootstrap inventory (deletion command review pending)
 
-정확한 live/closure 값은 [final evidence guide](portfolio/final-evidence-and-interview-guide.md)와 lifecycle records에 고정한다. 현재 runtime은 실행 중이지 않으며 bootstrap deletion과 account-wide zero-resource proof는 아직 완료되지 않았다.
+정확한 live/closure 값은 [final evidence guide](portfolio/final-evidence-and-interview-guide.md)와 lifecycle records에 고정한다. 현재 runtime은 실행 중이지 않고 project-scoped bootstrap closure와 zero-resource proof는 완료되었다; account-wide claim은 하지 않는다.
 
 ### 18.2 구현하거나 증명했다고 주장하지 않는 것
 
@@ -883,12 +883,14 @@ runtime teardown complete
 runtime closure verification complete
 bootstrap inventory complete
 additional IAM/EKS-OIDC classification pending
-bootstrap deletion not approved/not executed
-zero-resource proof incomplete
+bootstrap and live-smoke residual deletion complete
+project-scoped zero-AWS-resource proof complete
+remote state history permanently removed
+GitHub configuration retained outside AWS
 redeployment documented, not executed
 ```
 
-Bootstrap/state/OIDC removal은 versioned state bucket purge와 final IAM/OIDC trust 검토를 포함하는 별도 승인 작업이다. pending Secret 하나는 same-name redeployment를 잠시 막을 수 있다. GitHub Environment, variables, encrypted tfvars, approval rules은 AWS 밖의 configuration으로 남으며, full-zero-state redeployment는 independent administrator/CloudShell → state bucket/OIDC/roles → remote backend migration → seven state and controller/delivery/acceptance 순으로 문서화되었을 뿐 실행되지 않았다. 자세한 실제 gate는 [closure progress](lifecycle/closure-progress.md), 절차는 [teardown](lifecycle/aws-teardown-runbook.md) 및 [redeploy](lifecycle/aws-redeploy-runbook.md)에 둔다.
+Bootstrap/state/OIDC removal was a separately approved final closure task including versioned state bucket purge and final IAM/OIDC trust review. The pending Secret was removed as part of that closure. GitHub Environment, variables, encrypted tfvars, approval rules은 AWS 밖의 configuration으로 남으며, full-zero-state redeployment는 independent administrator/CloudShell → state bucket/OIDC/roles → remote backend migration → seven state and controller/delivery/acceptance 순으로 문서화되었을 뿐 실행되지 않았다. 자세한 final result는 [zero-resource proof](lifecycle/aws-final-zero-resource-proof.md), actual gate는 [closure progress](lifecycle/closure-progress.md), 절차는 [teardown](lifecycle/aws-teardown-runbook.md) 및 [redeploy](lifecycle/aws-redeploy-runbook.md)에 둔다.
 
 ## 21. Evidence classification and contribution boundary
 

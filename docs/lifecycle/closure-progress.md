@@ -160,18 +160,18 @@ This is runtime closure, not account-wide zero-resource proof. The pending Secre
 
 ## Closure Gate 6 - Bootstrap closure and zero-resource proof
 
-Status: **inventory complete; command review pending; deletion not approved/not executed.**
+Status: **COMPLETE**
 
 The independent CloudShell read-only inventory passed with `inventory_contract=ready_for_deletion_command_review`: bootstrap has 16 managed resources and 9 data sources; state bucket versioning is enabled with 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 lock-object versions. The GitHub OIDC ownership contract is Terraformers-only and the required plan/apply/teardown roles are present. MFA Delete and Object Lock are absent and S3 access-point count is 0.
 
-The final exact read-only classification must include `terraformers-modernization-live-smoke-backend-irsa-role` and attached `terraformers-modernization-live-smoke-backend-runtime-access`, the non-default `v1` policy version on `terraformers-live-apply-operations-visibility-create` (default `v2`), and whether EKS OIDC-provider residue remains. No bootstrap mutation, IAM deletion, OIDC deletion, bucket purge, or zero-resource proof has occurred.
+Bootstrap deletion and the discovered live-smoke residual deletion are complete. The final project-scoped residual scan was `2026-07-22T13:32:38Z`, reported `inventory_api_error_labels=[]`, and completed project-scoped zero-AWS-resource proof. See [final proof](aws-final-zero-resource-proof.md).
 
 ## Closure Gate 7 - Repository publication
 
-Status: **PENDING**
+Status: **pending repository review and publication**
 
-Keep this single draft PR branch open for the later approved bootstrap-deletion result and truthful zero-resource proof. Full-zero-state redeployment is documented but not executed.
+Keep this draft PR for final review and publication. Full-zero-state redeployment is documented but not executed.
 
 ## Current next action
 
-Do **not** rerun runtime teardown. Run only the bounded additional IAM/EKS-OIDC read-only inventory, review exact deletion commands, and obtain separate execution approval.
+Do not perform further AWS mutation for closure. The next action is PR #111 final review and repository publication.

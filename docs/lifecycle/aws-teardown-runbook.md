@@ -1,5 +1,9 @@
 # AWS Teardown Runbook
 
+## Execution status
+
+**Runtime and full bootstrap closure executed.** This runbook is retained for historical reconstruction and future controlled teardown; its procedural phases are not an instruction to repeat completed deletion. The final result is [project-scoped zero-resource proof](aws-final-zero-resource-proof.md).
+
 ## 1. Purpose and safety boundary
 
 This runbook removes every AWS resource attributable to Terraformers-modernization while preserving enough bootstrap access to finish and verify the teardown.

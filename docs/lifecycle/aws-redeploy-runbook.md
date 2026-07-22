@@ -1,5 +1,11 @@
 # AWS Redeployment Runbook
 
+## Current starting condition
+
+This is now a full-zero-state redeployment path: the state bucket, project GitHub OIDC provider, and Terraform plan/apply/teardown roles are absent; runtime resources are absent; GitHub repository configuration remains but AWS identifiers are stale. Redeployment is documented, not executed.
+
+Future work begins from an independent IAM administrator or CloudShell session, a new state bucket, a new or adopted GitHub OIDC provider, new plan/apply roles, GitHub variable/role-ARN refresh, remote backend initialization, seven Terraform stages, controllers, delivery, and acceptance.
+
 ## 1. Purpose
 
 This runbook recreates Terraformers-modernization after a complete AWS teardown without depending on the current local Windows disk for Terraform execution.

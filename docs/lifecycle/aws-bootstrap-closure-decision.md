@@ -1,8 +1,8 @@
 # AWS Bootstrap Closure Decision
 
-Status: **`DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF` selected; read-only inventory passed; deletion-command review pending; no bootstrap mutation approved**
+Status: **historical decision executed and verified; project-scoped zero-AWS-resource proof complete**
 
-This document defines the remaining AWS boundary after verified runtime closure. It is a decision record, not authorization to delete resources.
+This document preserves the historical decision and deletion design. The selected decision was subsequently executed and verified; it is not a current deletion authorization.
 
 ## 1. Evidence basis
 
@@ -183,3 +183,8 @@ DELETE_BOOTSTRAP_FOR_ZERO_RESOURCE_PROOF
 ```
 
 This selection authorizes only the bounded read-only CloudShell/admin inventory and one review of the exact deletion commands. It does **not** authorize deletion itself. After the inventory passes, the exact deletion commands must be reviewed once and a separate explicit execution approval must be received before any IAM, OIDC provider, state-bucket, or state-object mutation.
+
+
+## 9. Executed closure result
+
+The selected decision was executed. Bootstrap resources and additional project-owned live-smoke residue were removed; the state bucket and remote state history were permanently removed; GitHub configuration was retained outside AWS; and project-scoped zero-AWS-resource proof completed on 2026-07-22. Future redeployment starts from the independent bootstrap procedure. See [final zero-resource proof](aws-final-zero-resource-proof.md).

@@ -1,6 +1,6 @@
 # AWS Runtime Teardown Closure
 
-Status: **runtime closure verified by read-only workflow; this is not account-wide zero-resource proof**
+Status: **historical pre-state-bucket-deletion runtime closure; later project-scoped zero-resource proof complete**
 
 Runtime closure source commit: `e2a6cb5cc2d0a6879456bbcf6159b16d45e3d582`
 
@@ -155,10 +155,6 @@ The corrected operating rule is:
 
 > Resolve the exact state-owned resource, inventory external dependencies before a long delete, use bounded service-specific cleanup only where the inventory proves it is required, and verify the exact identity afterward. Do not repeat the full destructive workflow merely to change a status badge.
 
-## 7. Remaining work
+## 7. Subsequent lifecycle result
 
-Runtime deletion and runtime closure verification are complete.
-
-Bootstrap inventory is now complete and recorded in [aws-bootstrap-closure-inventory.md](aws-bootstrap-closure-inventory.md). Its pass is only readiness for deletion-command review. The remaining work is to inventory the additional IAM and EKS-OIDC residue exactly, review exact deletion commands, and obtain a new explicit execution approval before any bootstrap, state-bucket, IAM, or OIDC mutation.
-
-GitHub environments, variables, encrypted values, and approval rules remain external configuration and are retained for future redeployment unless separately decided otherwise.
+Bootstrap and remaining live-smoke resources were later deleted. Project-scoped zero-AWS-resource proof completed on 2026-07-22. Run `29904386655` remains the pre-state-bucket-deletion proof that all six runtime states had zero managed instances; remote state history was then intentionally removed with the state bucket. See [final proof](aws-final-zero-resource-proof.md).

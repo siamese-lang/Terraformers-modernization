@@ -1,6 +1,6 @@
 # Terraformers Portfolio Closure and Lifecycle Plan
 
-Status: **runtime closure and bootstrap inventory complete; deletion-command review pending; no bootstrap mutation approved**
+Status: **AWS lifecycle closure complete; repository publication is the current gate**
 
 ## 1. Authority and conflict resolution
 
@@ -129,25 +129,19 @@ The pending Secret tombstone must be rechecked before immediate redeployment or 
 
 ### Gate 6 - Bootstrap/state/OIDC closure
 
-Status: **bootstrap inventory passed; deletion-command review pending; deletion not approved or executed.**
+Status: **historical pre-delete inventory; closure execution and final proof complete.**
 
-The read-only CloudShell inventory passed with `inventory_contract=ready_for_deletion_command_review`. It confirmed an independent administrator caller, zero managed instances in every runtime state, a bootstrap state with **16 managed resources / 9 data sources**, a Terraformers-only GitHub OIDC ownership contract, and 0 active runtime Secrets with 1 pending-deletion tombstone.
+The read-only CloudShell inventory passed before deletion with `inventory_contract=ready_for_deletion_command_review`. It confirmed an independent administrator caller, zero managed instances in every runtime state, a bootstrap state with **16 managed resources / 9 data sources**, a Terraformers-only GitHub OIDC ownership contract, and 0 active runtime Secrets with 1 pending-deletion tombstone.
 
 Measured state-bucket facts are: versioning `Enabled`, 231 object versions, 159 delete markers, 8 current objects, 0 multipart uploads, and 318 Terraform lock-object versions. MFA Delete is not enabled, Object Lock is absent, and there are no S3 access points. The OIDC provider is trusted by exactly these Terraformers roles: `terraformers-live-teardown`, `terraformers-live-terraform-apply`, and `terraformers-live-terraform-plan`.
 
 Additional IAM residue requires exact read-only classification: `terraformers-modernization-live-smoke-backend-irsa-role` with attached policy `terraformers-modernization-live-smoke-backend-runtime-access`. The apply policy `terraformers-live-apply-operations-visibility-create` has default version `v2` and non-default version `v1`. Whether an EKS OIDC provider remains is not asserted until the next exact inventory.
 
-Next work is **not** another runtime teardown. It is:
-
-1. additional IAM/EKS-OIDC residual inventory;
-2. exact deletion-command review; and
-3. separate deletion approval.
-
-No bootstrap mutation, IAM deletion, OIDC deletion, state-bucket purge, or zero-resource proof has occurred.
+The subsequent exact residual classification, bootstrap deletion, and project-scoped zero-resource proof are complete. This historical inventory is retained as evidence; current work is repository publication.
 
 ### Gate 7 - Repository closure
 
-Status: pending after bootstrap deletion execution and a truthful zero-resource proof; keep one branch and one draft PR for the later final result.
+Status: pending repository review and publication; keep this one draft PR for final review.
 
 Repository closure includes:
 
@@ -180,6 +174,11 @@ Perform the bounded additional IAM/EKS-OIDC read-only inventory, then review exa
 
 ## 8. New-conversation handoff contract
 
-Resume only from the next incomplete closure boundary. Current facts are: runtime teardown complete; runtime closure verification complete; bootstrap inventory complete; additional IAM/EKS-OIDC inventory pending; bootstrap deletion not approved/not executed; and zero-resource proof incomplete. Runtime teardown must **not** be rerun.
+Resume from repository publication. AWS closure is complete: runtime teardown/closure, bootstrap and live-smoke residual deletion, and project-scoped zero-resource proof. Do not rerun runtime teardown, recreate the state bucket for verification, rerun bootstrap deletion, or execute redeployment. Read [the canonical system overview](project-system-overview.md), [closure progress](lifecycle/closure-progress.md), and [final proof](lifecycle/aws-final-zero-resource-proof.md), then perform only final documentation/PR review and publication when approved.
 
-Read [the canonical system overview](project-system-overview.md), [closure progress](lifecycle/closure-progress.md), and [runtime closure](lifecycle/aws-runtime-teardown-closure.md), then perform only the bounded additional inventory, exact deletion-command review, and separately approved bootstrap execution when authorized.
+
+## 9. Final closure and repository publication
+
+Runtime teardown, runtime closure verification, bootstrap deletion, live-smoke residual deletion, and project-scoped zero-AWS-resource proof are complete. Do not rerun runtime teardown, recreate the state bucket merely for verification, rerun bootstrap deletion, or execute redeployment.
+
+Current work is final documentation review, PR #111 review, explicit merge approval, merge to `agent/rdb-domain-realignment`, a fresh integration-to-main PR, closing or superseding obsolete PR #32, and an optional release tag. See [final zero-resource proof](lifecycle/aws-final-zero-resource-proof.md).

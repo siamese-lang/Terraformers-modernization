@@ -135,3 +135,8 @@ Closure Gate 1 is complete because:
 - this inventory can drive teardown and redeployment without relying on memory.
 
 Runtime destroy planning and execution are complete. The current boundary is additional IAM/EKS-OIDC read-only classification, exact bootstrap deletion command review, and separate execution approval. This historical inventory does not authorize a mutation.
+
+
+## Final closure addendum
+
+All listed runtime, bootstrap, external-bootstrap, and discovered project-owned live-smoke resources were subsequently removed. The final exact project-scoped residual scan returned zero; historical live counts above are not overwritten. See [final zero-resource proof](aws-final-zero-resource-proof.md).

@@ -136,3 +136,7 @@ The pre-teardown process called for refreshing only:
 - whether the last valid browser analysis result is retained as final evidence.
 
 Do not repeat the full browser, RAG, or observability investigation unless the current read-only state contradicts this evidence.
+
+## Lifecycle notice
+
+The AWS environment represented by this historical evidence was subsequently removed. Project-scoped zero-AWS-resource proof was completed on 2026-07-22.

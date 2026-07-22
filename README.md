@@ -7,9 +7,11 @@
 | `last_verified_deployed_architecture` | EKS Backend, RDS, S3, Cognito, Bedrock, private AOSS, CloudFront private origin, External Secrets/IRSA, immutable ECR digest와 Argo CD GitOps를 사용한 마지막 검증 배포 구조 |
 | `current_aws_runtime_status` | 현재 실행 중인 AWS runtime 없음 |
 | `runtime_teardown_status` | verified — read-only runtime closure run `29904386655` passed; six runtime Terraform states와 exact active runtime AWS resource count가 모두 0 |
-| `bootstrap_closure_status` | bootstrap inventory passed; deletion not approved/not executed; zero-resource proof incomplete |
+| `bootstrap_closure_status` | deletion complete; bootstrap and live-smoke residuals removed |
+| `project_scoped_zero_resource_proof` | complete on 2026-07-22 |
+| `redeployment_status` | documented, not executed |
 
-이 README의 기능·아키텍처·workload 설명은 **현재 online service의 주장**이 아니라 마지막으로 검증된 배포와 저장소 구현 범위다. Bootstrap deletion과 full-zero-state redeployment는 아직 실행되지 않았다. 상세 canonical source는 [`docs/project-system-overview.md`](docs/project-system-overview.md)다.
+이 README의 기능·아키텍처·workload 설명은 **현재 online service의 주장**이 아니라 마지막으로 검증된 배포와 저장소 구현 범위다. Bootstrap deletion is complete; full-zero-state redeployment remains documented, not executed. 상세 canonical source는 [`docs/project-system-overview.md`](docs/project-system-overview.md)다.
 
 ## 1. 프로젝트 개요
 
@@ -292,6 +294,7 @@ Workflow 성공만으로 실제 서비스 완료를 판단하지 않습니다. G
 - [`docs/lifecycle/aws-teardown-runbook.md`](docs/lifecycle/aws-teardown-runbook.md)
 - [`docs/lifecycle/aws-redeploy-runbook.md`](docs/lifecycle/aws-redeploy-runbook.md)
 - [`docs/lifecycle/aws-runtime-teardown-closure.md`](docs/lifecycle/aws-runtime-teardown-closure.md)
+- [`docs/lifecycle/aws-final-zero-resource-proof.md`](docs/lifecycle/aws-final-zero-resource-proof.md)
 - [`docs/lifecycle/closure-progress.md`](docs/lifecycle/closure-progress.md)
 
 ## 12. 의도적으로 주장하지 않는 범위
