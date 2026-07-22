@@ -79,7 +79,30 @@ if aws s3api get-object --bucket "${STATE_BUCKET}" --key "${STATE_PREFIX%/}/boot
   bootstrap_readable=true
   bootstrap_managed_count="$(jq '[.resources[]? | select((.mode // "managed") == "managed") | (.instances | length)] | add // 0' "${bootstrap_file}")"
   bootstrap_data_count="$(jq '[.resources[]? | select(.mode == "data") | (.instances | length)] | add // 0' "${bootstrap_file}")"
-  bootstrap_addresses="$(jq -c '[.resources[]? | select((.mode // "managed") == "managed") | .address] | sort' "${bootstrap_file}")"
+  if ! bootstrap_addresses="$(jq -c '
+    [
+      .resources[]?
+      | select((.mode // "managed") == "managed")
+      | if (
+          (.type | type) == "string" and .type != "" and
+          (.name | type) == "string" and .name != "" and
+          ((.module // "") | type) == "string"
+        )
+        then
+          if (.module // "") == ""
+          then "\(.type).\(.name)"
+          else "\(.module).\(.type).\(.name)"
+          end
+        else null
+        end
+    ] | sort
+  ' "${bootstrap_file}")"; then
+    record_error bootstrap-state-parsing
+    bootstrap_addresses='[]'
+  fi
+  if ! jq -e 'all(.[]; type == "string" and length > 0) and (length == (unique | length))' >/dev/null <<<"${bootstrap_addresses}"; then
+    record_error bootstrap-state-addresses
+  fi
   expected_addresses="$(printf '%s\n' "${BOOTSTRAP_ADDRESSES[@]}" | jq -R . | jq -s 'sort')"
   bootstrap_address_difference="$(jq -cn --argjson expected "${expected_addresses}" --argjson live "${bootstrap_addresses}" '{missing_from_live: ($expected - $live), unexpected_live: ($live - $expected)}')"
 else record_error bootstrap-state; fi
@@ -138,13 +161,23 @@ if aws_json runtime-secret secretsmanager list-secrets --region "${AWS_REGION}" 
   [ "${pending_secret_count}" -gt 0 ] && secret_deleted_date_present=true
 fi
 
-if [ "${runtime_states_zero}" = true ] && [ "${bootstrap_readable}" = true ] && [ "${bucket_present}" = true ] && [ "${oidc_contract}" = terraformers_only ] && [ "${independent_identity}" = true ] && [ "${identity_ok}" = true ] && [ "${#API_ERRORS[@]}" -eq 0 ]; then contract=ready_for_deletion_command_review
+if [ "${runtime_states_zero}" = true ] && [ "${bootstrap_readable}" = true ] && [ "${bucket_present}" = true ] && [ "${required_roles_present}" = true ] && [ "${oidc_present}" = true ] && [ "${oidc_contract}" = terraformers_only ] && [ "${independent_identity}" = true ] && [ "${identity_ok}" = true ] && [ "${#API_ERRORS[@]}" -eq 0 ]; then contract=ready_for_deletion_command_review
 elif [ "${#API_ERRORS[@]}" -gt 0 ] || [ "${identity_ok}" != true ]; then contract=blocked_by_inventory_error
 elif [ "${runtime_states_zero}" != true ]; then contract=blocked_by_runtime_state
 elif [ "${oidc_contract}" = blocked_by_non_terraformers_role ]; then contract=blocked_by_oidc_shared_ownership
 else contract=blocked_by_inventory_error; fi
 
-jq -n --arg account "${EXPECTED_ACCOUNT_ID}" --arg region "${AWS_REGION}" --arg bucket "${STATE_BUCKET}" --arg prefix "${STATE_PREFIX%/}" --arg caller "${caller_arn}" --arg bucketVersioning "${bucket_versioning}" --arg oidcArn "${OIDC_PROVIDER_ARN}" --arg secret "${SECRET_NAME}" --arg contract "${contract}" --arg oidcContract "${oidc_contract}" --argjson runtime "${runtime_counts}" --argjson managed "${bootstrap_managed_count}" --argjson data "${bootstrap_data_count}" --argjson addresses "${bootstrap_addresses}" --argjson differences "${bootstrap_address_difference}" --argjson versions "${object_version_count}" --argjson markers "${delete_marker_count}" --argjson objects "${current_object_count}" --argjson uploads "${multipart_upload_count}" --argjson locks "${terraform_lock_version_count}" --argjson roles "${roles_json}" --argjson policies "${customer_policies}" --argjson clientIds "${oidc_client_ids}" --argjson thumbs "${oidc_thumbprint_count}" --argjson oidcRoles "${oidc_roles}" --argjson active "${active_secret_count}" --argjson pending "${pending_secret_count}" --argjson errors "$(printf '%s\n' "${API_ERRORS[@]}" | jq -R . | jq -s '.')" --argjson independent "${independent_identity}" --argjson runtimeZero "${runtime_states_zero}" --argjson bootstrapReadable "${bootstrap_readable}" --argjson bucketPresent "${bucket_present}" --argjson oidcPresent "${oidc_present}" --argjson requiredRoles "${required_roles_present}" --argjson absent "${secret_absent}" --argjson deletedDate "${secret_deleted_date_present}" --argjson boundaryMatch "$( [ "${bootstrap_managed_count}" = 16 ] && printf true || printf false )" '{expected_account_id:$account, aws_region:$region, state_bucket:$bucket, state_prefix:$prefix, caller_arn:$caller, independent_identity_confirmed:$independent, runtime_states:$runtime, runtime_states_zero:$runtimeZero, bootstrap_state_readable:$bootstrapReadable, bootstrap_managed_count:$managed, bootstrap_data_source_count:$data, bootstrap_managed_addresses:$addresses, bootstrap_expected_managed_count:16, bootstrap_managed_count_matches_expected:$boundaryMatch, bootstrap_address_difference:$differences, state_bucket_present:$bucketPresent, state_bucket_versioning:$bucketVersioning, state_bucket_object_version_count:$versions, state_bucket_delete_marker_count:$markers, state_bucket_current_object_count:$objects, state_bucket_multipart_upload_count:$uploads, terraform_lock_object_version_count:$locks, required_roles:$roles, required_roles_present:$requiredRoles, terraformers_customer_managed_policies:$policies, github_oidc_provider_arn:$oidcArn, github_oidc_present:$oidcPresent, github_oidc_client_ids:$clientIds, github_oidc_thumbprint_count:$thumbs, github_oidc_trusting_roles:$oidcRoles, oidc_ownership_contract:$oidcContract, terraformers_oidc_trust_only:($oidcContract == "terraformers_only"), runtime_secret_name:$secret, active_runtime_secret_count:$active, pending_runtime_secret_deletion_count:$pending, runtime_secret_absent:$absent, runtime_secret_deleted_date_present:$deletedDate, inventory_api_error_labels:$errors, inventory_contract:$contract}' > "${OUTPUT_DIR}/bootstrap-closure-inventory.json"
+if [ "${#API_ERRORS[@]}" -eq 0 ]; then
+  api_errors_json='[]'
+else
+  api_errors_json="$(
+    printf '%s\n' "${API_ERRORS[@]}" |
+    jq -R . |
+    jq -s '.'
+  )"
+fi
+
+jq -n --arg account "${EXPECTED_ACCOUNT_ID}" --arg region "${AWS_REGION}" --arg bucket "${STATE_BUCKET}" --arg prefix "${STATE_PREFIX%/}" --arg caller "${caller_arn}" --arg bucketVersioning "${bucket_versioning}" --arg oidcArn "${OIDC_PROVIDER_ARN}" --arg secret "${SECRET_NAME}" --arg contract "${contract}" --arg oidcContract "${oidc_contract}" --argjson runtime "${runtime_counts}" --argjson managed "${bootstrap_managed_count}" --argjson data "${bootstrap_data_count}" --argjson addresses "${bootstrap_addresses}" --argjson differences "${bootstrap_address_difference}" --argjson versions "${object_version_count}" --argjson markers "${delete_marker_count}" --argjson objects "${current_object_count}" --argjson uploads "${multipart_upload_count}" --argjson locks "${terraform_lock_version_count}" --argjson roles "${roles_json}" --argjson policies "${customer_policies}" --argjson clientIds "${oidc_client_ids}" --argjson thumbs "${oidc_thumbprint_count}" --argjson oidcRoles "${oidc_roles}" --argjson active "${active_secret_count}" --argjson pending "${pending_secret_count}" --argjson errors "${api_errors_json}" --argjson independent "${independent_identity}" --argjson runtimeZero "${runtime_states_zero}" --argjson bootstrapReadable "${bootstrap_readable}" --argjson bucketPresent "${bucket_present}" --argjson oidcPresent "${oidc_present}" --argjson requiredRoles "${required_roles_present}" --argjson absent "${secret_absent}" --argjson deletedDate "${secret_deleted_date_present}" --argjson boundaryMatch "$( [ "${bootstrap_managed_count}" = 16 ] && printf true || printf false )" '{expected_account_id:$account, aws_region:$region, state_bucket:$bucket, state_prefix:$prefix, caller_arn:$caller, independent_identity_confirmed:$independent, runtime_states:$runtime, runtime_states_zero:$runtimeZero, bootstrap_state_readable:$bootstrapReadable, bootstrap_managed_count:$managed, bootstrap_data_source_count:$data, bootstrap_managed_addresses:$addresses, bootstrap_expected_managed_count:16, bootstrap_managed_count_matches_expected:$boundaryMatch, bootstrap_address_difference:$differences, state_bucket_present:$bucketPresent, state_bucket_versioning:$bucketVersioning, state_bucket_object_version_count:$versions, state_bucket_delete_marker_count:$markers, state_bucket_current_object_count:$objects, state_bucket_multipart_upload_count:$uploads, terraform_lock_object_version_count:$locks, required_roles:$roles, required_roles_present:$requiredRoles, terraformers_customer_managed_policies:$policies, github_oidc_provider_arn:$oidcArn, github_oidc_present:$oidcPresent, github_oidc_client_ids:$clientIds, github_oidc_thumbprint_count:$thumbs, github_oidc_trusting_roles:$oidcRoles, oidc_ownership_contract:$oidcContract, terraformers_oidc_trust_only:($oidcContract == "terraformers_only"), runtime_secret_name:$secret, active_runtime_secret_count:$active, pending_runtime_secret_deletion_count:$pending, runtime_secret_absent:$absent, runtime_secret_deleted_date_present:$deletedDate, inventory_api_error_labels:$errors, inventory_contract:$contract}' > "${OUTPUT_DIR}/bootstrap-closure-inventory.json"
 
 {
   echo "inventory_mode=read-only"; echo "cloudshell_or_independent_linux_only=true"; echo "runtime_states_zero=${runtime_states_zero}"; echo "bootstrap_state_readable=${bootstrap_readable}"; echo "bootstrap_managed_count=${bootstrap_managed_count}"; echo "state_bucket_present=${bucket_present}"; echo "github_oidc_present=${oidc_present}"; echo "terraformers_oidc_trust_only=$( [ "${oidc_contract}" = terraformers_only ] && echo true || echo false )"; echo "required_roles_present=${required_roles_present}"; echo "active_runtime_secret_count=${active_secret_count}"; echo "pending_runtime_secret_deletion_count=${pending_secret_count}"; echo "independent_identity_confirmed=${independent_identity}"; echo "inventory_contract=${contract}"
