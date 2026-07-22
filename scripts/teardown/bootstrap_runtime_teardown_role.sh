@@ -15,25 +15,27 @@ EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-terraformers-dev-backend}"
 ACTUAL_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 test "${ACTUAL_ACCOUNT_ID}" = "${EXPECTED_ACCOUNT_ID}"
 
-OIDC_PROVIDER_ARN="$(
-  aws iam list-open-id-connect-providers --output json |
 OIDC_PROVIDER_ARN="arn:aws:iam::${EXPECTED_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
 
-aws iam list-open-id-connect-providers \
-  --output json |
-jq -e \
-  --arg arn "${OIDC_PROVIDER_ARN}" \
-  '
-    [.OpenIDConnectProviderList[]?
-      | select(.Arn == $arn)
-    ] | length == 1
-  ' >/dev/null
+OIDC_PROVIDER_COUNT="$(
+  aws iam list-open-id-connect-providers \
+    --output json |
+  tr -d '\r' |
+  jq \
+    --arg arn "${OIDC_PROVIDER_ARN}" \
+    '[.OpenIDConnectProviderList[]? | select(.Arn == $arn)] | length'
+)"
+test "${OIDC_PROVIDER_COUNT}" -eq 1
+
+EKS_OIDC_PROVIDER_ARN="$(
   issuer="$(
     aws eks describe-cluster \
       --region "${AWS_REGION}" \
       --name "${EKS_CLUSTER_NAME}" \
       --query 'cluster.identity.oidc.issuer' \
-      --output text 2>/dev/null || true
+      --output text 2>/dev/null |
+    tr -d '\r' ||
+    true
   )"
   if [ -n "${issuer}" ] && [ "${issuer}" != "None" ]; then
     printf 'arn:aws:iam::%s:oidc-provider/%s\n' \
