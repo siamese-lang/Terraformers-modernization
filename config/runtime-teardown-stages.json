@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "foundation_excluded": true,
+  "stages": {
+    "frontend-delivery": {
+      "kind": "terraform",
+      "order": 1,
+      "state_component": "frontend-delivery",
+      "terraform_dir": "infra/terraform/envs/frontend-delivery",
+      "tfvars_secret": "AWS_LIVE_FRONTEND_TFVARS_B64",
+      "reviewed_delete_count": 14,
+      "required_empty_states": [],
+      "runner_override": "frontend-force-destroy",
+      "allowed_addresses": [
+        "aws_cloudfront_distribution.frontend",
+        "aws_cloudfront_function.spa_rewrite",
+        "aws_cloudfront_origin_access_control.frontend",
+        "aws_cloudfront_vpc_origin.backend",
+        "aws_iam_policy.frontend_delivery",
+        "aws_iam_role.frontend_delivery",
+        "aws_iam_role_policy_attachment.frontend_delivery",
+        "aws_s3_bucket.frontend",
+        "aws_s3_bucket_lifecycle_configuration.frontend",
+        "aws_s3_bucket_ownership_controls.frontend",
+        "aws_s3_bucket_policy.frontend",
+        "aws_s3_bucket_public_access_block.frontend",
+        "aws_s3_bucket_server_side_encryption_configuration.frontend",
+        "aws_s3_bucket_versioning.frontend"
+      ]
+    },
+    "kubernetes-owners": {
+      "kind": "kubernetes",
+      "order": 2,
+      "reviewed_delete_count": 0,
+      "required_empty_states": [
+        "frontend-delivery"
+      ]
+    },
+    "rag-runtime": {
+      "kind": "terraform",
+      "order": 3,
+      "state_component": "rag-runtime",
+      "terraform_dir": "infra/terraform/envs/rag-runtime",
+      "tfvars_secret": "AWS_LIVE_RAG_TFVARS_B64",
+      "reviewed_delete_count": 23,
+      "required_empty_states": [
+        "frontend-delivery"
+      ],
+      "runner_override": "rag-force-destroy",
+      "allowed_addresses": [
+        "aws_codebuild_project.corpus_ingestion",
+        "aws_iam_policy.backend_rag_runtime",
+        "aws_iam_policy.codebuild_ingestion",
+        "aws_iam_policy.corpus_ingestion",
+        "aws_iam_role.codebuild_ingestion",
+        "aws_iam_role.corpus_ingestion",
+        "aws_iam_role_policy_attachment.backend_rag_runtime",
+        "aws_iam_role_policy_attachment.codebuild_ingestion",
+        "aws_iam_role_policy_attachment.corpus_ingestion",
+        "aws_opensearchserverless_access_policy.data",
+        "aws_opensearchserverless_collection.references",
+        "aws_opensearchserverless_security_policy.encryption",
+        "aws_opensearchserverless_security_policy.network",
+        "aws_opensearchserverless_vpc_endpoint.collection",
+        "aws_s3_bucket.corpus",
+        "aws_s3_bucket_ownership_controls.corpus",
+        "aws_s3_bucket_public_access_block.corpus",
+        "aws_s3_bucket_server_side_encryption_configuration.corpus",
+        "aws_s3_bucket_versioning.corpus",
+        "aws_security_group.aoss_vpc_endpoint",
+        "aws_security_group.codebuild_ingestion",
+        "aws_vpc_security_group_ingress_rule.aoss_from_backend",
+        "aws_vpc_security_group_ingress_rule.aoss_from_codebuild"
+      ]
+    },
+    "eks-runtime": {
+      "kind": "terraform",
+      "order": 4,
+      "state_component": "eks-runtime",
+      "terraform_dir": "infra/terraform/envs/eks-runtime",
+      "tfvars_secret": "AWS_LIVE_EKS_TFVARS_B64",
+      "reviewed_delete_count": 30,
+      "required_empty_states": [
+        "frontend-delivery",
+        "rag-runtime"
+      ],
+      "runner_override": "none",
+      "allowed_addresses": [
+        "aws_cloudwatch_dashboard.operations_visibility",
+        "aws_cloudwatch_metric_alarm.analysis_failure",
+        "aws_cloudwatch_metric_alarm.backend_fault",
+        "aws_cloudwatch_metric_alarm.backend_unavailable",
+        "aws_eks_addon.cloudwatch_observability",
+        "aws_eks_cluster.backend",
+        "aws_eks_node_group.backend",
+        "aws_iam_openid_connect_provider.eks",
+        "aws_iam_policy.backend_runtime_access",
+        "aws_iam_policy.external_secrets_read",
+        "aws_iam_policy.load_balancer_controller",
+        "aws_iam_role.backend_irsa",
+        "aws_iam_role.cloudwatch_observability_irsa",
+        "aws_iam_role.eks_cluster",
+        "aws_iam_role.eks_node",
+        "aws_iam_role.external_secrets_irsa",
+        "aws_iam_role.load_balancer_controller",
+        "aws_iam_role_policy.backend_cloudwatch_metrics",
+        "aws_iam_role_policy_attachment.backend_runtime_access",
+        "aws_iam_role_policy_attachment.cloudwatch_observability_agent",
+        "aws_iam_role_policy_attachment.cloudwatch_observability_xray",
+        "aws_iam_role_policy_attachment.eks_cluster_policy",
+        "aws_iam_role_policy_attachment.eks_cluster_vpc_resource_controller",
+        "aws_iam_role_policy_attachment.eks_node_cni",
+        "aws_iam_role_policy_attachment.eks_node_ecr",
+        "aws_iam_role_policy_attachment.eks_node_worker",
+        "aws_iam_role_policy_attachment.external_secrets_read",
+        "aws_iam_role_policy_attachment.load_balancer_controller",
+        "aws_security_group.backend_origin_alb",
+        "aws_security_group.eks_cluster"
+      ]
+    },
+    "stateful-dependencies": {
+      "kind": "terraform",
+      "order": 5,
+      "state_component": "stateful-dependencies",
+      "terraform_dir": "infra/terraform/envs/backend-stateful-dependencies",
+      "tfvars_secret": "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64",
+      "reviewed_delete_count": 5,
+      "required_empty_states": [
+        "frontend-delivery",
+        "rag-runtime",
+        "eks-runtime"
+      ],
+      "runner_override": "stateful-disposable-destroy",
+      "allowed_addresses": [
+        "aws_cognito_user_pool.backend",
+        "aws_cognito_user_pool_client.backend",
+        "aws_db_instance.backend",
+        "aws_db_subnet_group.backend",
+        "aws_security_group.backend_database"
+      ]
+    },
+    "runtime-dependencies": {
+      "kind": "terraform",
+      "order": 6,
+      "state_component": "runtime-dependencies",
+      "terraform_dir": "infra/terraform/envs/backend-runtime-dependencies",
+      "tfvars_secret": "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64",
+      "reviewed_delete_count": 16,
+      "required_empty_states": [
+        "frontend-delivery",
+        "rag-runtime",
+        "eks-runtime",
+        "stateful-dependencies"
+      ],
+      "runner_override": "runtime-force-destroy",
+      "allowed_addresses": [
+        "aws_ecr_lifecycle_policy.backend",
+        "aws_ecr_repository.backend",
+        "aws_iam_policy.backend_image_publisher",
+        "aws_iam_role.backend_image_publisher",
+        "aws_iam_role_policy_attachment.backend_image_publisher",
+        "aws_s3_bucket.results",
+        "aws_s3_bucket.uploads",
+        "aws_s3_bucket_public_access_block.results",
+        "aws_s3_bucket_public_access_block.uploads",
+        "aws_s3_bucket_server_side_encryption_configuration.results",
+        "aws_s3_bucket_server_side_encryption_configuration.uploads",
+        "aws_s3_bucket_versioning.results",
+        "aws_s3_bucket_versioning.uploads",
+        "aws_secretsmanager_secret.backend_runtime",
+        "aws_sqs_queue.ai_log",
+        "aws_sqs_queue.terraform_log"
+      ]
+    },
+    "network": {
+      "kind": "terraform",
+      "order": 7,
+      "state_component": "network",
+      "terraform_dir": "infra/terraform/envs/aws-runtime-network",
+      "tfvars_secret": "AWS_LIVE_NETWORK_TFVARS_B64",
+      "reviewed_delete_count": 16,
+      "required_empty_states": [
+        "frontend-delivery",
+        "rag-runtime",
+        "eks-runtime",
+        "stateful-dependencies",
+        "runtime-dependencies"
+      ],
+      "runner_override": "none",
+      "allowed_addresses": [
+        "aws_eip.nat[0]",
+        "aws_internet_gateway.runtime",
+        "aws_nat_gateway.runtime[0]",
+        "aws_route_table.private[0]",
+        "aws_route_table.private[1]",
+        "aws_route_table.public",
+        "aws_route_table_association.private[0]",
+        "aws_route_table_association.private[1]",
+        "aws_route_table_association.public[0]",
+        "aws_route_table_association.public[1]",
+        "aws_subnet.private[0]",
+        "aws_subnet.private[1]",
+        "aws_subnet.public[0]",
+        "aws_subnet.public[1]",
+        "aws_vpc.runtime",
+        "aws_vpc_endpoint.s3[0]"
+      ]
+    }
+  }
+}

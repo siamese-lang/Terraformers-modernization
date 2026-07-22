@@ -59,8 +59,8 @@ cat > "${FIXTURE_DIR}/runtime.json" <<'JSON'
   "backend_image_repository_url": {"value": "registry.example.internal/terraformers-backend"},
   "upload_bucket_name": {"value": "terraformers-dev-uploads-example"},
   "result_bucket_name": {"value": "terraformers-dev-results-example"},
-  "ai_log_queue_url": {"value": "https://sqs.ap-northeast-2.amazonaws.com/example-account/terraformers-dev-ai-log"},
-  "terraform_log_queue_url": {"value": "https://sqs.ap-northeast-2.amazonaws.com/example-account/terraformers-dev-terraform-log"}
+  "backend_runtime_secret_arn": {"value": "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:terraformers-runtime"},
+  "kubernetes_runtime_secret_name": {"value": "terraformers-backend-runtime-secrets"}
 }
 JSON
 
@@ -68,6 +68,7 @@ cat > "${FIXTURE_DIR}/stateful.json" <<'JSON'
 {
   "spring_datasource_url": {"value": "jdbc:mariadb://database.example.internal:3306/terraformers"},
   "database_username": {"value": "terraformers_app"},
+  "database_master_user_secret_arn": {"value": "arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:rds-master"},
   "cognito_region": {"value": "ap-northeast-2"},
   "cognito_user_pool_id": {"value": "ap-northeast-2_examplepool"},
   "cognito_user_pool_client_id": {"value": "exampleclientid"},
@@ -77,7 +78,9 @@ JSON
 
 cat > "${FIXTURE_DIR}/eks.json" <<'JSON'
 {
+  "cluster_name": {"value": "terraformers-runtime"},
   "backend_namespace": {"value": "terraformers-runtime"},
+  "backend_service_account_name": {"value": "terraformers-backend"},
   "backend_irsa_role_arn": {"value": "arn:aws:iam::123456789012:role/terraformers-dev-backend-irsa"}
 }
 JSON
@@ -115,6 +118,7 @@ assert_contains 'aws-runtime-rollout-smoke.sh' "${PACKAGE_DIR}/apply-order.txt" 
 
 assert_not_contains 'registry\.example\.com/terraformers-backend:immutable-tag' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must not keep template image placeholder."
 assert_not_contains 'public\.ecr\.aws/example/terraformers-backend' "${PACKAGE_DIR}/aws-runtime-manifest.yaml" "Runtime manifest must not keep base image placeholder."
+assert_not_contains '^(  )?(AI_LOG_QUEUE_URL|TERRAFORM_LOG_QUEUE_URL|BEDROCK_MODEL_ID|BEDROCK_EMBEDDING_MODEL_ID|OPENSEARCH_ENDPOINT|INDEX_NAME|VECTOR_FIELD_NAME|CONTENT_FIELD_NAME):' "${PACKAGE_DIR}/backend-runtime-secret.yaml" "Rendered package Secret must not include disabled adapter settings."
 
 set +e
 bash "${REPO_ROOT}/scripts/deploy/build-aws-runtime-deployment-package.sh" \

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       aws_region:
-        description: AWS region for the upload bucket
-        required: true
-        default: ap-northeast-2
+        description: Optional AWS region override. Defaults to repository/environment variable AWS_REGION, then ap-northeast-2.
+        required: false
+        default: ''
       upload_bucket:
         description: Existing S3 bucket that the validation may write to
         required: true
@@ -20,13 +20,17 @@ on:
         type: boolean
         default: true
       aws_role_to_assume:
-        description: Optional IAM role ARN for GitHub OIDC. Leave blank to use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY repository secrets.
+        description: Optional GitHub OIDC role ARN override. Defaults to repository/environment secret AWS_ROLE_TO_ASSUME.
         required: false
         default: ''
 
 permissions:
   contents: read
   id-token: write
+
+env:
+  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'ap-northeast-2' }}
+  AWS_ROLE_TO_ASSUME: ${{ inputs.aws_role_to_assume || secrets.AWS_ROLE_TO_ASSUME }}
 
 jobs:
   s3-writer-production-validation:
@@ -45,42 +49,27 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Configure AWS credentials through OIDC role
-        if: ${{ inputs.aws_role_to_assume != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws_role_to_assume }}
-          aws-region: ${{ inputs.aws_region }}
-
-      - name: Export static AWS credentials from repository secrets
-        if: ${{ inputs.aws_role_to_assume == '' }}
-        env:
-          SECRET_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          SECRET_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SECRET_AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      - name: Validate OIDC role configuration
         run: |
           set -euo pipefail
-          if [[ -z "${SECRET_AWS_ACCESS_KEY_ID}" || -z "${SECRET_AWS_SECRET_ACCESS_KEY}" ]]; then
-            echo "Set aws_role_to_assume or repository secrets AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY before running this workflow." >&2
+          if [[ -z "${AWS_ROLE_TO_ASSUME}" ]]; then
+            echo "AWS_ROLE_TO_ASSUME repository/environment secret or aws_role_to_assume input is required." >&2
             exit 1
           fi
-          {
-            echo "AWS_ACCESS_KEY_ID=${SECRET_AWS_ACCESS_KEY_ID}"
-            echo "AWS_SECRET_ACCESS_KEY=${SECRET_AWS_SECRET_ACCESS_KEY}"
-            if [[ -n "${SECRET_AWS_SESSION_TOKEN}" ]]; then
-              echo "AWS_SESSION_TOKEN=${SECRET_AWS_SESSION_TOKEN}"
-            fi
-            echo "AWS_REGION=${{ inputs.aws_region }}"
-            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
-          } >> "${GITHUB_ENV}"
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersS3WriterValidation
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify AWS caller identity
-        run: aws sts get-caller-identity --region "${{ inputs.aws_region }}"
+        run: aws sts get-caller-identity --region "${AWS_REGION}"
 
       - name: Run S3 writer production validation
         env:
-          AWS_REGION: ${{ inputs.aws_region }}
-          AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
+          AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
           S3_UPLOAD_BUCKET: ${{ inputs.upload_bucket }}
           S3_UPLOAD_PREFIX: ${{ inputs.upload_prefix }}
           CLEANUP_S3_OBJECT: ${{ inputs.cleanup_object }}

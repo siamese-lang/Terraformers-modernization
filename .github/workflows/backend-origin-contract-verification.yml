@@ -1,0 +1,43 @@
+name: Backend Origin Contract Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/backend-origin-contract-verification.yml"
+      - ".github/workflows/runtime-contract-verification.yml"
+      - ".github/workflows/frontend-delivery.yml"
+      - "infra/terraform/envs/aws-runtime-network/**"
+      - "infra/terraform/envs/eks-runtime/**"
+      - "infra/terraform/envs/frontend-delivery/**"
+      - "infra/kubernetes/aws-runtime-origin/**"
+      - "scripts/deploy/build-backend-origin-package.py"
+      - "scripts/checks/backend-origin-contract-verification.sh"
+      - "docs/backend-origin-delivery.md"
+      - "docs/frontend-delivery.md"
+      - "docs/deployment.md"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-origin-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify private backend origin contract
+        run: bash scripts/checks/backend-origin-contract-verification.sh
+
+      - name: Upload backend origin contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-origin-contract-evidence
+          path: artifacts/backend-origin-contract
+          if-no-files-found: warn

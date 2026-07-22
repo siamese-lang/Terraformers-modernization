@@ -1,0 +1,43 @@
+name: AWS Deployment Contract Inventory Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - "backend/src/main/resources/application-prod.yml"
+      - "frontend/.env.example"
+      - "infra/terraform/**"
+      - "infra/kubernetes/**"
+      - "scripts/deploy/**"
+      - "scripts/checks/aws-deployment-contract-inventory.py"
+      - "scripts/checks/aws-workflow-reference-reconciliation.py"
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-contract-inventory:
+    name: Reconcile AWS deployment contract sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate and verify deployment contract inventory
+        run: |
+          set -euo pipefail
+          python3 scripts/checks/aws-deployment-contract-inventory.py
+          python3 scripts/checks/aws-workflow-reference-reconciliation.py
+
+      - name: Upload deployment contract inventory evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-deployment-contract-inventory-evidence
+          path: artifacts/aws-environment-contract
+          if-no-files-found: warn

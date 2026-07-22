@@ -8,12 +8,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.terraformers.modernization.project.ProjectEntity;
-import com.terraformers.modernization.project.ProjectRepository;
+import com.terraformers.modernization.identity.UserEntity;
+import com.terraformers.modernization.projectcore.ProjectArtifactService;
+import com.terraformers.modernization.projectcore.ProjectDomainService;
+import com.terraformers.modernization.projectcore.ProjectFileEntity;
 import java.time.Instant;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -23,11 +25,13 @@ import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 class SourceObjectReaderServiceTest {
 
     @Test
-    void s3ReaderModeHeadsPersistedSourceObject() {
-        ProjectRepository repository = mock(ProjectRepository.class);
+    void s3ReaderModeHeadsPersistedSourceArtifact() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ProjectFileEntity sourceFile = persistedSourceFile();
         S3Client s3Client = mock(S3Client.class);
         Instant lastModified = Instant.parse("2026-07-15T00:00:00Z");
-        when(repository.findById("aws-diagram")).thenReturn(Optional.of(persistedProject()));
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
         when(s3Client.headObject(any(HeadObjectRequest.class)))
                 .thenReturn(HeadObjectResponse.builder()
                         .eTag("\"etag-from-s3\"")
@@ -35,18 +39,26 @@ class SourceObjectReaderServiceTest {
                         .contentType("image/png")
                         .lastModified(lastModified)
                         .build());
-        SourceObjectReaderService service = new SourceObjectReaderService(repository, true, () -> s3Client);
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> s3Client,
+                new StubObjectReader()
+        );
 
-        SourceObjectReadResponse response = service.read("aws-diagram");
+        SourceObjectReadResponse response = service.read(42L, null);
 
+        verify(projectDomainService).requireAccessibleProject(42L, null);
         ArgumentCaptor<HeadObjectRequest> requestCaptor = ArgumentCaptor.forClass(HeadObjectRequest.class);
         verify(s3Client).headObject(requestCaptor.capture());
         HeadObjectRequest request = requestCaptor.getValue();
         assertThat(request.bucket()).isEqualTo("terraformers-upload-bucket");
-        assertThat(request.key()).isEqualTo("browser-uploads/aws-diagram/source.png");
-        assertThat(response.projectId()).isEqualTo("aws-diagram");
+        assertThat(request.key()).isEqualTo("browser-uploads/42/source.png");
+        assertThat(response.projectId()).isEqualTo(42L);
+        assertThat(response.sourceFileId()).isEqualTo(100L);
         assertThat(response.sourceBucket()).isEqualTo("terraformers-upload-bucket");
-        assertThat(response.sourceKey()).isEqualTo("browser-uploads/aws-diagram/source.png");
+        assertThat(response.sourceKey()).isEqualTo("browser-uploads/42/source.png");
         assertThat(response.storageProvider()).isEqualTo("s3");
         assertThat(response.binaryPersisted()).isTrue();
         assertThat(response.sourceETag()).isEqualTo("\"etag-from-upload\"");
@@ -57,13 +69,21 @@ class SourceObjectReaderServiceTest {
     }
 
     @Test
-    void metadataOnlyProjectIsRejectedBeforeS3Read() {
-        ProjectRepository repository = mock(ProjectRepository.class);
+    void metadataOnlySourceArtifactIsRejectedBeforeS3Read() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ProjectFileEntity sourceFile = metadataOnlySourceFile();
         S3Client s3Client = mock(S3Client.class);
-        when(repository.findById("metadata-only")).thenReturn(Optional.of(metadataOnlyProject()));
-        SourceObjectReaderService service = new SourceObjectReaderService(repository, true, () -> s3Client);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> s3Client,
+                new StubObjectReader()
+        );
 
-        assertThatThrownBy(() -> service.read("metadata-only"))
+        assertThatThrownBy(() -> service.read(42L, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -72,38 +92,98 @@ class SourceObjectReaderServiceTest {
 
     @Test
     void disabledReaderIsRejectedBeforeS3Read() {
-        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ProjectFileEntity sourceFile = persistedSourceFile();
         S3Client s3Client = mock(S3Client.class);
-        when(repository.findById("aws-diagram")).thenReturn(Optional.of(persistedProject()));
-        SourceObjectReaderService service = new SourceObjectReaderService(repository, false, () -> s3Client);
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                false,
+                () -> s3Client,
+                new StubObjectReader()
+        );
 
-        assertThatThrownBy(() -> service.read("aws-diagram"))
+        assertThatThrownBy(() -> service.read(42L, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(exception -> ((ResponseStatusException) exception).getStatusCode())
                 .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
     }
 
-    private ProjectEntity persistedProject() {
-        ProjectEntity entity = new ProjectEntity();
-        entity.setProjectId("aws-diagram");
-        entity.setDisplayName("AWS Diagram");
-        entity.setSourceBucket("terraformers-upload-bucket");
-        entity.setSourceKey("browser-uploads/aws-diagram/source.png");
-        entity.setSourceStorageProvider("s3");
-        entity.setSourceBinaryPersisted(true);
-        entity.setSourceETag("\"etag-from-upload\"");
-        return entity;
+    @Test
+    void sourceImageContentReturnsActualBytesAndContentType() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ProjectFileEntity sourceFile = persistedSourceFile();
+        ObjectReader objectReader = mock(ObjectReader.class);
+        byte[] bytes = new byte[] {1, 2, 3, 4};
+        when(artifactService.requireLatestJobSourceImage(42L)).thenReturn(sourceFile);
+        when(objectReader.readContent(new ObjectReference("terraformers-upload-bucket", "browser-uploads/42/source.png")))
+                .thenReturn(new ObjectContent(
+                        new ObjectMetadata("terraformers-upload-bucket", "browser-uploads/42/source.png", "image/png", bytes.length, "\"etag\""),
+                        bytes
+                ));
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> mock(S3Client.class),
+                objectReader
+        );
+
+        ResponseEntity<byte[]> response = service.readImageContent(42L, null);
+
+        verify(projectDomainService).requireAccessibleProject(42L, null);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType().toString()).isEqualTo("image/png");
+        assertThat(response.getHeaders().getContentLength()).isEqualTo(bytes.length);
+        assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+        assertThat(response.getBody()).containsExactly(bytes);
     }
 
-    private ProjectEntity metadataOnlyProject() {
-        ProjectEntity entity = new ProjectEntity();
-        entity.setProjectId("metadata-only");
-        entity.setDisplayName("Metadata Only");
-        entity.setSourceBucket("example-bucket");
-        entity.setSourceKey("browser-uploads/metadata-only/source.png");
-        entity.setSourceStorageProvider("metadata-only");
-        entity.setSourceBinaryPersisted(false);
-        return entity;
+    @Test
+    void sourceImageContentRequiresProjectAccessBeforeObjectRead() {
+        ProjectDomainService projectDomainService = mock(ProjectDomainService.class);
+        ProjectArtifactService artifactService = mock(ProjectArtifactService.class);
+        ObjectReader objectReader = mock(ObjectReader.class);
+        UserEntity requester = mock(UserEntity.class);
+        org.mockito.Mockito.doThrow(new SecurityException("forbidden"))
+                .when(projectDomainService).requireAccessibleProject(42L, requester);
+        SourceObjectReaderService service = new SourceObjectReaderService(
+                projectDomainService,
+                artifactService,
+                true,
+                () -> mock(S3Client.class),
+                objectReader
+        );
+
+        assertThatThrownBy(() -> service.readImageContent(42L, requester))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("forbidden");
+        verify(artifactService, never()).requireLatestJobSourceImage(42L);
+        verify(objectReader, never()).readContent(any(ObjectReference.class));
+    }
+
+    private ProjectFileEntity persistedSourceFile() {
+        ProjectFileEntity file = mock(ProjectFileEntity.class);
+        when(file.getFileId()).thenReturn(100L);
+        when(file.getS3Bucket()).thenReturn("terraformers-upload-bucket");
+        when(file.getS3Key()).thenReturn("browser-uploads/42/source.png");
+        when(file.getStorageProvider()).thenReturn("s3");
+        when(file.isBinaryPersisted()).thenReturn(true);
+        when(file.getStorageETag()).thenReturn("\"etag-from-upload\"");
+        return file;
+    }
+
+    private ProjectFileEntity metadataOnlySourceFile() {
+        ProjectFileEntity file = mock(ProjectFileEntity.class);
+        when(file.getFileId()).thenReturn(101L);
+        when(file.getS3Bucket()).thenReturn("example-bucket");
+        when(file.getS3Key()).thenReturn("browser-uploads/42/source.png");
+        when(file.getStorageProvider()).thenReturn("metadata-only");
+        when(file.isBinaryPersisted()).thenReturn(false);
+        return file;
     }
 }

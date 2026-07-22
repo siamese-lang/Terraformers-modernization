@@ -1,0 +1,129 @@
+{
+  "schema_version": 3,
+  "terraform_cli_version": "1.15.8",
+  "state_locking": "s3-native-lockfile",
+  "github_environment": "aws-live-plan",
+  "github_oidc_subject": "repo:siamese-lang/Terraformers-modernization:environment:aws-live-plan",
+  "required_github_variables": [
+    "AWS_REGION",
+    "AWS_ROLE_TO_ASSUME",
+    "AWS_TERRAFORM_STATE_BUCKET",
+    "AWS_TERRAFORM_STATE_PREFIX"
+  ],
+  "required_github_secrets": [
+    "AWS_LIVE_NETWORK_TFVARS_B64",
+    "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64",
+    "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64",
+    "AWS_LIVE_EKS_TFVARS_B64",
+    "AWS_LIVE_FRONTEND_TFVARS_B64"
+  ],
+  "required_github_secrets_by_stage": {
+    "network": [
+      "AWS_LIVE_NETWORK_TFVARS_B64"
+    ],
+    "runtime-dependencies": [
+      "AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64"
+    ],
+    "stateful-dependencies": [
+      "AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64"
+    ],
+    "eks-runtime": [
+      "AWS_LIVE_EKS_TFVARS_B64"
+    ],
+    "frontend-delivery": [
+      "AWS_LIVE_FRONTEND_TFVARS_B64"
+    ]
+  },
+  "terraform_stages": [
+    {
+      "id": "network",
+      "directory": "infra/terraform/envs/aws-runtime-network",
+      "required_variables": [],
+      "input_sources": {},
+      "operator_inputs": [
+        "enable_nat_gateway",
+        "single_nat_gateway"
+      ],
+      "live_prerequisite": "AWS account, S3 native-locking state backend, and an explicit private-subnet egress choice"
+    },
+    {
+      "id": "runtime-dependencies",
+      "directory": "infra/terraform/envs/backend-runtime-dependencies",
+      "required_variables": [
+        "github_oidc_provider_arn",
+        "upload_bucket_name",
+        "result_bucket_name"
+      ],
+      "input_sources": {},
+      "operator_inputs": [
+        "github_oidc_provider_arn",
+        "upload_bucket_name",
+        "result_bucket_name"
+      ],
+      "live_prerequisite": "existing GitHub Actions OIDC provider ARN and globally unique, account-scoped S3 bucket names"
+    },
+    {
+      "id": "stateful-dependencies",
+      "directory": "infra/terraform/envs/backend-stateful-dependencies",
+      "required_variables": [
+        "vpc_id",
+        "private_subnet_ids"
+      ],
+      "input_sources": {
+        "vpc_id": "network.vpc_id",
+        "private_subnet_ids": "network.private_subnet_ids"
+      },
+      "operator_inputs": [],
+      "recommended_inputs": {
+        "allowed_database_cidr_blocks": "network.private_subnet_cidr_blocks"
+      },
+      "live_prerequisite": "network outputs from an applied and reviewed network state"
+    },
+    {
+      "id": "eks-runtime",
+      "directory": "infra/terraform/envs/eks-runtime",
+      "required_variables": [
+        "vpc_id",
+        "vpc_cidr_block",
+        "private_subnet_ids",
+        "upload_bucket_arn",
+        "result_bucket_arn",
+        "ai_log_queue_arn",
+        "terraform_log_queue_arn",
+        "backend_runtime_secret_arn"
+      ],
+      "input_sources": {
+        "vpc_id": "network.vpc_id",
+        "vpc_cidr_block": "network.vpc_cidr_block",
+        "private_subnet_ids": "network.private_subnet_ids",
+        "upload_bucket_arn": "runtime-dependencies.upload_bucket_arn",
+        "result_bucket_arn": "runtime-dependencies.result_bucket_arn",
+        "ai_log_queue_arn": "runtime-dependencies.ai_log_queue_arn",
+        "terraform_log_queue_arn": "runtime-dependencies.terraform_log_queue_arn",
+        "backend_runtime_secret_arn": "runtime-dependencies.backend_runtime_secret_arn"
+      },
+      "operator_inputs": [
+        "kubernetes_version",
+        "cluster_endpoint_public_access",
+        "cluster_endpoint_public_access_cidrs"
+      ],
+      "live_prerequisite": "reviewed network/runtime outputs, EKS standard-support version, and an explicit operator access path"
+    },
+    {
+      "id": "frontend-delivery",
+      "directory": "infra/terraform/envs/frontend-delivery",
+      "required_variables": [
+        "frontend_bucket_name",
+        "api_origin_load_balancer_arn",
+        "github_oidc_provider_arn"
+      ],
+      "input_sources": {
+        "api_origin_load_balancer_arn": "live-private-origin.api_origin_load_balancer_arn"
+      },
+      "operator_inputs": [
+        "frontend_bucket_name"
+      ],
+      "live_prerequisite": "reviewed live foundation outputs, a healthy controller-created internal ALB, and its recorded ARN"
+    }
+  ]
+}

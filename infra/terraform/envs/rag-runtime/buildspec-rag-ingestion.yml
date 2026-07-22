@@ -1,0 +1,10 @@
+version: 0.2
+phases:
+  build:
+    commands:
+      - test -n "$PACKAGE_KEY"
+      - test -n "$CORPUS_DIRECTORY"
+      - aws s3 cp "s3://${CORPUS_BUCKET}/${PACKAGE_KEY}" /tmp/ingestion-package.zip --only-show-errors
+      - unzip -q /tmp/ingestion-package.zip -d /tmp/ingestion
+      - export PYTHONPATH="/tmp/ingestion/artifacts/rag-corpus-ingestion/vendor${PYTHONPATH:+:${PYTHONPATH}}"
+      - python3 /tmp/ingestion/scripts/rag/ingest-corpus.py --package "/tmp/ingestion/${CORPUS_DIRECTORY}" --expected-checksum "$EXPECTED_CHECKSUM" --expected-document-count "$EXPECTED_DOCUMENT_COUNT" --receipt-bucket "$CORPUS_BUCKET" --receipt-key "$RECEIPT_KEY"

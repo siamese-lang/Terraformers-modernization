@@ -1,0 +1,87 @@
+# Development-only, non-HA Argo CD profile for the current single-node cluster.
+crds:
+  install: true
+
+global:
+  logging:
+    format: json
+
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+
+redis:
+  enabled: true
+  exporter:
+    enabled: false
+  metrics:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+  resources:
+    requests:
+      cpu: 25m
+      memory: 48Mi
+    limits:
+      cpu: 100m
+      memory: 96Mi
+
+redis-ha:
+  enabled: false
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+applicationSet:
+  replicas: 0
+
+configs:
+  params:
+    controller.log.format: json
+    reposerver.log.format: json
+    server.log.format: json

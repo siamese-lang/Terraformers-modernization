@@ -19,8 +19,14 @@ public class AnalysisJobEntity {
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "project_id", nullable = false, length = 64)
-    private String projectId;
+    @Column(name = "project_id", nullable = false)
+    private Long projectId;
+
+    @Column(name = "source_file_id", nullable = false)
+    private Long sourceFileId;
+
+    @Column(name = "result_file_id")
+    private Long resultFileId;
 
     @Column(name = "source_bucket", nullable = false, length = 255)
     private String sourceBucket;
@@ -47,6 +53,18 @@ public class AnalysisJobEntity {
 
     @Column(name = "result_preview", columnDefinition = "TEXT")
     private String resultPreview;
+
+    @Column(name = "analysis_summary", columnDefinition = "TEXT")
+    private String analysisSummary;
+
+    @Column(name = "detected_components", columnDefinition = "TEXT")
+    private String detectedComponents;
+
+    @Column(name = "detected_relationships", columnDefinition = "TEXT")
+    private String detectedRelationships;
+
+    @Column(name = "analysis_warnings", columnDefinition = "TEXT")
+    private String analysisWarnings;
 
     @Column(name = "failure_reason", length = 2000)
     private String failureReason;
@@ -76,12 +94,28 @@ public class AnalysisJobEntity {
         return id;
     }
 
-    public String getProjectId() {
+    public Long getProjectId() {
         return projectId;
     }
 
-    public void setProjectId(String projectId) {
+    public void setProjectId(Long projectId) {
         this.projectId = projectId;
+    }
+
+    public Long getSourceFileId() {
+        return sourceFileId;
+    }
+
+    public void setSourceFileId(Long sourceFileId) {
+        this.sourceFileId = sourceFileId;
+    }
+
+    public Long getResultFileId() {
+        return resultFileId;
+    }
+
+    public void setResultFileId(Long resultFileId) {
+        this.resultFileId = resultFileId;
     }
 
     public String getSourceBucket() {
@@ -147,6 +181,15 @@ public class AnalysisJobEntity {
     public void setResultPreview(String resultPreview) {
         this.resultPreview = resultPreview;
     }
+
+    public String getAnalysisSummary() { return analysisSummary; }
+    public void setAnalysisSummary(String analysisSummary) { this.analysisSummary = analysisSummary; }
+    public String getDetectedComponents() { return detectedComponents; }
+    public void setDetectedComponents(String detectedComponents) { this.detectedComponents = detectedComponents; }
+    public String getDetectedRelationships() { return detectedRelationships; }
+    public void setDetectedRelationships(String detectedRelationships) { this.detectedRelationships = detectedRelationships; }
+    public String getAnalysisWarnings() { return analysisWarnings; }
+    public void setAnalysisWarnings(String analysisWarnings) { this.analysisWarnings = analysisWarnings; }
 
     public String getFailureReason() {
         return failureReason;

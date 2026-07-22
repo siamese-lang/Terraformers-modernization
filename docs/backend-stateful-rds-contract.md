@@ -39,6 +39,8 @@ Add:
 - `database_master_user_secret_arn` output for operator/runtime secret wiring.
 - `database_jdbc_ssl_params` variable and SSL-param JDBC output.
 - RDS instance/subnet-group identity outputs for evidence and downstream runtime packaging.
+- Preserve `database_instance_id` as the provider-computed immutable `DbiResourceId` contract.
+- Use `database_instance_identifier` for the user-supplied `DBInstanceIdentifier` accepted by RDS API and CLI identifier parameters.
 
 Exclude:
 - No Terraform apply automation.
@@ -86,6 +88,27 @@ Therefore, live validation should treat backend startup failure from missing tab
 ## Verification boundary
 
 `Terraform Static Verification` must pass on this PR before merge.
+
+### Output state synchronization boundary
+
+The existing remote state predates `database_instance_identifier`. Strict applied-state verification therefore requires a separately reviewed output-state synchronization first. That operation must remain outside the verifier and must not use the recovery apply path.
+
+The approved operational sequence is:
+
+1. Create a saved refresh-only plan in a private work directory below `%LOCALAPPDATA%\Terraformers\live-foundation`.
+2. Store the binary plan, raw plan log, and `terraform show -json` result only in that private directory.
+3. Require zero non-no-op managed resource changes, including zero add, change, delete, and replacement actions.
+4. Require the only non-no-op root output change to be `database_instance_identifier` with a create/add action.
+5. Stop for separate user approval before applying the saved refresh-only plan. Do not generate or apply that plan from the verifier.
+
+After the output contract has been synchronized to remote state through a separately reviewed workflow, verify the already-applied stage with:
+
+```bash
+bash scripts/deploy/verify-applied-stateful-dependencies.sh \
+  --expected-head "$(git rev-parse HEAD)"
+```
+
+The verifier performs only describe/head reads, Terraform state/output reads, and a normally locked no-change plan with a five-minute lock timeout. It records lock-object presence before the plan without assuming that an active lock is stale, reports lock acquisition failure separately, and requires the lock object to be absent after any plan that acquired it. Raw output is retained only below `%LOCALAPPDATA%\Terraformers\live-foundation`; standard output contains sanitized status fields. A detailed plan exit code other than `0` fails verification without printing the raw plan.
 
 ## Stop condition
 

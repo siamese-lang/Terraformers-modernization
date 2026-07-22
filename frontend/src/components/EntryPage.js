@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signUp, signIn, signOut, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+import { signUp, signIn, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+import { useAuthSession } from '../auth/AuthSessionContext';
 import '../styles/login.css';
 
 function EntryPage() {
@@ -9,6 +10,7 @@ function EntryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { refresh } = useAuthSession();
 
   const changeView = (view) => {
     setCurrentView(view);
@@ -38,7 +40,6 @@ function EntryPage() {
         });
         navigate('/confirm-sign-up');
       } else if (currentView === 'logIn') {
-        await signOut();
         await signIn({
           username: formData.username,
           password: formData.password,
@@ -46,7 +47,8 @@ function EntryPage() {
         const session = await fetchAuthSession();
         const token = session.tokens ? session.tokens.accessToken : null;
         if (token !== null) {
-          navigate('/');
+          await refresh();
+          navigate('/generate', { replace: true });
         } else {
           setError('Operation failed: missing access token after sign-in. Please check Cognito app client configuration.');
         }
@@ -78,7 +80,7 @@ function EntryPage() {
               <label htmlFor="email">Email</label>
               <input type="email" id="email" value={formData.email} onChange={handleInputChange} required />
               <label htmlFor="password">Password</label>
-              <input type="password" id="password" value={formData.password} onChange={handleInputChange} required />
+              <input type="password" id="password" value={formData.password} onChange={handleInputChange} autoComplete="current-password" required />
             </fieldset>
             <button type="submit" disabled={loading}>{loading ? 'Submitting...' : 'Submit'}</button>
             <button type="button" onClick={() => changeView('logIn')} disabled={loading}>Have an account?</button>
@@ -94,7 +96,7 @@ function EntryPage() {
               <label htmlFor="username">Email</label>
               <input type="text" id="username" value={formData.username} onChange={handleInputChange} required />
               <label htmlFor="password">Password</label>
-              <input type="password" id="password" value={formData.password} onChange={handleInputChange} required />
+              <input type="password" id="password" value={formData.password} onChange={handleInputChange} autoComplete="current-password" required />
               <button type="button" className="link-button" onClick={() => changeView('PWReset')}>Forgot Password?</button>
             </fieldset>
             <button type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>

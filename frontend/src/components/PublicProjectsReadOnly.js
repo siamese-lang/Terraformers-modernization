@@ -2,35 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../utils/api';
 import '../styles/public-projects.css';
 
+function normalizeProjectId(projectId) {
+  if (projectId === null || projectId === undefined) {
+    return '';
+  }
+  return String(projectId);
+}
+
 function projectIdOf(project) {
-  return project.projectId || project.id || '';
+  return normalizeProjectId(project.projectId || project.id || '');
 }
 
 function projectNameOf(project) {
   return project.projectName || project.name || projectIdOf(project) || 'Untitled project';
 }
 
-function sourceSummary(project) {
-  if (project.originalFilename) {
-    return project.originalFilename;
-  }
-  if (project.sourceBucket && project.sourceKey) {
-    return `s3://${project.sourceBucket}/${project.sourceKey}`;
-  }
-  return 'No source metadata yet';
-}
-
-function storageSummary(project) {
-  const provider = project.sourceStorageProvider || 'metadata-only';
-  const persisted = project.sourceBinaryPersisted ? 'persisted' : 'metadata only';
-  return `${provider} · ${persisted}`;
-}
-
 function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   const [projects, setProjects] = useState([]);
   const [comments, setComments] = useState([]);
   const [commentContent, setCommentContent] = useState('');
-  const [commentUserEmail, setCommentUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -51,8 +41,14 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     }
   }, []);
 
+  const publicProjectIds = new Set(projects.map((project) => projectIdOf(project)));
+  const verifiedSelectedProjectId = publicProjectIds.has(normalizeProjectId(selectedProjectId))
+    ? normalizeProjectId(selectedProjectId)
+    : '';
+
   const loadComments = useCallback(async (projectId) => {
-    if (!projectId) {
+    const normalizedProjectId = normalizeProjectId(projectId);
+    if (!normalizedProjectId) {
       setComments([]);
       return;
     }
@@ -60,7 +56,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     setIsCommentsLoading(true);
     setCommentError('');
     try {
-      const response = await api.get(`/api/getProjectComments/${encodeURIComponent(projectId)}`);
+      const response = await api.get(`/api/getProjectComments/${encodeURIComponent(normalizedProjectId)}`);
       setComments(Array.isArray(response.data) ? response.data : []);
     } catch (loadError) {
       setCommentError(loadError?.response?.status === 403
@@ -77,18 +73,17 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
   }, [loadPublicProjects]);
 
   useEffect(() => {
-    loadComments(selectedProjectId);
-  }, [loadComments, selectedProjectId]);
+    loadComments(verifiedSelectedProjectId);
+  }, [loadComments, verifiedSelectedProjectId]);
 
   const handleSelectProject = (project) => {
     onSelectProject(project);
-    loadComments(projectIdOf(project));
   };
 
   const handleSubmitComment = async (event) => {
     event.preventDefault();
 
-    if (!selectedProjectId || !commentContent.trim()) {
+    if (!verifiedSelectedProjectId || !commentContent.trim()) {
       return;
     }
 
@@ -96,16 +91,19 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
     setCommentError('');
     try {
       await api.post('/api/addProjectComment', {
-        projectId: selectedProjectId,
+        projectId: verifiedSelectedProjectId,
         content: commentContent,
-        userEmail: commentUserEmail || undefined,
       });
       setCommentContent('');
-      await loadComments(selectedProjectId);
+      await loadComments(verifiedSelectedProjectId);
     } catch (submitError) {
-      setCommentError(submitError?.response?.status === 403
-        ? 'PUBLIC 프로젝트에만 댓글을 남길 수 있습니다.'
-        : submitError?.message || '댓글 저장에 실패했습니다.');
+      if (submitError?.response?.status === 401) {
+        setCommentError('댓글을 작성하려면 로그인해야 합니다.');
+      } else if (submitError?.response?.status === 403) {
+        setCommentError('PUBLIC 프로젝트에만 댓글을 남길 수 있습니다.');
+      } else {
+        setCommentError(submitError?.message || '댓글 저장에 실패했습니다.');
+      }
     } finally {
       setIsSubmittingComment(false);
     }
@@ -116,7 +114,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Public projects</p>
-          <h2>Shared projects and comments</h2>
+          <h2>공개 프로젝트 선택</h2>
         </div>
         <button type="button" className="compact-button" onClick={loadPublicProjects} disabled={isLoading}>
           {isLoading ? 'loading' : 'refresh'}
@@ -124,7 +122,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
       </div>
 
       <p className="muted-copy">
-        기존 Terraformers의 `/api/public-projects`와 댓글 흐름을 현재 프로젝트 메타데이터 계약에 맞춘 PUBLIC 전용 화면입니다.
+        공개 프로젝트는 누구나 조회할 수 있으며, 댓글 작성자는 Cognito 로그인 사용자로 확인됩니다.
         좋아요, 공유 편집, 삭제는 아직 연결하지 않았습니다.
       </p>
 
@@ -138,18 +136,30 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
         <ul className="public-project-list">
           {projects.map((project) => {
             const projectId = projectIdOf(project);
-            const isSelected = selectedProjectId === projectId;
+            const isSelected = verifiedSelectedProjectId === projectId;
             return (
               <li key={projectId}>
                 <button
                   type="button"
                   className={isSelected ? 'public-project-card selected' : 'public-project-card'}
                   onClick={() => handleSelectProject(project)}
+                  aria-pressed={isSelected}
                 >
+                  <span className="public-project-thumbnail">
+                    {project.imageUrl ? (
+                      <img
+                        src={project.imageUrl}
+                        alt={`${projectNameOf(project)} 미리보기`}
+                        loading="lazy"
+                        onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.nextSibling.hidden = false; }}
+                      />
+                    ) : null}
+                    <span hidden={Boolean(project.imageUrl)} className="public-project-placeholder">미리보기 없음</span>
+                  </span>
                   <span className="public-project-title">{projectNameOf(project)}</span>
-                  <span className="public-project-meta">{project.visibility || 'PUBLIC'}</span>
-                  <span className="public-project-source">{sourceSummary(project)}</span>
-                  <span className="public-project-source">{storageSummary(project)}</span>
+                  <span className="public-project-badge">PUBLIC</span>
+                  <span className="public-project-source">{project.originalFilename || '원본 파일명 없음'}</span>
+                  <span className="public-project-meta">{project.updatedAt ? new Date(project.updatedAt).toLocaleString() : '수정 시각 없음'}</span>
                 </button>
               </li>
             );
@@ -159,11 +169,11 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
 
       <section className="public-comments-panel" aria-label="Public project comments">
         <h3>Comments</h3>
-        {!selectedProjectId && (
+        {!verifiedSelectedProjectId && (
           <p className="public-projects-empty">댓글을 보려면 공개 프로젝트를 선택하세요.</p>
         )}
 
-        {selectedProjectId && (
+        {verifiedSelectedProjectId && (
           <>
             {commentError && <p className="public-projects-error">{commentError}</p>}
             {isCommentsLoading && <p className="public-projects-empty">댓글을 불러오는 중입니다.</p>}
@@ -175,7 +185,7 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
                 {comments.map((comment) => (
                   <li key={comment.id || `${comment.projectId}-${comment.createdAt}`} className="public-comment-item">
                     <div className="public-comment-meta">
-                      <span>{comment.userEmail || 'anonymous'}</span>
+                      <span>{comment.authorDisplayName || comment.userEmail || '사용자'}</span>
                       <span>{comment.createdAt ? new Date(comment.createdAt).toLocaleString() : ''}</span>
                     </div>
                     <p>{comment.content}</p>
@@ -185,16 +195,10 @@ function PublicProjectsReadOnly({ selectedProjectId, onSelectProject }) {
             )}
 
             <form className="public-comment-form" onSubmit={handleSubmitComment}>
-              <input
-                type="email"
-                value={commentUserEmail}
-                onChange={(event) => setCommentUserEmail(event.target.value)}
-                placeholder="email optional"
-              />
               <textarea
                 value={commentContent}
                 onChange={(event) => setCommentContent(event.target.value)}
-                placeholder="PUBLIC 프로젝트에 남길 댓글"
+                placeholder="로그인 사용자로 PUBLIC 프로젝트에 남길 댓글"
               />
               <button
                 type="submit"

@@ -6,23 +6,22 @@ import com.terraformers.modernization.analysis.AnalysisRuntimeProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Lazy;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
 @Component
-@ConditionalOnProperty(prefix = "terraformers.analysis", name = "bedrock-embedding-enabled", havingValue = "true")
 public class BedrockEmbeddingProvider implements EmbeddingProvider {
 
     private final BedrockRuntimeClient client;
     private final ObjectMapper objectMapper;
     private final AnalysisRuntimeProperties properties;
 
-    public BedrockEmbeddingProvider(ObjectMapper objectMapper, AnalysisRuntimeProperties properties) {
-        this.client = BedrockRuntimeClient.builder().build();
+    public BedrockEmbeddingProvider(@Lazy BedrockRuntimeClient client, ObjectMapper objectMapper, AnalysisRuntimeProperties properties) {
+        this.client = client;
         this.objectMapper = objectMapper;
         this.properties = properties;
     }
@@ -46,6 +45,13 @@ public class BedrockEmbeddingProvider implements EmbeddingProvider {
 
             List<Float> vector = new ArrayList<>();
             embedding.forEach(value -> vector.add((float) value.asDouble()));
+            if (vector.isEmpty()) {
+                throw new IllegalStateException("Bedrock embedding response contains an empty embedding array");
+            }
+            Integer expectedDimension = properties.getExpectedVectorDimension();
+            if (expectedDimension != null && vector.size() != expectedDimension) {
+                throw new IllegalStateException("Bedrock embedding vector dimension does not match configured expected dimension");
+            }
             return vector;
         } catch (Exception exception) {
             throw new IllegalStateException("failed to generate Bedrock embedding", exception);

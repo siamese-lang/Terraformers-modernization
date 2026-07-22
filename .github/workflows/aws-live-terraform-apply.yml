@@ -23,6 +23,7 @@ on:
         options:
           - foundation
           - eks-runtime
+          - rag-runtime
         default: eks-runtime
       approved_resource_address:
         description: Reviewed eks-runtime resource address.
@@ -113,22 +114,56 @@ jobs:
                 echo 'foundation apply must be dispatched directly from aws-live-terraform-apply.yml.' >&2
                 exit 1
               }
-              test "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_FOUNDATION_CREATE || { echo 'approval_confirmation does not match the required foundation confirmation string.' >&2; exit 1; }
+              if [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_FOUNDATION_CREATE ]]; then
+                echo 'apply_contract=foundation-apply-role-bootstrap' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_APPLY_PERMISSION_CREATE ]]; then
+                echo 'apply_contract=foundation-rag-apply-permission-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_APPLY_PERMISSION_UPDATE ]]; then
+                echo 'apply_contract=foundation-rag-apply-permission-update' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_CREATE ]]; then
+                echo 'apply_contract=foundation-operations-visibility-apply-permission-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_APPLY_PERMISSION_UPDATE ]]; then
+                echo 'apply_contract=foundation-operations-visibility-apply-permission-update' >> "${GITHUB_OUTPUT}"
+              else
+                echo 'approval_confirmation does not match a required foundation confirmation string.' >&2; exit 1
+              fi
               echo 'tf_dir=infra/terraform/bootstrap/aws-live-foundation' >> "${GITHUB_OUTPUT}"
               echo 'state_component=bootstrap' >> "${GITHUB_OUTPUT}"
               echo 'tfvars_secret=AWS_LIVE_FOUNDATION_TFVARS_B64' >> "${GITHUB_OUTPUT}"
-              echo 'apply_contract=foundation-apply-role-bootstrap' >> "${GITHUB_OUTPUT}"
               ;;
             eks-runtime)
-              test "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_IN_PLACE_UPDATE || { echo 'approval_confirmation does not match the required eks-runtime confirmation string.' >&2; exit 1; }
-              test "${INPUT_APPROVED_RESOURCE_ADDRESS}" = aws_iam_policy.backend_runtime_access || { echo 'approved_resource_address does not match the reviewed resource.' >&2; exit 1; }
-              test "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}" = policy || { echo 'approved_changed_attribute_path does not match the reviewed attribute path.' >&2; exit 1; }
+              if [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_IN_PLACE_UPDATE ]]; then
+                test "${INPUT_APPROVED_RESOURCE_ADDRESS}" = aws_iam_policy.backend_runtime_access || { echo 'approved_resource_address does not match the reviewed resource.' >&2; exit 1; }
+                test "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}" = policy || { echo 'approved_changed_attribute_path does not match the reviewed attribute path.' >&2; exit 1; }
+                echo 'apply_contract=eks-runtime-backend-policy-update' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_CREATE ]]; then
+                echo 'apply_contract=eks-runtime-operations-visibility-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_ADDON_RECOVERY ]]; then
+                echo 'apply_contract=eks-runtime-operations-visibility-addon-recovery' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_OPERATIONS_VISIBILITY_REPAIR ]]; then
+                echo 'apply_contract=eks-runtime-operations-visibility-repair' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_APPLICATION_SIGNALS_BACKEND_SELECTION ]]; then
+                echo 'apply_contract=eks-runtime-application-signals-backend-selection' >> "${GITHUB_OUTPUT}"
+              else
+                echo 'approval_confirmation does not match a required eks-runtime confirmation string.' >&2; exit 1
+              fi
               echo 'tf_dir=infra/terraform/envs/eks-runtime' >> "${GITHUB_OUTPUT}"
               echo 'state_component=eks-runtime' >> "${GITHUB_OUTPUT}"
               echo 'tfvars_secret=AWS_LIVE_EKS_TFVARS_B64' >> "${GITHUB_OUTPUT}"
-              echo 'apply_contract=eks-runtime-backend-policy-update' >> "${GITHUB_OUTPUT}"
               ;;
-            *) echo 'apply_stage must be foundation or eks-runtime.' >&2; exit 1 ;;
+            rag-runtime)
+              if [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_CREATE ]]; then
+                echo 'apply_contract=rag-runtime-reviewed-create' >> "${GITHUB_OUTPUT}"
+              elif [[ "${INPUT_APPROVAL_CONFIRMATION}" = APPLY_REVIEWED_RAG_RUNTIME_RECOVERY ]]; then
+                echo 'apply_contract=rag-runtime-reviewed-recovery' >> "${GITHUB_OUTPUT}"
+              else
+                echo 'approval_confirmation does not match a required rag-runtime confirmation string.' >&2; exit 1
+              fi
+              echo 'tf_dir=infra/terraform/envs/rag-runtime' >> "${GITHUB_OUTPUT}"
+              echo 'state_component=rag-runtime' >> "${GITHUB_OUTPUT}"
+              echo 'tfvars_secret=AWS_LIVE_RAG_TFVARS_B64' >> "${GITHUB_OUTPUT}"
+              ;;
+            *) echo 'apply_stage must be foundation, eks-runtime, or rag-runtime.' >&2; exit 1 ;;
           esac
 
       - name: Checkout
@@ -169,6 +204,7 @@ jobs:
           APPLY_STAGE: ${{ inputs.apply_stage }}
           FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
           EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
         run: |
           set -euo pipefail
           case "${APPLY_STAGE}" in
@@ -179,6 +215,10 @@ jobs:
             eks-runtime)
               test -n "${EKS_TFVARS_B64}" || { echo 'AWS_LIVE_EKS_TFVARS_B64 secret is required.' >&2; exit 1; }
               TFVARS_B64="${EKS_TFVARS_B64}"
+              ;;
+            rag-runtime)
+              test -n "${RAG_TFVARS_B64}" || { echo 'AWS_LIVE_RAG_TFVARS_B64 secret is required.' >&2; exit 1; }
+              TFVARS_B64="${RAG_TFVARS_B64}"
               ;;
           esac
           printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
@@ -193,7 +233,13 @@ jobs:
           STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
         run: |
           set -euo pipefail
-          if ! rg -q 'backend[[:space:]]+"s3"' "${TF_DIR}" -g '*.tf'; then printf 'terraform { backend "s3" {} }\n' > "${TF_DIR}/zz-live-backend.tf"; fi
+          if ! grep -R -E -q 'backend[[:space:]]+"s3"' "${TF_DIR}" --include='*.tf'; then
+            cat > "${TF_DIR}/zz-live-backend.tf" <<'EOF'
+          terraform {
+            backend "s3" {}
+          }
+          EOF
+          fi
           cat > "${RUNNER_TEMP}/backend.hcl" <<BACKEND_CONFIG
           bucket = "${STATE_BUCKET}"
           key = "${STATE_PREFIX}/${STATE_COMPONENT}/terraform.tfstate"
@@ -222,7 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           args=(--summary-json artifacts/aws-live-terraform-apply/plan-risk-summary.json --summary-txt artifacts/aws-live-terraform-apply/plan-risk-summary.txt --contract "${APPLY_CONTRACT}" --stage "${APPLY_STAGE}")
-          if [[ "${APPLY_STAGE}" = eks-runtime ]]; then args+=(--approved-resource "${INPUT_APPROVED_RESOURCE_ADDRESS}" --approved-changed-path "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}"); fi
+          if [[ "${APPLY_CONTRACT}" = eks-runtime-backend-policy-update ]]; then args+=(--approved-resource "${INPUT_APPROVED_RESOURCE_ADDRESS}" --approved-changed-path "${INPUT_APPROVED_CHANGED_ATTRIBUTE_PATH}"); fi
           python3 scripts/deploy/verify-approved-terraform-apply-contract.py "${args[@]}"
 
       - name: Apply reviewed saved plan
@@ -242,7 +288,96 @@ jobs:
             echo 'terraform_destroy_executed=false'
             echo 'kubernetes_mutation_executed=false'
             echo 'raw_plan_uploaded=false'
-            if [[ "${APPLY_STAGE}" = foundation ]]; then echo 'approved_action=create'; echo 'approved_resource_count=4'; echo 'environment_gate=aws-live-plan'; echo 'temporary_bootstrap_permission_cleanup=external-required'; else echo 'approved_resource=aws_iam_policy.backend_runtime_access'; echo 'approved_action=update'; echo 'approved_changed_path=policy'; echo 'environment_gate=aws-live-apply'; fi
+            case "${APPLY_CONTRACT}" in
+              foundation-rag-apply-permission-create)
+                echo 'approved_action=create'
+                echo 'approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                echo 'foundation_permission_extension=external-temporary-bootstrap-required'
+                ;;
+              foundation-rag-apply-permission-update)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_iam_role_policy.terraform_apply_rag_runtime_create'
+                echo 'approved_changed_path=policy'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                echo 'foundation_permission_extension=external-temporary-bootstrap-required'
+                ;;
+              foundation-operations-visibility-apply-permission-update)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create'
+                echo 'approved_changed_path=policy'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                echo 'foundation_permission_extension=external-temporary-bootstrap-required'
+                ;;
+              foundation-apply-role-bootstrap)
+                echo 'approved_action=create'
+                echo 'approved_resource_count=4'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                ;;
+              foundation-operations-visibility-apply-permission-create)
+                echo 'approved_action=create'
+                echo 'approved_resource=aws_iam_policy.terraform_apply_operations_visibility_create'
+                echo 'approved_resource=aws_iam_role_policy_attachment.terraform_apply_operations_visibility_create'
+                echo 'approved_resource_count=2'
+                echo 'environment_gate=aws-live-plan'
+                echo 'temporary_bootstrap_permission_cleanup=external-required'
+                ;;
+              rag-runtime-reviewed-create)
+                echo 'approved_action=create-and-read'
+                echo 'approved_resource_count=26'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              rag-runtime-reviewed-recovery)
+                echo 'approved_action=create-and-read'
+                approved_resource_count="$(python3 -c 'import json; print(json.load(open("artifacts/aws-live-terraform-apply/plan-risk-summary.json", encoding="utf-8"))["resource_change_count"])')"
+                [[ "${approved_resource_count}" =~ ^[1-9][0-9]*$ ]] || { echo 'verified recovery resource count is invalid.' >&2; exit 1; }
+                echo "approved_resource_count=${approved_resource_count}"
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-backend-policy-update)
+                echo 'approved_resource=aws_iam_policy.backend_runtime_access'
+                echo 'approved_action=update'
+                echo 'approved_changed_path=policy'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-operations-visibility-create)
+                echo 'approved_action=create'
+                echo 'approved_resource_count=9'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-operations-visibility-addon-recovery)
+                echo 'approved_action=create'
+                echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-operations-visibility-repair)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
+                echo 'approved_resource=aws_cloudwatch_dashboard.operations_visibility'
+                echo 'approved_resource=aws_cloudwatch_metric_alarm.analysis_failure'
+                echo 'approved_resource_count=3'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              eks-runtime-application-signals-backend-selection)
+                echo 'approved_action=update'
+                echo 'approved_resource=aws_eks_addon.cloudwatch_observability'
+                echo 'approved_changed_path=configuration_values'
+                echo 'approved_resource_count=1'
+                echo 'environment_gate=aws-live-apply'
+                ;;
+              *)
+                echo "unknown apply contract: ${APPLY_CONTRACT}" >&2
+                exit 1
+                ;;
+            esac
           } > artifacts/aws-live-terraform-apply/apply-summary.txt
 
       - name: Verify post-apply full plan has no changes

@@ -1,8 +1,5 @@
 package com.terraformers.modernization.analysis;
 
-import com.terraformers.modernization.reference.ReferenceDocument;
-import com.terraformers.modernization.reference.ReferenceQuery;
-import com.terraformers.modernization.reference.ReferenceRetriever;
 import com.terraformers.modernization.storage.ObjectMetadata;
 import com.terraformers.modernization.storage.ObjectReader;
 import com.terraformers.modernization.storage.ObjectReference;
@@ -15,11 +12,8 @@ import org.springframework.stereotype.Component;
 public class StubAnalysisProvider implements AnalysisProvider {
 
     private final ObjectReader objectReader;
-    private final ReferenceRetriever referenceRetriever;
-
-    public StubAnalysisProvider(ObjectReader objectReader, ReferenceRetriever referenceRetriever) {
+    public StubAnalysisProvider(ObjectReader objectReader) {
         this.objectReader = objectReader;
-        this.referenceRetriever = referenceRetriever;
     }
 
     @Override
@@ -29,25 +23,34 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 context.sourceKey()
         ));
 
-        List<ReferenceDocument> references = referenceRetriever.retrieve(ReferenceQuery.fromObject(
-                context.projectId(),
-                metadata.bucket(),
-                metadata.key(),
-                metadata.contentType()
-        ));
+        List<String> references = List.of();
 
         String terraformDraft = """
                 terraform {
                   required_providers {
                     aws = {
-                      source  = \"hashicorp/aws\"
-                      version = \"~> 5.0\"
+                      source  = "hashicorp/aws"
+                      version = "~> 5.0"
                     }
                   }
                 }
 
-                provider \"aws\" {
+                provider "aws" {
                   region = var.aws_region
+                }
+
+                variable "aws_region" {
+                  type        = string
+                  description = "AWS region for local verification drafts."
+                  default     = "us-east-1"
+                }
+
+                resource "aws_s3_bucket" "architecture_artifacts" {
+                  bucket_prefix = "terraformers-artifacts-"
+                }
+
+                resource "aws_sqs_queue" "analysis_events" {
+                  name = "terraformers-analysis-events"
                 }
                 """;
 
@@ -62,7 +65,10 @@ public class StubAnalysisProvider implements AnalysisProvider {
                 "stub-integrated-java",
                 terraformDraft,
                 explanation,
-                references.stream().map(ReferenceDocument::id).toList()
+                List.of("S3 artifact bucket", "SQS analysis event queue"),
+                List.of("analysis events are published to the queue after artifacts are persisted"),
+                List.of("Stub output is for local verification only; enable Bedrock for real image analysis."),
+                references
         );
     }
 }

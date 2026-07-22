@@ -13,7 +13,7 @@ public record ProgressEvent(
     public static ProgressEvent of(AnalysisJobEntity entity, AnalysisJobStatus status, String message) {
         return new ProgressEvent(
                 entity.getId(),
-                entity.getProjectId(),
+                String.valueOf(entity.getProjectId()),
                 entity.getCorrelationId(),
                 status,
                 message,

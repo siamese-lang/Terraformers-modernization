@@ -1,5 +1,6 @@
 package com.terraformers.modernization.projecttree;
 
+import com.terraformers.modernization.identity.UserEntity;
 import com.terraformers.modernization.project.ProjectMetadataService;
 import com.terraformers.modernization.project.ProjectResponse;
 import com.terraformers.modernization.project.ProjectVisibility;
@@ -18,21 +19,27 @@ public class ProjectTreeService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProjectTreeNode> listTrees() {
-        return projectMetadataService.list().stream()
+    public List<ProjectTreeNode> listTrees(UserEntity currentUser) {
+        return projectMetadataService.list(currentUser).stream()
                 .map(this::toRootNode)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public ProjectTreeResponse getTree(String projectId) {
-        ProjectResponse project = projectMetadataService.get(projectId);
+    public ProjectTreeResponse getTree(Long projectId, UserEntity currentUser) {
+        ProjectResponse project = projectMetadataService.get(projectId, currentUser);
         return new ProjectTreeResponse(
                 project.projectId(),
                 project.displayName(),
                 project.visibility().name(),
                 project.latestAnalysisJobId(),
+                project.latestResultFileId(),
                 project.latestResultObjectKey(),
+                project.analysisStatus(),
+                project.analysisSummary(),
+                project.detectedComponents(),
+                project.detectedRelationships(),
+                project.warnings(),
                 project.updatedAt(),
                 List.of(toRootNode(project))
         );
@@ -60,43 +67,57 @@ public class ProjectTreeService {
     }
 
     private ProjectTreeNode buildSourceFolder(ProjectResponse project) {
-        if (project.sourceBucket() == null || project.sourceKey() == null) {
+        if (project.sourceFileId() == null || project.sourceBucket() == null || project.sourceKey() == null) {
             return null;
         }
 
-        String folderId = project.projectId() + ":source";
+        String projectId = String.valueOf(project.projectId());
+        String folderId = projectId + ":source";
         ProjectTreeNode sourceFile = ProjectTreeNode.file(
-                project.projectId() + ":source:" + safeNodeId(project.sourceKey()),
+                projectId + ":source:" + project.sourceFileId(),
                 displaySourceName(project),
                 project.projectId(),
                 folderId,
-                "/api/projects/" + project.projectId() + "/source",
+                "/api/projects/" + projectId + "/source-object",
                 project.sourceBucket(),
                 project.sourceKey(),
                 null
         );
 
-        return ProjectTreeNode.folder(folderId, "source", project.projectId(), project.projectId(), List.of(sourceFile));
+        return ProjectTreeNode.folder(
+                folderId,
+                "source",
+                project.projectId(),
+                projectId,
+                List.of(sourceFile)
+        );
     }
 
     private ProjectTreeNode buildTerraformFolder(ProjectResponse project) {
-        if (project.latestResultObjectKey() == null || project.latestResultObjectKey().isBlank()) {
+        if (project.latestResultFileId() == null) {
             return null;
         }
 
-        String folderId = project.projectId() + ":terraform";
+        String projectId = String.valueOf(project.projectId());
+        String folderId = projectId + ":terraform";
         ProjectTreeNode mainTf = ProjectTreeNode.file(
-                project.projectId() + ":terraform:main.tf",
+                projectId + ":terraform:" + project.latestResultFileId(),
                 "main.tf",
                 project.projectId(),
                 folderId,
-                "/api/projects/" + project.projectId() + "/terraform/main.tf",
+                "/api/projects/" + projectId + "/terraform/main.tf",
                 null,
                 null,
                 project.latestResultObjectKey()
         );
 
-        return ProjectTreeNode.folder(folderId, "terraform", project.projectId(), project.projectId(), List.of(mainTf));
+        return ProjectTreeNode.folder(
+                folderId,
+                "terraform",
+                project.projectId(),
+                projectId,
+                List.of(mainTf)
+        );
     }
 
     private String displaySourceName(ProjectResponse project) {
@@ -105,9 +126,5 @@ public class ProjectTreeService {
         }
         int slash = project.sourceKey().lastIndexOf('/');
         return slash >= 0 ? project.sourceKey().substring(slash + 1) : project.sourceKey();
-    }
-
-    private String safeNodeId(String value) {
-        return value.replaceAll("[^a-zA-Z0-9._:-]+", "-");
     }
 }

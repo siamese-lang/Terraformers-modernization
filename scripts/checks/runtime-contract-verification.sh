@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${REPO_ROOT}/backend"
+BACKEND_MAIN_DIR="${BACKEND_DIR}/src/main"
 K8S_BASE_DIR="${REPO_ROOT}/infra/kubernetes/base"
 K8S_LOCAL_STUB_OVERLAY_DIR="${REPO_ROOT}/infra/kubernetes/overlays/local-stub"
 K8S_AWS_RUNTIME_TEMPLATE_DIR="${REPO_ROOT}/infra/kubernetes/overlays/aws-runtime-template"
@@ -47,6 +48,17 @@ assert_contains() {
   fi
 }
 
+assert_repository_not_contains() {
+  local pattern="$1"
+  local directory="$2"
+  local message="$3"
+  if grep -R -E -n -q "${pattern}" "${directory}"; then
+    echo "${message}" >&2
+    grep -R -E -n "${pattern}" "${directory}" >&2 || true
+    exit 1
+  fi
+}
+
 assert_kustomization_resource_not_included() {
   local resource_name="$1"
   local kustomization_file="$2"
@@ -62,8 +74,20 @@ require_command kubectl
 require_command terraform
 require_command mvn
 require_command grep
+require_command python3
 
 cd "${REPO_ROOT}"
+
+echo "[runtime-contract] verifying versioned RAG corpus contract"
+python3 scripts/checks/rag-corpus-contract-verification.py
+
+echo "[runtime-contract] verifying persistence guardrails"
+bash scripts/checks/flyway-migration-uniqueness.sh
+python3 scripts/checks/terraform-plan-public-cidr-regression-verification.py
+assert_repository_not_contains \
+  'project_metadata_compat|project_comments' \
+  "${BACKEND_MAIN_DIR}" \
+  "Removed compatibility persistence models must not reappear in backend main sources or migrations."
 
 echo "[runtime-contract] rendering Kubernetes base"
 kubectl kustomize "${K8S_BASE_DIR}" > "${RENDERED_MANIFEST}"
@@ -105,15 +129,14 @@ assert_not_contains '^kind: Secret$' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}"
 assert_not_contains 'arn:aws:iam::[0-9]{12}:' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must not contain account-specific IAM ARNs."
 assert_not_contains '[0-9]{12}' "${RENDERED_AWS_RUNTIME_TEMPLATE_MANIFEST}" "AWS runtime template must not contain 12-digit account-like identifiers."
 
-
 echo "[runtime-contract] checking committed example files for public-safe placeholders"
 assert_not_contains '[0-9]{12}' "${K8S_BASE_DIR}/backend-secret.example.yaml" "Secret example must not contain 12-digit account-like identifiers."
 assert_not_contains '[0-9]{12}' "${TERRAFORM_CONTRACT_DIR}/terraform.tfvars.example" "Terraform tfvars example must not contain 12-digit account-like identifiers."
 assert_not_contains 'arn:aws:iam::[0-9]{12}:' "${K8S_BASE_DIR}/backend-serviceaccount.yaml" "ServiceAccount base must not contain account-specific IAM ARN."
 
-echo "[runtime-contract] verifying backend API contract flow"
+echo "[runtime-contract] verifying canonical backend API contract flow"
 cd "${BACKEND_DIR}"
-mvn -q -Dtest=ProjectMetadataControllerTest,ProjectTreeControllerTest,TerraformDraftControllerTest,ProjectCommentControllerTest test
+mvn -q -Dtest=AnalysisUploadControllerTest,AnalysisJobControllerIntegrationTest,ProjectMetadataControllerTest,ProjectTreeControllerTest,TerraformDraftControllerTest,ProjectCommentControllerTest,SourceObjectReaderServiceTest test
 
 echo "[runtime-contract] validating Terraform runtime contract"
 cd "${TERRAFORM_CONTRACT_DIR}"

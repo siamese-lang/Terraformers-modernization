@@ -2,11 +2,93 @@ name: Runtime Contract Verification
 
 on:
   workflow_dispatch:
+    inputs:
+      execute_live_plan:
+        description: Run the guarded reusable live Terraform plan in addition to contract verification.
+        required: true
+        type: boolean
+        default: false
+      plan_stage:
+        description: Terraform environment to plan when execute_live_plan=true.
+        required: true
+        type: choice
+        options:
+          - network
+          - runtime-dependencies
+          - stateful-dependencies
+          - eks-runtime
+          - frontend-delivery
+          - rag-runtime
+        default: network
+      expected_aws_account_id:
+        description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.
+        required: false
+        default: ''
+      allow_destructive:
+        description: Permit delete or replacement findings. Keep false for normal planning.
+        required: true
+        type: boolean
+        default: false
+      allow_optional_adapters:
+        description: Permit optional adapter resources. Keep false until separately reviewed.
+        required: true
+        type: boolean
+        default: false
+      run_rag_ingestion_contract:
+        type: boolean
+        required: true
+        default: false
+      execute_rag_ingestion:
+        type: boolean
+        required: true
+        default: false
+      rag_corpus_directory:
+        description: Versioned corpus directory packaged and ingested by the existing RAG workflow.
+        required: true
+        type: string
+        default: corpus/terraformers-reference/v1
+      rag_expected_aws_account_id:
+        required: false
+        default: ''
+      rag_expected_head_sha:
+        required: false
+        default: ''
+      rag_approval_confirmation:
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  validate-rag-ingestion-dispatch:
+    if: ${{ inputs.run_rag_ingestion_contract }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate RAG ingestion dispatch contract
+        run: |
+          set -euo pipefail
+          if [[ '${{ inputs.execute_rag_ingestion }}' == 'true' ]]; then
+            test -n '${{ inputs.rag_expected_aws_account_id }}'
+            test -n '${{ inputs.rag_expected_head_sha }}'
+            test '${{ inputs.rag_approval_confirmation }}' = INGEST_REVIEWED_RAG_CORPUS
+          fi
+
+  rag-corpus-ingestion:
+    needs: validate-rag-ingestion-dispatch
+    if: ${{ inputs.run_rag_ingestion_contract }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/rag-corpus-ingestion.yml
+    with:
+      execute_ingestion: ${{ inputs.execute_rag_ingestion }}
+      corpus_directory: ${{ inputs.rag_corpus_directory }}
+      expected_aws_account_id: ${{ inputs.rag_expected_aws_account_id }}
+      expected_head_sha: ${{ inputs.rag_expected_head_sha }}
+      approval_confirmation: ${{ inputs.rag_approval_confirmation }}
+    secrets: inherit
+
   runtime-contract-verification:
     name: Runtime contract baseline
     runs-on: ubuntu-latest
@@ -14,25 +96,156 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: maven
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
         with:
           version: v1.30.5
 
       - name: Verify runtime contract
         run: bash scripts/checks/runtime-contract-verification.sh
+
+      - name: Verify AWS environment contract
+        run: bash scripts/checks/aws-environment-contract-verification.sh
+
+      - name: Inventory AWS deployment contract sources
+        run: |
+          python3 scripts/checks/aws-deployment-contract-inventory.py
+          python3 scripts/checks/aws-workflow-reference-reconciliation.py
+
+      - name: Verify AWS runtime input bundle contract
+        run: bash scripts/checks/aws-runtime-input-bundle-contract-verification.sh
+
+      - name: Verify managed Secret delivery contract
+        run: bash scripts/checks/external-secrets-runtime-contract-verification.sh
+
+      - name: Verify private backend origin contract
+        run: bash scripts/checks/backend-origin-contract-verification.sh
+
+      - name: Verify frontend delivery contract
+        run: bash scripts/checks/frontend-delivery-contract-verification.sh
+
+      - name: Upload AWS environment contract evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-environment-contract-evidence
+          if-no-files-found: warn
+          path: |
+            artifacts/aws-environment-contract
+            artifacts/aws-runtime-input-bundle-contract
+            artifacts/external-secrets-runtime-contract
+            artifacts/backend-origin-contract
+            artifacts/frontend-delivery-contract
+            artifacts/live-deployment-plan-contract/public-cidr-regression
+
+      - name: Upload runtime contract diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-contract-verification-diagnostics
+          path: |
+            backend/target/surefire-reports
+            backend/target/*.log
+
+  predeployment-package-verification:
+    name: Build images and dry-run deployment packages
+    needs: runtime-contract-verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REACT_APP_API_BASE_URL: ''
+      REACT_APP_AWS_REGION: ap-northeast-2
+      REACT_APP_COGNITO_USER_POOL_ID: ap-northeast-2_predeployment
+      REACT_APP_COGNITO_USER_POOL_CLIENT_ID: predeployment-client-id
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v5
+        with:
+          version: v1.30.5
+
+      - name: Verify frontend, backend image, and Kubernetes packages
+        run: bash scripts/checks/predeployment-package-verification.sh
+
+      - name: Record frontend production build input evidence
+        run: |
+          set -euo pipefail
+          test -z "${REACT_APP_API_BASE_URL}"
+          grep -R -q 'ap-northeast-2_predeployment' frontend/build/static/js
+          grep -R -q 'predeployment-client-id' frontend/build/static/js
+          {
+            echo 'frontend_api_base_mode=same-origin-relative'
+            echo 'frontend_cognito_build_values=embedded'
+            echo 'frontend_build_secret_count=0'
+          } > artifacts/predeployment/frontend-production-build-input-summary.txt
+
+      - name: Upload pre-deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: predeployment-package-evidence
+          if-no-files-found: warn
+          path: artifacts/predeployment
+
+  live-deployment-execution-plan:
+    name: Generate live deployment execution plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate execution plan contract
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/build-live-deployment-execution-plan.py \
+            --manifest config/live-deployment-stages.json \
+            --output-dir artifacts/live-deployment-execution-plan
+
+      - name: Upload execution plan evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: live-deployment-execution-plan-evidence
+          path: artifacts/live-deployment-execution-plan
+          if-no-files-found: error
+
+  premerge-live-terraform-plan:
+    name: Pre-merge guarded live Terraform plan
+    if: ${{ inputs.execute_live_plan }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/aws-live-terraform-plan.yml
+    with:
+      execute_live_plan: true
+      plan_stage: ${{ inputs.plan_stage }}
+      expected_aws_account_id: ${{ inputs.expected_aws_account_id }}
+      allow_destructive: ${{ inputs.allow_destructive }}
+      allow_optional_adapters: ${{ inputs.allow_optional_adapters }}
+    secrets: inherit

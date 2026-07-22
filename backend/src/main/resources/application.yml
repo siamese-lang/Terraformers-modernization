@@ -8,14 +8,37 @@ server:
   port: 8080
 
 management:
+  info:
+    env:
+      enabled: true
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      service: terraformers-backend
+      environment: ${DEPLOYMENT_ENVIRONMENT:local}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  cloudwatch:
+    metrics:
+      export:
+        enabled: false
+
+info:
+  build:
+    source-revision: ${BUILD_SOURCE_REVISION:unknown}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} trace_id=%X{trace_id:-} span_id=%X{span_id:-} analysisJobId=%X{analysisJobId:-} source_revision=${BUILD_SOURCE_REVISION:unknown} - %msg%n"
 
 terraformers:
   runtime:

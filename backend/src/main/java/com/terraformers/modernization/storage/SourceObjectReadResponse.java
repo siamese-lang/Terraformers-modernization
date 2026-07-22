@@ -3,7 +3,8 @@ package com.terraformers.modernization.storage;
 import java.time.Instant;
 
 public record SourceObjectReadResponse(
-        String projectId,
+        Long projectId,
+        Long sourceFileId,
         String sourceBucket,
         String sourceKey,
         String storageProvider,

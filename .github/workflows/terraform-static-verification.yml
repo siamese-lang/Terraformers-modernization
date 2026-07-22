@@ -5,9 +5,22 @@ on:
   pull_request:
     branches:
       - main
+      - agent/rdb-domain-realignment
     paths:
       - "infra/terraform/**"
+      - "corpus/terraformers-reference/**"
+      - "config/runtime-teardown-stages.json"
+      - "scripts/rag/**"
+      - "scripts/teardown/**"
+      - "tests/rag/**"
+      - "scripts/checks/rag-corpus-contract-verification.py"
       - "scripts/checks/terraform-static-verification.sh"
+      - "scripts/checks/approved-terraform-apply-contract-verification.py"
+      - "scripts/deploy/verify-approved-terraform-apply-contract.py"
+      - "scripts/deploy/summarize-terraform-plan.py"
+      - ".github/workflows/aws-live-terraform-apply.yml"
+      - ".github/workflows/aws-terraform-destroy-plan.yml"
+      - ".github/workflows/aws-runtime-teardown.yml"
       - ".github/workflows/terraform-static-verification.yml"
       - "docs/**"
 
@@ -21,12 +34,227 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Verify RAG corpus tooling
+        run: |
+          set -euo pipefail
+          python3 scripts/checks/rag-corpus-contract-verification.py
+          python3 scripts/checks/rag-corpus-contract-verification.py \
+            --corpus-dir corpus/terraformers-reference/v2
+          python3 -m unittest \
+            tests/rag/test_build_corpus_v2.py \
+            tests/rag/test_curate_corpus_v2.py \
+            tests/rag/test_ingest_corpus.py
+
+      - name: Verify destroy-plan summary contract
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/deploy/summarize-terraform-plan.py
+
+          mkdir -p "${RUNNER_TEMP}/destroy-plan-positive" "${RUNNER_TEMP}/destroy-plan-negative"
+
+          cat > "${RUNNER_TEMP}/destroy-plan-positive.json" <<'JSON'
+          {
+            "format_version": "1.2",
+            "terraform_version": "1.15.8",
+            "resource_changes": [
+              {
+                "address": "aws_s3_bucket.example",
+                "mode": "managed",
+                "type": "aws_s3_bucket",
+                "change": {
+                  "actions": ["delete"],
+                  "before": {},
+                  "after": null
+                }
+              },
+              {
+                "address": "data.aws_caller_identity.current",
+                "mode": "data",
+                "type": "aws_caller_identity",
+                "change": {
+                  "actions": ["read"],
+                  "before": null,
+                  "after": {}
+                }
+              }
+            ]
+          }
+          JSON
+
+          python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/destroy-plan-positive.json" \
+            --output-dir "${RUNNER_TEMP}/destroy-plan-positive" \
+            --stage test \
+            --allow-destructive \
+            --require-destroy-only
+
+          grep -q '^terraform_plan_risk_gate=passed$' \
+            "${RUNNER_TEMP}/destroy-plan-positive/plan-risk-summary.txt"
+          grep -q '^destroy_only_contract=passed$' \
+            "${RUNNER_TEMP}/destroy-plan-positive/plan-risk-summary.txt"
+          grep -q '^delete_resource_count=1$' \
+            "${RUNNER_TEMP}/destroy-plan-positive/plan-risk-summary.txt"
+          grep -q '^read_data_source_count=1$' \
+            "${RUNNER_TEMP}/destroy-plan-positive/plan-risk-summary.txt"
+
+          cat > "${RUNNER_TEMP}/destroy-plan-negative.json" <<'JSON'
+          {
+            "format_version": "1.2",
+            "terraform_version": "1.15.8",
+            "resource_changes": [
+              {
+                "address": "aws_s3_bucket.example",
+                "mode": "managed",
+                "type": "aws_s3_bucket",
+                "change": {
+                  "actions": ["update"],
+                  "before": {"bucket": "before"},
+                  "after": {"bucket": "after"}
+                }
+              }
+            ]
+          }
+          JSON
+
+          if python3 scripts/deploy/summarize-terraform-plan.py \
+            --plan-json "${RUNNER_TEMP}/destroy-plan-negative.json" \
+            --output-dir "${RUNNER_TEMP}/destroy-plan-negative" \
+            --stage test \
+            --allow-destructive \
+            --require-destroy-only; then
+            echo 'Destroy-only contract accepted a managed update.' >&2
+            exit 1
+          fi
+
+          grep -q '^destroy_only_contract=failed$' \
+            "${RUNNER_TEMP}/destroy-plan-negative/plan-risk-summary.txt"
+          grep -q 'non-delete-managed-action' \
+            "${RUNNER_TEMP}/destroy-plan-negative/plan-risk-summary.txt"
+
+      - name: Verify runtime teardown contract
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/teardown/runtime_teardown.py
+          bash -n scripts/teardown/bootstrap_runtime_teardown_role.sh
+
+          python3 scripts/teardown/runtime_teardown.py static-check \
+            --config config/runtime-teardown-stages.json \
+            --workflow .github/workflows/aws-runtime-teardown.yml
+
+          mkdir -p \
+            "${RUNNER_TEMP}/teardown-contract" \
+            "${RUNNER_TEMP}/prior-states"
+
+          python3 scripts/teardown/runtime_teardown.py resolve \
+            --config config/runtime-teardown-stages.json \
+            --stage frontend-delivery \
+            --expected-delete-count 14 \
+            --confirmation DESTROY_REVIEWED_FRONTEND_DELIVERY_14 \
+            --github-output "${RUNNER_TEMP}/teardown-contract/github-output.txt"
+
+          if python3 scripts/teardown/runtime_teardown.py resolve \
+            --config config/runtime-teardown-stages.json \
+            --stage frontend-delivery \
+            --expected-delete-count 13 \
+            --confirmation DESTROY_REVIEWED_FRONTEND_DELIVERY_14 \
+            --github-output "${RUNNER_TEMP}/teardown-contract/invalid-output.txt"; then
+            echo 'Runtime teardown accepted an incorrect reviewed count.' >&2
+            exit 1
+          fi
+
+          cat > "${RUNNER_TEMP}/teardown-contract/plan-positive.json" <<'JSON'
+          {
+            "destroy_only_contract": "passed",
+            "update_resource_count": 0,
+            "delete_resource_count": 1,
+            "replacement_resources": [],
+            "managed_non_delete_actions": [],
+            "data_source_non_read_actions": [],
+            "resource_actions": [
+              {
+                "address": "aws_s3_bucket.frontend",
+                "mode": "managed",
+                "actions": ["delete"]
+              }
+            ]
+          }
+          JSON
+
+          python3 scripts/teardown/runtime_teardown.py verify-plan \
+            --config config/runtime-teardown-stages.json \
+            --stage frontend-delivery \
+            --summary-json "${RUNNER_TEMP}/teardown-contract/plan-positive.json" \
+            --output "${RUNNER_TEMP}/teardown-contract/plan-contract.json"
+
+          grep -q '"state_aware_subset": true' \
+            "${RUNNER_TEMP}/teardown-contract/plan-contract.json"
+
+          sed 's/aws_s3_bucket.frontend/aws_s3_bucket.unreviewed/' \
+            "${RUNNER_TEMP}/teardown-contract/plan-positive.json" \
+            > "${RUNNER_TEMP}/teardown-contract/plan-negative.json"
+
+          if python3 scripts/teardown/runtime_teardown.py verify-plan \
+            --config config/runtime-teardown-stages.json \
+            --stage frontend-delivery \
+            --summary-json "${RUNNER_TEMP}/teardown-contract/plan-negative.json" \
+            --output "${RUNNER_TEMP}/teardown-contract/negative-contract.json"; then
+            echo 'Runtime teardown accepted an unreviewed resource address.' >&2
+            exit 1
+          fi
+
+          cat > "${RUNNER_TEMP}/teardown-contract/state.json" <<'JSON'
+          {
+            "resources": [
+              {"mode": "managed", "instances": [{"attributes": {}}]},
+              {"mode": "data", "instances": [{"attributes": {}}]}
+            ]
+          }
+          JSON
+
+          test "$(python3 scripts/teardown/runtime_teardown.py managed-count \
+            --state-json "${RUNNER_TEMP}/teardown-contract/state.json")" -eq 1
+
+          for component in \
+            frontend-delivery \
+            rag-runtime \
+            eks-runtime \
+            stateful-dependencies \
+            runtime-dependencies
+          do
+            printf '{"resources":[]}\n' > "${RUNNER_TEMP}/prior-states/${component}.json"
+          done
+
+          python3 scripts/teardown/runtime_teardown.py verify-empty-states \
+            --config config/runtime-teardown-stages.json \
+            --stage network \
+            --state-dir "${RUNNER_TEMP}/prior-states"
+
+          cp "${RUNNER_TEMP}/teardown-contract/state.json" \
+            "${RUNNER_TEMP}/prior-states/eks-runtime.json"
+
+          if python3 scripts/teardown/runtime_teardown.py verify-empty-states \
+            --config config/runtime-teardown-stages.json \
+            --stage network \
+            --state-dir "${RUNNER_TEMP}/prior-states"; then
+            echo 'Runtime teardown accepted a non-empty prerequisite state.' >&2
+            exit 1
+          fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.8.5
+          terraform_version: 1.15.8
+          terraform_wrapper: false
 
       - name: Verify Terraform configurations
         run: bash scripts/checks/terraform-static-verification.sh
+
+      - name: Upload Terraform static evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: terraform-static-verification-evidence
+          path: artifacts/terraform-static-verification
+          if-no-files-found: warn

@@ -13,11 +13,13 @@ on:
         required: true
         type: choice
         options:
+          - foundation
           - network
           - runtime-dependencies
           - stateful-dependencies
           - eks-runtime
           - frontend-delivery
+          - rag-runtime
         default: network
       expected_aws_account_id:
         description: Required account ID when execute_live_plan=true. The workflow stops on mismatch.
@@ -33,6 +35,27 @@ on:
         required: true
         type: boolean
         default: false
+      execute_approved_apply:
+        description: Call the approved single-update Terraform apply workflow. Must not be combined with execute_live_plan.
+        required: true
+        type: boolean
+        default: false
+      expected_head_sha:
+        description: Required commit SHA when execute_approved_apply=true. The apply workflow stops on mismatch.
+        required: false
+        default: ''
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated by the approved apply workflow.
+        required: false
+        default: aws_iam_policy.backend_runtime_access
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change in the approved apply workflow.
+        required: false
+        default: policy
+      approval_confirmation:
+        description: Required exact confirmation string when execute_approved_apply=true.
+        required: false
+        default: ''
   workflow_call:
     inputs:
       execute_live_plan:
@@ -60,6 +83,31 @@ on:
         required: false
         type: boolean
         default: false
+      execute_approved_apply:
+        description: Call the approved single-update Terraform apply workflow.
+        required: false
+        type: boolean
+        default: false
+      expected_head_sha:
+        description: Required commit SHA when execute_approved_apply=true.
+        required: false
+        type: string
+        default: ''
+      approved_resource_address:
+        description: Reviewed Terraform resource address that may be updated by the approved apply workflow.
+        required: false
+        type: string
+        default: aws_iam_policy.backend_runtime_access
+      approved_changed_attribute_path:
+        description: Reviewed attribute path that may change in the approved apply workflow.
+        required: false
+        type: string
+        default: policy
+      approval_confirmation:
+        description: Required exact confirmation string when execute_approved_apply=true.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -94,9 +142,65 @@ jobs:
           path: artifacts/live-deployment-execution-plan
           if-no-files-found: error
 
+  validate-approved-apply-dispatch:
+    name: Validate approved apply dispatch contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Reject invalid plan/apply dispatch combinations
+        env:
+          EXECUTE_LIVE_PLAN: ${{ inputs.execute_live_plan }}
+          EXECUTE_APPROVED_APPLY: ${{ inputs.execute_approved_apply }}
+          PLAN_STAGE: ${{ inputs.plan_stage }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          APPROVAL_CONFIRMATION: ${{ inputs.approval_confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ "${EXECUTE_LIVE_PLAN}" = 'true' && "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
+            echo 'execute_live_plan and execute_approved_apply must not both be true.' >&2
+            exit 1
+          fi
+          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' && "${PLAN_STAGE}" != 'eks-runtime' && "${PLAN_STAGE}" != 'rag-runtime' ]]; then
+            echo 'execute_approved_apply requires plan_stage=eks-runtime or rag-runtime.' >&2
+            exit 1
+          fi
+          if [[ "${EXECUTE_APPROVED_APPLY}" = 'true' ]]; then
+            test -n "${EXPECTED_HEAD_SHA}" || { echo 'expected_head_sha is required for execute_approved_apply.' >&2; exit 1; }
+            if [[ "${PLAN_STAGE}" = rag-runtime ]]; then
+              if [[ "${APPROVAL_CONFIRMATION}" != APPLY_REVIEWED_RAG_RUNTIME_CREATE && "${APPROVAL_CONFIRMATION}" != APPLY_REVIEWED_RAG_RUNTIME_RECOVERY ]]; then
+                echo 'rag-runtime apply requires APPLY_REVIEWED_RAG_RUNTIME_CREATE or APPLY_REVIEWED_RAG_RUNTIME_RECOVERY.' >&2
+                exit 1
+              fi
+            fi
+          fi
+          echo 'approved_apply_dispatch_contract=valid'
+
+  approved-live-terraform-apply:
+    name: Call approved Terraform apply workflow
+    needs:
+      - execution-plan-contract
+      - validate-approved-apply-dispatch
+    if: ${{ inputs.execute_approved_apply && !inputs.execute_live_plan && (inputs.plan_stage == 'eks-runtime' || inputs.plan_stage == 'rag-runtime') }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/aws-live-terraform-apply.yml
+    with:
+      execute_approved_apply: ${{ inputs.execute_approved_apply }}
+      expected_aws_account_id: ${{ inputs.expected_aws_account_id }}
+      expected_head_sha: ${{ inputs.expected_head_sha }}
+      apply_stage: ${{ inputs.plan_stage }}
+      approved_resource_address: ${{ inputs.approved_resource_address }}
+      approved_changed_attribute_path: ${{ inputs.approved_changed_attribute_path }}
+      approval_confirmation: ${{ inputs.approval_confirmation }}
+    secrets: inherit
+
   live-terraform-plan:
     name: Plan ${{ inputs.plan_stage }} against AWS
-    needs: execution-plan-contract
+    needs:
+      - execution-plan-contract
+      - validate-approved-apply-dispatch
     if: ${{ inputs.execute_live_plan }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -163,33 +267,50 @@ jobs:
       - name: Resolve Terraform stage and private tfvars
         id: stage
         env:
+          FOUNDATION_TFVARS_B64: ${{ secrets.AWS_LIVE_FOUNDATION_TFVARS_B64 }}
           NETWORK_TFVARS_B64: ${{ secrets.AWS_LIVE_NETWORK_TFVARS_B64 }}
           RUNTIME_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_RUNTIME_DEPENDENCIES_TFVARS_B64 }}
           STATEFUL_DEPENDENCIES_TFVARS_B64: ${{ secrets.AWS_LIVE_STATEFUL_DEPENDENCIES_TFVARS_B64 }}
           EKS_TFVARS_B64: ${{ secrets.AWS_LIVE_EKS_TFVARS_B64 }}
           FRONTEND_TFVARS_B64: ${{ secrets.AWS_LIVE_FRONTEND_TFVARS_B64 }}
+          RAG_TFVARS_B64: ${{ secrets.AWS_LIVE_RAG_TFVARS_B64 }}
         run: |
           set -euo pipefail
           case '${{ inputs.plan_stage }}' in
+            foundation)
+              TF_DIR='infra/terraform/bootstrap/aws-live-foundation'
+              TFVARS_B64="${FOUNDATION_TFVARS_B64}"
+              STATE_COMPONENT='bootstrap'
+              ;;
             network)
               TF_DIR='infra/terraform/envs/aws-runtime-network'
               TFVARS_B64="${NETWORK_TFVARS_B64}"
+              STATE_COMPONENT='network'
               ;;
             runtime-dependencies)
               TF_DIR='infra/terraform/envs/backend-runtime-dependencies'
               TFVARS_B64="${RUNTIME_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='runtime-dependencies'
               ;;
             stateful-dependencies)
               TF_DIR='infra/terraform/envs/backend-stateful-dependencies'
               TFVARS_B64="${STATEFUL_DEPENDENCIES_TFVARS_B64}"
+              STATE_COMPONENT='stateful-dependencies'
               ;;
             eks-runtime)
               TF_DIR='infra/terraform/envs/eks-runtime'
               TFVARS_B64="${EKS_TFVARS_B64}"
+              STATE_COMPONENT='eks-runtime'
+              ;;
+            rag-runtime)
+              TF_DIR='infra/terraform/envs/rag-runtime'
+              TFVARS_B64="${RAG_TFVARS_B64}"
+              STATE_COMPONENT='rag-runtime'
               ;;
             frontend-delivery)
               TF_DIR='infra/terraform/envs/frontend-delivery'
               TFVARS_B64="${FRONTEND_TFVARS_B64}"
+              STATE_COMPONENT='frontend-delivery'
               ;;
             *)
               echo 'Unsupported plan stage.' >&2
@@ -203,6 +324,7 @@ jobs:
           printf '%s' "${TFVARS_B64}" | base64 --decode > "${RUNNER_TEMP}/live.auto.tfvars"
           test -s "${RUNNER_TEMP}/live.auto.tfvars"
           printf 'tf_dir=%s\n' "${TF_DIR}" >> "${GITHUB_OUTPUT}"
+          printf 'state_component=%s\n' "${STATE_COMPONENT}" >> "${GITHUB_OUTPUT}"
           printf 'tfvars_path=%s\n' "${RUNNER_TEMP}/live.auto.tfvars" >> "${GITHUB_OUTPUT}"
           sha256sum "${RUNNER_TEMP}/live.auto.tfvars" \
             | awk '{print $1}' > artifacts/aws-live-terraform-plan/tfvars.sha256
@@ -224,7 +346,7 @@ jobs:
           fi
           cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
           bucket       = "${STATE_BUCKET}"
-          key          = "${STATE_PREFIX}/${{ inputs.plan_stage }}/terraform.tfstate"
+          key          = "${STATE_PREFIX}/${{ steps.stage.outputs.state_component }}/terraform.tfstate"
           region       = "${AWS_REGION}"
           encrypt      = true
           use_lockfile = true
