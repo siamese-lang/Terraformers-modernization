@@ -4,229 +4,224 @@ set -euo pipefail
 OUTPUT_DIR="${1:?output directory is required}"
 REGION="${AWS_REGION:-ap-northeast-2}"
 CLUSTER="${EKS_CLUSTER_NAME:-terraformers-dev-backend}"
-RUNTIME_NS="${RUNTIME_NAMESPACE:-terraformers-runtime}"
-ARGOCD_NS="${ARGOCD_NAMESPACE:-argocd}"
-ARGOCD_APP="${ARGOCD_APPLICATION:-terraformers-backend}"
-EXTERNAL_NS="${EXTERNAL_SECRETS_NAMESPACE:-external-secrets}"
 STATE_BUCKET="${STATE_BUCKET:?STATE_BUCKET is required}"
 STATE_PREFIX="${STATE_PREFIX:?STATE_PREFIX is required}"
-ACCESS_POLICY_ARN="arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+RUN_DIR="${RUNNER_TEMP:-/tmp}/terraformers-kubernetes-owner-recovery"
+MARKER_FILE="${RUN_DIR}/kubernetes-owners.json"
+LB_FILE="${RUN_DIR}/load-balancers.txt"
+TG_FILE="${RUN_DIR}/target-groups.txt"
 
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR" "$RUN_DIR"
+: > "$LB_FILE"
+: > "$TG_FILE"
 
-CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
-ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-ASSUMED_PATH="${CALLER_ARN#*:assumed-role/}"
-ROLE_PATH="${ASSUMED_PATH%/*}"
-ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_PATH}"
+resource_matches_project() {
+  local arn="$1"
+  local name="$2"
+  local tags_file="${RUN_DIR}/tags.json"
 
-marker_file="${RUNNER_TEMP:-/tmp}/kubernetes-owners.json"
-access_created=false
-
-cleanup_access() {
-  aws eks disassociate-access-policy \
-    --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" \
-    --policy-arn "$ACCESS_POLICY_ARN" >/dev/null 2>&1 || true
-  aws eks delete-access-entry \
-    --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" >/dev/null 2>&1 || true
-}
-trap cleanup_access EXIT
-
-write_marker() {
-  jq -n \
-    --arg commit "${GITHUB_SHA:-}" \
-    --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{stage:"kubernetes-owners",source_commit:$commit,completed_at:$completed_at,owners_removed:true}' \
-    > "$marker_file"
-
-  aws s3api put-object \
-    --bucket "$STATE_BUCKET" \
-    --key "${STATE_PREFIX%/}/closure/kubernetes-owners.json" \
-    --body "$marker_file" >/dev/null
-}
-
-append_success() {
-  {
-    echo 'kubernetes_owners_removed=true'
-    echo 'argocd_application_removed=true'
-    echo 'runtime_namespace_removed=true'
-    echo 'external_secrets_removed=true'
-    echo 'load_balancer_controller_removed=true'
-    echo 'internal_alb_removed=true'
-    echo 'terraform_apply_executed=false'
-    echo 'terraform_destroy_executed=false'
-    echo 'service_residual_check=passed'
-  } >> "$OUTPUT_DIR/execution-summary.txt"
-}
-
-if ! aws eks describe-cluster \
-  --region "$REGION" \
-  --name "$CLUSTER" >/dev/null 2>&1; then
-  write_marker
-  append_success
-  echo 'eks_cluster_already_absent=true' >> "$OUTPUT_DIR/execution-summary.txt"
-  jq -n '{stage:"kubernetes-owners",cluster_already_absent:true,owners_removed:true,contract:"idempotent-recovery"}' \
-    > "$OUTPUT_DIR/kubernetes-owner-recovery.json"
-  exit 0
-fi
-
-if ! aws eks describe-access-entry \
-  --region "$REGION" \
-  --cluster-name "$CLUSTER" \
-  --principal-arn "$ROLE_ARN" >/dev/null 2>&1; then
-  aws eks create-access-entry \
-    --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" \
-    --type STANDARD >/dev/null
-  access_created=true
-fi
-
-for attempt in $(seq 1 30); do
-  if aws eks describe-access-entry \
-    --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" >/dev/null 2>&1; then
-    break
+  if [[ "${name,,}" == *terraformers* ]]; then
+    return 0
   fi
-  if [ "$attempt" -eq 30 ]; then
-    echo 'EKS access entry did not become readable.' >&2
-    exit 1
-  fi
-  sleep 5
-done
 
-associated_count="$({
-  aws eks list-associated-access-policies \
+  aws elbv2 describe-tags \
     --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" \
-    --output json 2>/dev/null || printf '{"associatedAccessPolicies":[]}'
-} | jq --arg arn "$ACCESS_POLICY_ARN" '[.associatedAccessPolicies[]? | select(.policyArn == $arn)] | length')"
+    --resource-arns "$arn" \
+    --output json > "$tags_file"
 
-if [ "$associated_count" -eq 0 ]; then
-  for attempt in $(seq 1 30); do
-    if aws eks associate-access-policy \
+  jq -e --arg cluster "$CLUSTER" '
+    any(.TagDescriptions[0].Tags[]?;
+      (.Key == "elbv2.k8s.aws/cluster" and .Value == $cluster)
+      or (.Key == ("kubernetes.io/cluster/" + $cluster))
+      or (
+        ((.Key // "") | ascii_downcase) == "project"
+        and ((.Value // "") | ascii_downcase | contains("terraformers"))
+      )
+    )
+  ' "$tags_file" >/dev/null
+}
+
+collect_project_load_balancers() {
+  local output_file="$1"
+  local inventory="${RUN_DIR}/load-balancer-inventory.json"
+  : > "$output_file"
+
+  aws elbv2 describe-load-balancers \
+    --region "$REGION" \
+    --output json > "$inventory"
+
+  while IFS=$'\t' read -r arn name; do
+    [ -n "$arn" ] || continue
+    if resource_matches_project "$arn" "$name"; then
+      printf '%s\n' "$arn" >> "$output_file"
+    fi
+  done < <(jq -r '.LoadBalancers[]? | [.LoadBalancerArn, .LoadBalancerName] | @tsv' "$inventory")
+}
+
+collect_project_target_groups() {
+  local output_file="$1"
+  local inventory="${RUN_DIR}/target-group-inventory.json"
+  : > "$output_file"
+
+  aws elbv2 describe-target-groups \
+    --region "$REGION" \
+    --output json > "$inventory"
+
+  while IFS=$'\t' read -r arn name; do
+    [ -n "$arn" ] || continue
+    if resource_matches_project "$arn" "$name"; then
+      printf '%s\n' "$arn" >> "$output_file"
+    fi
+  done < <(jq -r '.TargetGroups[]? | [.TargetGroupArn, .TargetGroupName] | @tsv' "$inventory")
+}
+
+wait_for_load_balancer_absence() {
+  local arn="$1"
+  local error_file="${RUN_DIR}/load-balancer-error.txt"
+
+  for attempt in $(seq 1 40); do
+    if aws elbv2 describe-load-balancers \
       --region "$REGION" \
-      --cluster-name "$CLUSTER" \
-      --principal-arn "$ROLE_ARN" \
-      --policy-arn "$ACCESS_POLICY_ARN" \
-      --access-scope type=cluster >/dev/null 2>&1; then
+      --load-balancer-arns "$arn" \
+      >/dev/null 2>"$error_file"; then
+      sleep 15
+      continue
+    fi
+
+    if grep -q 'LoadBalancerNotFound' "$error_file"; then
+      return 0
+    fi
+
+    echo 'Unable to verify load balancer deletion.' >&2
+    return 1
+  done
+
+  echo 'Project load balancer deletion did not complete within the bounded wait.' >&2
+  return 1
+}
+
+wait_for_target_group_absence() {
+  local arn="$1"
+  local error_file="${RUN_DIR}/target-group-error.txt"
+
+  for attempt in $(seq 1 40); do
+    if aws elbv2 describe-target-groups \
+      --region "$REGION" \
+      --target-group-arns "$arn" \
+      >/dev/null 2>"$error_file"; then
+      sleep 15
+      continue
+    fi
+
+    if grep -q 'TargetGroupNotFound' "$error_file"; then
+      return 0
+    fi
+
+    echo 'Unable to verify target group deletion.' >&2
+    return 1
+  done
+
+  echo 'Project target group deletion did not complete within the bounded wait.' >&2
+  return 1
+}
+
+collect_project_load_balancers "$LB_FILE"
+load_balancer_delete_count="$(grep -c . "$LB_FILE" || true)"
+
+while IFS= read -r arn; do
+  [ -n "$arn" ] || continue
+  aws elbv2 delete-load-balancer \
+    --region "$REGION" \
+    --load-balancer-arn "$arn"
+done < "$LB_FILE"
+
+while IFS= read -r arn; do
+  [ -n "$arn" ] || continue
+  wait_for_load_balancer_absence "$arn"
+done < "$LB_FILE"
+
+collect_project_target_groups "$TG_FILE"
+target_group_delete_count="$(grep -c . "$TG_FILE" || true)"
+
+while IFS= read -r arn; do
+  [ -n "$arn" ] || continue
+  deleted=false
+  for attempt in $(seq 1 40); do
+    error_file="${RUN_DIR}/target-group-delete-error.txt"
+    if aws elbv2 delete-target-group \
+      --region "$REGION" \
+      --target-group-arn "$arn" \
+      >/dev/null 2>"$error_file"; then
+      deleted=true
       break
     fi
-    if [ "$attempt" -eq 30 ]; then
-      echo 'EKS cluster-admin policy association failed.' >&2
-      exit 1
+    if grep -q 'ResourceInUse' "$error_file"; then
+      sleep 15
+      continue
     fi
-    sleep 5
+    echo 'Project target group deletion failed.' >&2
+    exit 1
   done
-fi
-
-for attempt in $(seq 1 30); do
-  associated_count="$(aws eks list-associated-access-policies \
-    --region "$REGION" \
-    --cluster-name "$CLUSTER" \
-    --principal-arn "$ROLE_ARN" \
-    --output json | jq --arg arn "$ACCESS_POLICY_ARN" '[.associatedAccessPolicies[]? | select(.policyArn == $arn)] | length')"
-  [ "$associated_count" -eq 1 ] && break
-  if [ "$attempt" -eq 30 ]; then
-    echo 'EKS cluster-admin policy association did not become visible.' >&2
+  if [ "$deleted" != true ]; then
+    echo 'Project target group remained in use after the bounded retry.' >&2
     exit 1
   fi
-  sleep 5
-done
+done < "$TG_FILE"
 
-aws eks update-kubeconfig \
-  --region "$REGION" \
-  --name "$CLUSTER" \
-  --alias terraformers-teardown >/dev/null
+while IFS= read -r arn; do
+  [ -n "$arn" ] || continue
+  wait_for_target_group_absence "$arn"
+done < "$TG_FILE"
 
-for attempt in $(seq 1 30); do
-  if kubectl get namespace >/dev/null 2>&1; then
-    break
-  fi
-  if [ "$attempt" -eq 30 ]; then
-    echo 'Kubernetes API access did not become ready.' >&2
-    exit 1
-  fi
-  sleep 5
-done
+collect_project_load_balancers "${RUN_DIR}/load-balancers-after.txt"
+collect_project_target_groups "${RUN_DIR}/target-groups-after.txt"
+load_balancer_remaining="$(grep -c . "${RUN_DIR}/load-balancers-after.txt" || true)"
+target_group_remaining="$(grep -c . "${RUN_DIR}/target-groups-after.txt" || true)"
 
-INGRESS_HOST="$(kubectl get ingress -n "$RUNTIME_NS" -o json 2>/dev/null | jq -r '.items[0].status.loadBalancer.ingress[0].hostname // ""' || true)"
-
-if kubectl get application "$ARGOCD_APP" -n "$ARGOCD_NS" >/dev/null 2>&1; then
-  kubectl patch application "$ARGOCD_APP" -n "$ARGOCD_NS" \
-    --type merge -p '{"spec":{"syncPolicy":{}}}' >/dev/null
-  kubectl delete application "$ARGOCD_APP" -n "$ARGOCD_NS" \
-    --wait=true --timeout=10m
-fi
-
-if kubectl get namespace "$RUNTIME_NS" >/dev/null 2>&1; then
-  kubectl delete ingress --all -n "$RUNTIME_NS" \
-    --ignore-not-found=true --wait=true --timeout=10m
-
-  if kubectl api-resources --api-group=external-secrets.io -o name | grep -qx externalsecrets.external-secrets.io; then
-    kubectl delete externalsecret terraformers-backend-runtime -n "$RUNTIME_NS" \
-      --ignore-not-found=true --wait=true --timeout=5m
-  fi
-  if kubectl api-resources --api-group=external-secrets.io -o name | grep -qx secretstores.external-secrets.io; then
-    kubectl delete secretstore terraformers-backend-secretsmanager -n "$RUNTIME_NS" \
-      --ignore-not-found=true --wait=true --timeout=5m
-  fi
-  kubectl delete secret terraformers-backend-runtime-secrets -n "$RUNTIME_NS" \
-    --ignore-not-found=true
-fi
-
-if [ -n "$INGRESS_HOST" ]; then
-  for attempt in $(seq 1 40); do
-    found="$(aws elbv2 describe-load-balancers \
-      --region "$REGION" \
-      --query 'LoadBalancers[].DNSName' \
-      --output text 2>/dev/null | tr '\t' '\n' | grep -Fxc "$INGRESS_HOST" || true)"
-    [ "$found" -eq 0 ] && break
-    if [ "$attempt" -eq 40 ]; then
-      echo 'Internal ALB still exists after Ingress deletion.' >&2
-      exit 1
-    fi
-    sleep 15
-  done
-fi
-
-uninstall_release() {
-  local release="$1"
-  local namespace="$2"
-  if helm status "$release" -n "$namespace" >/dev/null 2>&1; then
-    helm uninstall "$release" -n "$namespace" --wait --timeout 10m
-  fi
-}
-
-uninstall_release aws-load-balancer-controller kube-system
-uninstall_release external-secrets "$EXTERNAL_NS"
-uninstall_release argocd "$ARGOCD_NS"
-
-for namespace in "$RUNTIME_NS" "$EXTERNAL_NS" "$ARGOCD_NS"; do
-  if kubectl get namespace "$namespace" >/dev/null 2>&1; then
-    kubectl delete namespace "$namespace" --wait=true --timeout=10m
-  fi
-done
-
-lb_count="$(aws elbv2 describe-load-balancers --region "$REGION" --output json | jq '[.LoadBalancers[]? | select((.LoadBalancerName // "") | contains("terraformers"))] | length')"
-tg_count="$(aws elbv2 describe-target-groups --region "$REGION" --output json | jq '[.TargetGroups[]? | select((.TargetGroupName // "") | contains("terraformers"))] | length')"
-
-if [ "$lb_count" -ne 0 ] || [ "$tg_count" -ne 0 ]; then
-  echo "Terraformers load-balancer residuals remain: lb=${lb_count},tg=${tg_count}" >&2
+if [ "$load_balancer_remaining" -ne 0 ] || [ "$target_group_remaining" -ne 0 ]; then
+  echo "Project ELB residuals remain: load_balancers=${load_balancer_remaining},target_groups=${target_group_remaining}" >&2
   exit 1
 fi
 
-write_marker
-append_success
 jq -n \
-  --argjson access_created "$access_created" \
-  --argjson load_balancer_remaining "$lb_count" \
-  --argjson target_group_remaining "$tg_count" \
-  '{stage:"kubernetes-owners",access_entry_created:$access_created,load_balancer_remaining:$load_balancer_remaining,target_group_remaining:$target_group_remaining,owners_removed:true,contract:"idempotent-recovery"}' \
-  > "$OUTPUT_DIR/kubernetes-owner-recovery.json"
+  --arg commit "${GITHUB_SHA:-}" \
+  --arg completed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{
+    stage:"kubernetes-owners",
+    source_commit:$commit,
+    completed_at:$completed_at,
+    owners_removed:true,
+    cleanup_mode:"direct-aws-external-owners"
+  }' > "$MARKER_FILE"
+
+aws s3api put-object \
+  --bucket "$STATE_BUCKET" \
+  --key "${STATE_PREFIX%/}/closure/kubernetes-owners.json" \
+  --body "$MARKER_FILE" >/dev/null
+
+{
+  echo 'kubernetes_external_owners_removed=true'
+  echo 'in_cluster_resources_deferred_to_eks_destroy=true'
+  echo "load_balancers_deleted=${load_balancer_delete_count}"
+  echo "target_groups_deleted=${target_group_delete_count}"
+  echo 'terraform_apply_executed=false'
+  echo 'terraform_destroy_executed=false'
+  echo 'service_residual_check=passed'
+} >> "$OUTPUT_DIR/execution-summary.txt"
+
+jq -n \
+  --argjson load_balancers_deleted "$load_balancer_delete_count" \
+  --argjson target_groups_deleted "$target_group_delete_count" \
+  --argjson load_balancer_remaining "$load_balancer_remaining" \
+  --argjson target_group_remaining "$target_group_remaining" \
+  '{
+    stage:"kubernetes-owners",
+    cleanup_mode:"direct-aws-external-owners",
+    load_balancers_deleted:$load_balancers_deleted,
+    target_groups_deleted:$target_groups_deleted,
+    load_balancer_remaining:$load_balancer_remaining,
+    target_group_remaining:$target_group_remaining,
+    in_cluster_resources_deferred_to_eks_destroy:true,
+    owners_removed:true,
+    contract:"idempotent-direct-recovery"
+  }' > "$OUTPUT_DIR/kubernetes-owner-recovery.json"
