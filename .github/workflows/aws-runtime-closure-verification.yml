@@ -1,0 +1,133 @@
+name: AWS Runtime Closure Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_aws_account_id:
+        description: AWS account ID that must match the OIDC caller.
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact integration commit to verify.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-runtime-closure-verification
+  cancel-in-progress: false
+
+jobs:
+  verify-runtime-closure:
+    name: Verify runtime closure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: aws-live-teardown
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      STATE_BUCKET: ${{ vars.AWS_TERRAFORM_STATE_BUCKET }}
+      STATE_PREFIX: ${{ vars.AWS_TERRAFORM_STATE_PREFIX }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify requested commit and configuration
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_SHA}" = "${EXPECTED_HEAD_SHA}"
+          test "${EXPECTED_AWS_ACCOUNT_ID}" != ""
+          test "${AWS_ROLE_TO_ASSUME}" != ""
+          test "${STATE_BUCKET}" != ""
+          test "${STATE_PREFIX}" != ""
+
+      - name: Configure read-only verification credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          role-session-name: TerraformersRuntimeClosureVerification
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ inputs.expected_aws_account_id }}
+
+      - name: Verify caller and download sanitized state inputs
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "${EXPECTED_AWS_ACCOUNT_ID}"
+          test "$(aws s3api get-bucket-versioning --bucket "${STATE_BUCKET}" --query Status --output text)" = Enabled
+
+          state_dir="${RUNNER_TEMP}/runtime-closure-states"
+          mkdir -p "${state_dir}" artifacts/aws-runtime-closure
+          for component in \
+            frontend-delivery \
+            rag-runtime \
+            eks-runtime \
+            stateful-dependencies \
+            runtime-dependencies \
+            network
+          do
+            aws s3api get-object \
+              --bucket "${STATE_BUCKET}" \
+              --key "${STATE_PREFIX%/}/${component}/terraform.tfstate" \
+              "${state_dir}/${component}.json" >/dev/null
+          done
+
+          aws s3api get-object \
+            --bucket "${STATE_BUCKET}" \
+            --key "${STATE_PREFIX%/}/closure/kubernetes-owners.json" \
+            "${RUNNER_TEMP}/kubernetes-owners.json" >/dev/null
+
+      - name: Verify runtime states and exact AWS resource absence
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ inputs.expected_aws_account_id }}
+        run: |
+          set -euo pipefail
+          python3 scripts/teardown/verify_runtime_closure.py \
+            --state-dir "${RUNNER_TEMP}/runtime-closure-states" \
+            --account-id "${EXPECTED_AWS_ACCOUNT_ID}" \
+            --region "${AWS_REGION}" \
+            --kubernetes-marker "${RUNNER_TEMP}/kubernetes-owners.json" \
+            --output artifacts/aws-runtime-closure/runtime-closure-summary.json
+
+          {
+            echo "source_commit=${GITHUB_SHA}"
+            echo "expected_account_id_verified=true"
+            echo "verification_mode=read-only"
+            echo "foundation_checked=false"
+            echo "foundation_deleted=false"
+            echo "runtime_closure_contract=$(jq -r '.contract' artifacts/aws-runtime-closure/runtime-closure-summary.json)"
+          } > artifacts/aws-runtime-closure/execution-summary.txt
+
+      - name: Reject sensitive closure evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          if find artifacts/aws-runtime-closure -type f \
+            \( -name '*.tfstate' -o -name '*.tfvars' -o -name '*.tfplan' -o -name '*secret*value*' \) |
+            grep -q .; then
+            echo 'Sensitive material found in runtime closure evidence.' >&2
+            exit 1
+          fi
+
+      - name: Remove downloaded state and marker files
+        if: always()
+        run: |
+          rm -rf "${RUNNER_TEMP}/runtime-closure-states"
+          rm -f "${RUNNER_TEMP}/kubernetes-owners.json"
+
+      - name: Upload sanitized runtime closure evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: aws-runtime-closure-evidence
+          path: artifacts/aws-runtime-closure
+          if-no-files-found: error
+          retention-days: 30
